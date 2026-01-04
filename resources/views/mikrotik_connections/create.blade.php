@@ -8,12 +8,9 @@
             <h4 class="mb-0">Tambah Router [ NAS ]</h4>
             <span class="badge badge-success">Panduan Dasar</span>
         </div>
-        <form action="{{ route('mikrotik-connections.store') }}" method="POST">
+        <form action="{{ route('mikrotik-connections.store') }}" method="POST" id="mikrotik-form">
             @csrf
             <div class="card-body">
-                <div class="mb-3">
-                    <button type="button" class="btn btn-primary"><i class="fas fa-code"></i> SCRIPT GENERATOR</button>
-                </div>
 
                 <div class="row">
                     <div class="col-md-6">
@@ -85,7 +82,7 @@
                     </div>
                     <div class="form-group col-md-4">
                         <label>Secret Radius</label>
-                        <input type="text" name="radius_secret" value="{{ old('radius_secret') }}" class="form-control @error('radius_secret') is-invalid @enderror" placeholder="Secret Radius">
+                        <input type="text" name="radius_secret" value="{{ old('radius_secret') }}" class="form-control @error('radius_secret') is-invalid @enderror" placeholder="Secret Radius" required>
                         @error('radius_secret')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -129,6 +126,7 @@
             </div>
         </form>
     </div>
+
     <script>
         document.getElementById('test-connection-btn').addEventListener('click', function () {
             const host = document.querySelector('input[name="host"]').value;

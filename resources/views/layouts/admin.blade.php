@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Radius Manager</title>
+    <script src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.4/dist/turbo.es2017-umd.js" data-turbo-track="reload"></script>
+    <style>
+        .turbo-loading .content-wrapper {
+            opacity: 0.85;
+            transition: opacity 150ms ease-in-out;
+        }
+    </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
@@ -218,12 +225,6 @@
                             <p>Router (NAS)</p>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a href="{{ route('radius-accounts.index') }}" class="nav-link">
-                            <i class="nav-icon fas fa-user-shield"></i>
-                            <p>Manajemen PPPoE & Hotspot</p>
-                        </a>
-                    </li>
                     <li class="nav-item has-treeview">
                         <a href="#" class="nav-link">
                             <i class="nav-icon fas fa-users"></i>
@@ -337,11 +338,13 @@
             </div>
         </section>
 
-        <section class="content">
-            <div class="container-fluid">
-                @yield('content')
-            </div>
-        </section>
+        <turbo-frame id="main-content">
+            <section class="content">
+                <div class="container-fluid">
+                    @yield('content')
+                </div>
+            </section>
+        </turbo-frame>
     </div>
 
     <footer class="main-footer">
@@ -444,6 +447,17 @@
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
+<script>
+    document.addEventListener('turbo:visit', () => document.body.classList.add('turbo-loading'));
+    document.addEventListener('turbo:load', () => {
+        document.body.classList.remove('turbo-loading');
+        document.querySelectorAll('.nav-link[href]').forEach(link => {
+            if (!link.dataset.turboFrame) {
+                link.dataset.turboFrame = 'main-content';
+            }
+        });
+    });
+</script>
 @stack('scripts')
 </body>
 </html>

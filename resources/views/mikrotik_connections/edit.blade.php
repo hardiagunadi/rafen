@@ -8,12 +8,16 @@
             <h4 class="mb-0">Edit Router [ NAS ]</h4>
             <span class="badge badge-success">Panduan Dasar</span>
         </div>
-        <form action="{{ route('mikrotik-connections.update', $mikrotikConnection) }}" method="POST">
+        <form action="{{ route('mikrotik-connections.update', $mikrotikConnection) }}" method="POST" id="mikrotik-form">
             @csrf
             @method('PUT')
             <div class="card-body">
+                <div class="alert alert-info">
+                    <div><strong>Username API:</strong> <span id="generated-username"></span></div>
+                    <div><strong>Password API & Secret Radius:</strong> <span id="generated-secret"></span></div>
+                </div>
                 <div class="mb-3">
-                    <button type="button" class="btn btn-primary"><i class="fas fa-code"></i> SCRIPT GENERATOR</button>
+                    <button type="button" class="btn btn-primary" id="script-generator-btn" data-toggle="modal" data-target="#scriptGeneratorModal"><i class="fas fa-code"></i> SCRIPT GENERATOR</button>
                 </div>
 
                 <div class="row">
@@ -130,6 +134,26 @@
             </div>
         </form>
     </div>
+    <div class="modal fade" id="scriptGeneratorModal" tabindex="-1" aria-labelledby="scriptGeneratorModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="scriptGeneratorModalLabel">Radius Script Generator</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">Salin script berikut ke terminal Mikrotik untuk menyiapkan RADIUS (PPPoE/Hotspot/Login). Secret Radius disamakan dengan Password API.</p>
+                    <textarea id="generated-script" class="form-control" rows="10" readonly></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Tutup</button>
+                    <button type="button" class="btn btn-outline-primary" id="copy-script-btn">Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script>
         document.getElementById('test-connection-btn').addEventListener('click', function () {
             const host = document.querySelector('input[name="host"]').value;
@@ -170,6 +194,68 @@
                 resultBox.className = 'alert mt-3 alert-danger';
                 resultBox.textContent = 'Gagal menguji koneksi.';
             });
+        });
+
+        function randomString(length, charset) {
+            let result = '';
+            const chars = charset.split('');
+            for (let i = 0; i < length; i++) {
+                result += chars[Math.floor(Math.random() * chars.length)];
+            }
+            return result;
+        }
+
+        function generateCredentials() {
+            const existingUser = document.querySelector('input[name="username"]').value;
+            const existingPass = document.querySelector('input[name="password"]').value;
+            const existingSecret = document.querySelector('input[name="radius_secret"]').value;
+
+            const user = existingUser || `TMDRadius${randomString(6, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')}`;
+            const pass = existingPass || randomString(10, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*');
+            const secret = existingSecret || pass;
+
+            document.querySelector('input[name="username"]').value = user;
+            document.querySelector('input[name="password"]').value = pass;
+            document.querySelector('input[name="radius_secret"]').value = secret;
+
+            document.getElementById('generated-username').textContent = user;
+            document.getElementById('generated-secret').textContent = secret;
+        }
+
+        function buildScript() {
+            const host = document.querySelector('input[name="host"]').value || '(isi IP Router)';
+            const apiUser = document.querySelector('input[name="username"]').value;
+            const apiPass = document.querySelector('input[name="password"]').value;
+            const secret = document.querySelector('input[name="radius_secret"]').value || apiPass;
+            const authPort = document.querySelector('input[name="auth_port"]').value || 7053;
+            const acctPort = document.querySelector('input[name="acct_port"]').value || 7054;
+            const script = [
+                '/radius remove [find comment="added by TMDRadius"]',
+                '/user remove [find comment="user for TMDRadius authentication"]',
+                '/user group remove [find comment="group for TMDRadius authentication"]',
+                `/user group add name="TMDRadius.group" policy=read,write,api,test,policy,sensitive comment="group for TMDRadius authentication"`,
+                `/user add name="${apiUser}" group="TMDRadius.group" password=${apiPass} comment="user for TMDRadius authentication"`,
+                `/radius add authentication-port=${authPort} accounting-port=${acctPort} timeout=2s comment="added by TMDRadius" service=ppp,hotspot,login address=${host} secret=${secret}`,
+                `/ip hotspot profile set use-radius=yes radius-accounting=yes radius-interim-update="00:10:00" nas-port-type="wireless-802.11" [find name!=""]`,
+                `/ppp aaa set use-radius=yes accounting=yes interim-update="00:10:00"`,
+                `/radius incoming set accept=yes port=3799`
+            ].join(';') + ';';
+
+            document.getElementById('generated-script').value = script;
+        }
+
+        document.getElementById('script-generator-btn').addEventListener('click', function () {
+            generateCredentials();
+            buildScript();
+        });
+
+        document.addEventListener('DOMContentLoaded', generateCredentials);
+
+        document.getElementById('copy-script-btn')?.addEventListener('click', function () {
+            const textarea = document.getElementById('generated-script');
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+            document.execCommand('copy');
         });
     </script>
 @endsection

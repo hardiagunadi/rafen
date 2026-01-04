@@ -8,6 +8,7 @@ use App\Models\PppProfile;
 use App\Models\PppUser;
 use App\Models\ProfileGroup;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -17,11 +18,32 @@ class PppUserController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(): View
+    public function index(Request $request): View
     {
-        $users = PppUser::query()->with(['owner', 'profileGroup'])->latest()->paginate(10);
+        $perPage = (int) $request->input('per_page', 10);
+        $search = $request->input('search');
 
-        return view('ppp_users.index', compact('users'));
+        $query = PppUser::query()->with(['owner', 'profileGroup', 'profile']);
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_id', 'like', "%{$search}%")
+                    ->orWhere('username', 'like', "%{$search}%");
+            });
+        }
+
+        $users = $query->latest()->paginate($perPage > 0 ? $perPage : 10)->withQueryString();
+
+        $now = now();
+        $stats = [
+            'registrasi_bulan_ini' => PppUser::query()->whereMonth('created_at', $now->month)->whereYear('created_at', $now->year)->count(),
+            'renewal_bulan_ini' => PppUser::query()->whereMonth('updated_at', $now->month)->whereYear('updated_at', $now->year)->count(),
+            'pelanggan_isolir' => PppUser::query()->where('status_akun', 'isolir')->count(),
+            'akun_disable' => PppUser::query()->where('status_akun', 'disable')->count(),
+        ];
+
+        return view('ppp_users.index', compact('users', 'stats', 'perPage', 'search'));
     }
 
     /**
@@ -74,7 +96,7 @@ class PppUserController extends Controller
      */
     public function update(UpdatePppUserRequest $request, PppUser $pppUser): RedirectResponse
     {
-        $data = $this->prepareData($request->validated());
+        $data = $this->prepareData($request->validated(), $pppUser);
 
         $pppUser->update($data);
 
@@ -105,7 +127,7 @@ class PppUserController extends Controller
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function prepareData(array $data): array
+    private function prepareData(array $data, ?PppUser $existing = null): array
     {
         if (($data['tipe_ip'] ?? '') !== 'static') {
             $data['profile_group_id'] = null;
@@ -121,6 +143,10 @@ class PppUserController extends Controller
             $data['password_clientarea'] = $data['password_clientarea'] ?? $data['username'] ?? null;
         }
 
+        $data['durasi_promo_bulan'] = $data['durasi_promo_bulan'] ?? 0;
+        $data['biaya_instalasi'] = $data['biaya_instalasi'] ?? 0;
+        $data['jatuh_tempo'] = $this->resolveDueDate($data['jatuh_tempo'] ?? null, $existing);
+
         return $data;
     }
 
@@ -135,5 +161,18 @@ class PppUserController extends Controller
         }
 
         return $phone;
+    }
+
+    private function resolveDueDate(?string $input, ?PppUser $existing = null): ?Carbon
+    {
+        if ($input) {
+            return Carbon::parse($input)->endOfDay();
+        }
+
+        if ($existing) {
+            return $existing->jatuh_tempo;
+        }
+
+        return now()->addMonthNoOverflow()->endOfDay();
     }
 }
