@@ -12,6 +12,16 @@
             @csrf
             @method('PUT')
             <div class="card-body">
+                @if ($errors->any())
+                    <div class="alert alert-danger">
+                        <strong>Data belum valid:</strong>
+                        <ul class="mb-0">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
                 <div class="alert alert-info">
                     <div><strong>Username API:</strong> <span id="generated-username"></span></div>
                     <div><strong>Password API & Secret Radius:</strong> <span id="generated-secret"></span></div>
@@ -74,6 +84,17 @@
                         <label>Timeout (detik)</label>
                         <input type="number" name="api_timeout" value="{{ old('api_timeout', $mikrotikConnection->api_timeout) }}" class="form-control @error('api_timeout') is-invalid @enderror">
                         @error('api_timeout')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label>Versi RouterOS</label>
+                        <select name="ros_version" class="form-control @error('ros_version') is-invalid @enderror" required>
+                            <option value="auto" @selected(old('ros_version', $mikrotikConnection->ros_version) === 'auto')>Auto</option>
+                            <option value="7" @selected(old('ros_version', $mikrotikConnection->ros_version) === '7')>ROS 7</option>
+                            <option value="6" @selected(old('ros_version', $mikrotikConnection->ros_version) === '6')>ROS 6</option>
+                        </select>
+                        @error('ros_version')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
 
@@ -222,24 +243,31 @@
             document.getElementById('generated-secret').textContent = secret;
         }
 
+        function escapeForRouter(value) {
+            return String(value).replace(/(["\\])/g, '\\$1');
+        }
+
         function buildScript() {
-            const host = document.querySelector('input[name="host"]').value || '(isi IP Router)';
+            const host = @json(config('radius.server_ip'));
             const apiUser = document.querySelector('input[name="username"]').value;
             const apiPass = document.querySelector('input[name="password"]').value;
             const secret = document.querySelector('input[name="radius_secret"]').value || apiPass;
-            const authPort = document.querySelector('input[name="auth_port"]').value || 7053;
-            const acctPort = document.querySelector('input[name="acct_port"]').value || 7054;
+            const authPort = document.querySelector('input[name="auth_port"]').value || 1812;
+            const acctPort = document.querySelector('input[name="acct_port"]').value || 1813;
+            const safeUser = escapeForRouter(apiUser);
+            const safePass = escapeForRouter(apiPass);
+            const safeSecret = escapeForRouter(secret);
             const script = [
                 '/radius remove [find comment="added by TMDRadius"]',
                 '/user remove [find comment="user for TMDRadius authentication"]',
                 '/user group remove [find comment="group for TMDRadius authentication"]',
                 `/user group add name="TMDRadius.group" policy=read,write,api,test,policy,sensitive comment="group for TMDRadius authentication"`,
-                `/user add name="${apiUser}" group="TMDRadius.group" password=${apiPass} comment="user for TMDRadius authentication"`,
-                `/radius add authentication-port=${authPort} accounting-port=${acctPort} timeout=2s comment="added by TMDRadius" service=ppp,hotspot,login address=${host} secret=${secret}`,
+                `/user add name="${safeUser}" group="TMDRadius.group" password="${safePass}" comment="user for TMDRadius authentication"`,
+                `/radius add authentication-port=${authPort} accounting-port=${acctPort} timeout=2s comment="added by TMDRadius" service=ppp,hotspot,login address="${host}" secret="${safeSecret}"`,
                 `/ip hotspot profile set use-radius=yes radius-accounting=yes radius-interim-update="00:10:00" nas-port-type="wireless-802.11" [find name!=""]`,
                 `/ppp aaa set use-radius=yes accounting=yes interim-update="00:10:00"`,
                 `/radius incoming set accept=yes port=3799`
-            ].join(';') + ';';
+            ].join(';');
 
             document.getElementById('generated-script').value = script;
         }

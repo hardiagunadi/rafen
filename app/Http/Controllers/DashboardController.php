@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Invoice;
 use App\Models\MikrotikConnection;
 use App\Models\PppUser;
 use App\Models\RadiusAccount;
@@ -22,10 +23,19 @@ class DashboardController extends Controller
 
         $routers = MikrotikConnection::query()->select('is_online')->get();
         $systemInfo = $this->systemMetrics();
+        $now = now();
+        $monthStart = $now->copy()->startOfMonth();
+        $monthEnd = $now->copy()->endOfMonth();
+
+        $invoicesMonth = Invoice::query()
+            ->whereBetween('created_at', [$monthStart, $monthEnd])
+            ->get();
+        $incomeToday = $invoicesMonth->where('status', 'paid')->whereBetween('updated_at', [$now->copy()->startOfDay(), $now->copy()->endOfDay()])->sum('total');
+        $invoiceCountMonth = $invoicesMonth->count();
 
         $stats = [
-            'income_today' => 0,
-            'invoice_count' => 0,
+            'income_today' => $incomeToday,
+            'invoice_count' => $invoiceCountMonth,
             'ppp_online' => $pppAccounts,
             'hotspot_online' => $hotspotAccounts,
             'router_total' => $routers->count(),

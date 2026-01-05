@@ -6,6 +6,7 @@ use App\Http\Controllers\BandwidthProfileController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HotspotProfileController;
 use App\Http\Controllers\IncomeReportController;
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\MikrotikConnectionController;
 use App\Http\Controllers\ProfileGroupController;
 use App\Http\Controllers\RadiusAccountController;
@@ -34,6 +35,10 @@ Route::middleware('auth')->group(function () {
     Route::resource('profile-groups', ProfileGroupController::class);
     Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');
     Route::resource('hotspot-profiles', HotspotProfileController::class);
+    Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
+    Route::patch('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
+    Route::patch('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
+    Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
     Route::resource('users', UserManagementController::class);
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');

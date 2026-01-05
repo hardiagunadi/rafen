@@ -22,95 +22,109 @@
                 </ul>
             </div>
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="thead-light">
-                    <tr>
-                        <th style="width:60px;">API</th>
-                        <th>Status Ping</th>
-                        <th>Detail</th>
-                        <th>Nama Router</th>
-                        <th>IP Address</th>
-                        <th>Zona Waktu</th>
-                        <th>Deskripsi</th>
-                        <th>User Online</th>
-                        <th>Cek Status Terakhir</th>
-                        <th class="text-right">Aksi</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @forelse ($connections as $connection)
-                        @php
-                            $staleSeconds = (int) config('ping.stale_seconds', 60);
-                            $isStale = $connection->last_ping_at && $connection->last_ping_at->diffInSeconds(now()) > $staleSeconds;
-                        @endphp
+                <div id="router-table-wrapper">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="thead-light">
                         <tr>
-                            <td>
-                                <button type="button" class="btn btn-info btn-sm text-white">
-                                    <i class="fas fa-plug"></i>
-                                </button>
-                            </td>
-                            <td>
-                                @if ($isStale)
-                                    <span class="badge badge-danger">offline</span>
-                                @elseif ($connection->is_online === null)
-                                    <span class="badge badge-warning">belum dicek</span>
-                                @elseif ($connection->is_online)
-                                    <span class="badge badge-success">online</span>
-                                @else
-                                    <span class="badge badge-danger">offline</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if ($connection->last_ping_message)
-                                    <div>{{ $connection->last_ping_message }}</div>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td>{{ $connection->name }}</td>
-                            <td>{{ $connection->host }}</td>
-                            <td>+07:00<br><small class="text-muted">Asia/Jakarta</small></td>
-                            <td>{{ $connection->notes ?? '-' }}</td>
-                            <td><i class="fas fa-chart-bar"></i> <strong>active {{ $connection->radius_accounts_count }}</strong></td>
-                            <td>
-                                @if ($connection->last_ping_at)
-                                    <div>{{ $connection->last_ping_at->format('Y-m-d') }}</div>
-                                    <div class="text-muted">{{ $connection->last_ping_at->format('H:i:s') }}</div>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td class="text-right">
-                                <a href="{{ route('mikrotik-connections.edit', $connection) }}" class="btn btn-sm btn-info text-white mb-1">
-                                    <i class="fas fa-pen"></i>
-                                </a>
-                                <form action="{{ route('mikrotik-connections.destroy', $connection) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus koneksi ini?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-warning text-white mb-1">
-                                        <i class="fas fa-trash"></i>
+                            <th style="width:60px;">API</th>
+                            <th>Status Ping</th>
+                            <th>Detail</th>
+                            <th>Nama Router</th>
+                            <th>IP Address</th>
+                            <th>Zona Waktu</th>
+                            <th>Deskripsi</th>
+                            <th>User Online</th>
+                            <th>Cek Status Terakhir</th>
+                            <th class="text-right">Aksi</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @forelse ($connections as $connection)
+                            @php
+                                $staleSeconds = (int) config('ping.stale_seconds', 60);
+                                $isStale = $connection->last_ping_at && $connection->last_ping_at->diffInSeconds(now()) > $staleSeconds;
+                            @endphp
+                            <tr>
+                                <td>
+                                    <button type="button" class="btn btn-info btn-sm text-white">
+                                        <i class="fas fa-plug"></i>
                                     </button>
-                                </form>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="9" class="text-center p-4">Belum ada koneksi Mikrotik.</td>
-                        </tr>
-                    @endforelse
-                    </tbody>
-                </table>
-            </div>
-            @if ($connections->hasPages())
-                <div class="d-flex justify-content-end mt-3">
-                    {{ $connections->links() }}
+                                </td>
+                                <td>
+                                    @if ($isStale)
+                                        <span class="badge badge-danger">offline</span>
+                                    @elseif ($connection->is_online === null)
+                                        <span class="badge badge-warning">belum dicek</span>
+                                    @elseif ($connection->is_online)
+                                        <span class="badge badge-success">online</span>
+                                    @else
+                                        <span class="badge badge-danger">offline</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if ($connection->last_ping_message)
+                                        <div>{{ $connection->last_ping_message }}</div>
+                                    @else
+                                        <span class="text-muted">-</span>
+                                    @endif
+                                </td>
+                                <td>{{ $connection->name }}</td>
+                                <td>{{ $connection->host }}</td>
+                                <td>+07:00<br><small class="text-muted">Asia/Jakarta</small></td>
+                                <td>{{ $connection->notes ?? '-' }}</td>
+                                <td><i class="fas fa-chart-bar"></i> <strong>active {{ $connection->radius_accounts_count }}</strong></td>
+                                <td>
+                                    @if ($connection->last_ping_at)
+                                        <div>{{ $connection->last_ping_at->format('Y-m-d') }}</div>
+                                        <div class="text-muted">{{ $connection->last_ping_at->format('H:i:s') }}</div>
+                                    @else
+                                        <span class="text-muted">-</span>
+                                    @endif
+                                </td>
+                                <td class="text-right">
+                                    <a href="{{ route('mikrotik-connections.edit', $connection) }}" class="btn btn-sm btn-info text-white mb-1">
+                                        <i class="fas fa-pen"></i>
+                                    </a>
+                                    <form action="{{ route('mikrotik-connections.destroy', $connection) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus koneksi ini?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-warning text-white mb-1">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="9" class="text-center p-4">Belum ada koneksi Mikrotik.</td>
+                            </tr>
+                        @endforelse
+                        </tbody>
+                    </table>
+                    @if ($connections->hasPages())
+                        <div class="d-flex justify-content-end mt-3">
+                            {{ $connections->links() }}
+                        </div>
+                    @endif
                 </div>
-            @endif
+            </div>
         </div>
     </div>
     <script>
-        setInterval(function () {
-            window.location.reload();
-        }, 60000);
+        function refreshRouterTable() {
+            fetch(window.location.href, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newWrapper = doc.getElementById('router-table-wrapper');
+                    const currentWrapper = document.getElementById('router-table-wrapper');
+                    if (newWrapper && currentWrapper) {
+                        currentWrapper.innerHTML = newWrapper.innerHTML;
+                    }
+                })
+                .catch(() => {});
+        }
+        setInterval(refreshRouterTable, 60000);
     </script>
 @endsection

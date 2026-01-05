@@ -51,10 +51,11 @@ class RadiusClientsSynchronizer
 
         foreach ($connections as $connection) {
             $shortName = Str::slug($connection->name, '_') ?: 'mikrotik_'.$connection->id;
+            $secret = addslashes($connection->radius_secret);
 
             $lines[] = "client {$shortName} {";
             $lines[] = "    ipaddr = {$connection->host}";
-            $lines[] = "    secret = {$connection->radius_secret}";
+            $lines[] = "    secret = \"{$secret}\"";
             $lines[] = "    shortname = {$shortName}";
             $lines[] = '}';
             $lines[] = '';

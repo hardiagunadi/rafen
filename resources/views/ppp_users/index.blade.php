@@ -115,6 +115,11 @@
                     </thead>
                     <tbody>
                     @forelse($users as $user)
+                        @php
+                            $invoice = $user->invoices->firstWhere('status', 'unpaid');
+                            $canRenew = $invoice && $invoice->status === 'unpaid' && $invoice->created_at->equalTo($invoice->updated_at);
+                            $canPay = $invoice && $invoice->status === 'unpaid';
+                        @endphp
                         <tr>
                             <td><input type="checkbox" name="ids[]" value="{{ $user->id }}"></td>
                             <td>{{ $user->customer_id ?? '-' }}</td>
@@ -143,11 +148,39 @@
                             <td>{{ $user->owner?->email ?? $user->owner?->name ?? '-' }}</td>
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <button type="button" class="btn btn-light" title="Renew"><i class="fas fa-bolt"></i></button>
-                                    <button type="button" class="btn btn-success" title="Print"><i class="fas fa-print"></i></button>
+                                    @if($invoice)
+                                        <form action="{{ route('invoices.renew', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Perpanjang layanan tanpa pembayaran?');">
+                                            @csrf
+                                            @method('PATCH')
+                                            <button type="submit" class="btn btn-primary" title="Renew (BELUM BAYAR)" @disabled(! $canRenew)><i class="fas fa-bolt"></i></button>
+                                        </form>
+                                        <a href="{{ route('invoices.index') }}#invoice-{{ $invoice->id }}" class="btn btn-success @if(! $invoice) disabled @endif" title="Print Invoice"><i class="fas fa-print"></i></a>
+                                    @else
+                                        <button type="button" class="btn btn-light" disabled title="Renew (BELUM BAYAR)"><i class="fas fa-bolt"></i></button>
+                                        <button type="button" class="btn btn-light" disabled title="Print Invoice"><i class="fas fa-print"></i></button>
+                                    @endif
                                 </div>
                             </td>
                             <td class="text-right">
+                                @if($invoice)
+                                    <form action="{{ route('invoices.pay', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Bayar dan perpanjang layanan sekarang?');">
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="btn btn-sm btn-success" title="Bayar" @disabled(! $canPay)>
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    </form>
+                                    <form action="{{ route('invoices.destroy', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus pembayaran?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-danger" title="Hapus Pembayaran">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                @else
+                                    <button type="button" class="btn btn-sm btn-light" disabled title="Bayar"><i class="fas fa-check"></i></button>
+                                    <button type="button" class="btn btn-sm btn-light" disabled title="Hapus Pembayaran"><i class="fas fa-trash"></i></button>
+                                @endif
                                 <a href="{{ route('ppp-users.edit', $user) }}" class="btn btn-sm btn-warning text-white" title="Edit">
                                     <i class="fas fa-pen"></i>
                                 </a>

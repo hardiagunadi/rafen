@@ -50,9 +50,12 @@ class MikrotikConnectionController extends Controller
         $data = $request->validated();
         $data['use_ssl'] = $request->boolean('use_ssl');
         $data['is_active'] = $request->boolean('is_active', true);
-        $data['radius_secret'] = $data['radius_secret'] ?: Str::password(32);
+        $data['username'] = $data['username'] ?: $this->generateApiUsername();
+        $data['password'] = $data['password'] ?: $this->generateApiSecret();
+        $data['radius_secret'] = $data['radius_secret'] ?: $data['password'];
         $data['monitor_interface'] = $data['monitor_interface'] ?? null;
         $data['timezone'] = $data['timezone'] ?? '+07:00 Asia/Jakarta';
+        $data['ros_version'] = $data['ros_version'] ?? 'auto';
 
         MikrotikConnection::create($data);
 
@@ -86,6 +89,7 @@ class MikrotikConnectionController extends Controller
         $data['radius_secret'] = $data['radius_secret'] ?? $mikrotikConnection->radius_secret;
         $data['monitor_interface'] = $data['monitor_interface'] ?? $mikrotikConnection->monitor_interface;
         $data['timezone'] = $data['timezone'] ?? $mikrotikConnection->timezone ?? '+07:00 Asia/Jakarta';
+        $data['ros_version'] = $data['ros_version'] ?? $mikrotikConnection->ros_version ?? 'auto';
 
         $mikrotikConnection->update($data);
 
@@ -140,5 +144,15 @@ class MikrotikConnectionController extends Controller
                 ->with('status', $message)
                 ->with('error', 'Sinkronisasi RADIUS gagal: '.$exception->getMessage());
         }
+    }
+
+    private function generateApiUsername(): string
+    {
+        return 'TMDRadius'.Str::upper(Str::random(6));
+    }
+
+    private function generateApiSecret(): string
+    {
+        return Str::password(10);
     }
 }

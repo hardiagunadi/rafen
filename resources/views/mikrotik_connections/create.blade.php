@@ -11,19 +11,29 @@
         <form action="{{ route('mikrotik-connections.store') }}" method="POST" id="mikrotik-form">
             @csrf
             <div class="card-body">
+                @if ($errors->any())
+                    <div class="alert alert-danger">
+                        <strong>Data belum valid:</strong>
+                        <ul class="mb-0">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
 
                 <div class="row">
                     <div class="col-md-6">
                         <div class="form-group">
                             <label>Authentication Port</label>
-                            <input type="number" name="auth_port" value="{{ old('auth_port', 7053) }}" class="form-control @error('auth_port') is-invalid @enderror">
+                            <input type="number" name="auth_port" value="{{ old('auth_port', 1812) }}" class="form-control @error('auth_port') is-invalid @enderror">
                             @error('auth_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label>Accounting Port</label>
-                            <input type="number" name="acct_port" value="{{ old('acct_port', 7054) }}" class="form-control @error('acct_port') is-invalid @enderror">
+                            <input type="number" name="acct_port" value="{{ old('acct_port', 1813) }}" class="form-control @error('acct_port') is-invalid @enderror">
                             @error('acct_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
@@ -68,24 +78,24 @@
                         @error('api_timeout')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
-
                 <div class="form-row">
                     <div class="form-group col-md-4">
-                        <label>Username API</label>
-                        <input type="text" name="username" value="{{ old('username') }}" class="form-control @error('username') is-invalid @enderror" placeholder="Username API" required>
-                        @error('username')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-                    <div class="form-group col-md-4">
-                        <label>Password API</label>
-                        <input type="text" name="password" value="{{ old('password') }}" class="form-control @error('password') is-invalid @enderror" placeholder="Password API" required>
-                        @error('password')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-                    <div class="form-group col-md-4">
-                        <label>Secret Radius</label>
-                        <input type="text" name="radius_secret" value="{{ old('radius_secret') }}" class="form-control @error('radius_secret') is-invalid @enderror" placeholder="Secret Radius" required>
-                        @error('radius_secret')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <label>Versi RouterOS</label>
+                        <select name="ros_version" class="form-control @error('ros_version') is-invalid @enderror" required>
+                            <option value="auto" @selected(old('ros_version', 'auto') === 'auto')>Auto</option>
+                            <option value="7" @selected(old('ros_version') === '7')>ROS 7</option>
+                            <option value="6" @selected(old('ros_version') === '6')>ROS 6</option>
+                        </select>
+                        @error('ros_version')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
+
+                <div class="alert alert-info">
+                    Kredensial API & Secret RADIUS akan dibuat otomatis setelah router disimpan dan bisa dilihat di halaman Edit Router.
+                </div>
+                <input type="hidden" name="username" value="{{ old('username') }}" id="auto-username">
+                <input type="hidden" name="password" value="{{ old('password') }}" id="auto-password">
+                <input type="hidden" name="radius_secret" value="{{ old('radius_secret') }}" id="auto-secret">
 
                 <div class="form-group">
                     <label>URL Info Isolir (Optional)</label>
@@ -168,5 +178,32 @@
                 resultBox.textContent = 'Gagal menguji koneksi.';
             });
         });
+
+        function randomString(length, charset) {
+            let result = '';
+            const chars = charset.split('');
+            for (let i = 0; i < length; i++) {
+                result += chars[Math.floor(Math.random() * chars.length)];
+            }
+            return result;
+        }
+
+        function generateCredentials() {
+            const userField = document.getElementById('auto-username');
+            const passField = document.getElementById('auto-password');
+            const secretField = document.getElementById('auto-secret');
+
+            if (! userField.value) {
+                userField.value = `TMDRadius${randomString(6, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')}`;
+            }
+            if (! passField.value) {
+                passField.value = randomString(10, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*');
+            }
+            if (! secretField.value) {
+                secretField.value = passField.value;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', generateCredentials);
     </script>
 @endsection

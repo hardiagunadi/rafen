@@ -68,15 +68,15 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="#" class="nav-link" data-toggle="modal" data-target="#all-bills-modal">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Semua Tagihan</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
                                 <a href="#" class="nav-link" data-toggle="modal" data-target="#period-bills-modal">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Tagihan Periode</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link" data-toggle="modal" data-target="#invoice-filter-modal">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Semua Tagihan (Invoice)</p>
                                 </a>
                             </li>
                         </ul>
@@ -353,6 +353,45 @@
             Support ROS 7.x / 6.x
         </div>
     </footer>
+</div>
+
+<div class="modal fade" id="invoice-filter-modal" tabindex="-1" aria-labelledby="invoice-filter-modal-label" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="invoice-filter-modal-label">Semua Tagihan (Invoice)</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form method="GET" action="{{ route('invoices.index') }}">
+                    <div class="form-group">
+                        <label for="invoice-service-type">Tipe Service</label>
+                        <select class="form-control" id="invoice-service-type" name="service_type">
+                            <option value="">- Semua -</option>
+                            <option value="pppoe">PPPoE</option>
+                            <option value="hotspot">Hotspot</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="invoice-owner">Owner Data</label>
+                        <select class="form-control" id="invoice-owner" name="owner_id">
+                            <option value="">- Semua Owner -</option>
+                            @isset($sidebarOwners)
+                                @foreach($sidebarOwners as $owner)
+                                    <option value="{{ $owner->id }}">{{ $owner->name }}</option>
+                                @endforeach
+                            @endisset
+                        </select>
+                    </div>
+                    <div class="text-right">
+                        <button type="submit" class="btn btn-primary">Lihat Laporan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="modal fade" id="all-bills-modal" tabindex="-1" aria-labelledby="all-bills-modal-label" aria-hidden="true">
