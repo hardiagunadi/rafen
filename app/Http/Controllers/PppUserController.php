@@ -12,6 +12,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PppUserController extends Controller
@@ -172,8 +173,117 @@ class PppUserController extends Controller
         $data['durasi_promo_bulan'] = $data['durasi_promo_bulan'] ?? 0;
         $data['biaya_instalasi'] = $data['biaya_instalasi'] ?? 0;
         $data['jatuh_tempo'] = $this->resolveDueDate($data['jatuh_tempo'] ?? null, $existing);
+        $data = $this->assignSqlPoolIp($data, $existing);
 
         return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     *
+     * @throws ValidationException
+     */
+    private function assignSqlPoolIp(array $data, ?PppUser $existing = null): array
+    {
+        $profileGroupId = $data['profile_group_id'] ?? $existing?->profile_group_id;
+        if (! $profileGroupId) {
+            return $data;
+        }
+
+        $ipType = $data['tipe_ip'] ?? $existing?->tipe_ip;
+        if ($ipType !== 'static') {
+            return $data;
+        }
+
+        $currentIp = $data['ip_static'] ?? $existing?->ip_static;
+        if (! empty($currentIp)) {
+            return $data;
+        }
+
+        $group = ProfileGroup::query()
+            ->select('id', 'ip_pool_mode', 'range_start', 'range_end', 'host_min', 'host_max')
+            ->find($profileGroupId);
+
+        if (! $group || $group->ip_pool_mode !== 'sql') {
+            return $data;
+        }
+
+        $nextIp = $this->nextAvailableSqlPoolIp($group, $existing);
+        if ($nextIp === null) {
+            throw ValidationException::withMessages([
+                'ip_static' => 'SQL IP Pool sudah habis atau belum memiliki range IP yang valid.',
+            ]);
+        }
+
+        $data['ip_static'] = $nextIp;
+
+        return $data;
+    }
+
+    private function nextAvailableSqlPoolIp(ProfileGroup $group, ?PppUser $existing = null): ?string
+    {
+        [$rangeStart, $rangeEnd] = $this->resolvePoolRange($group);
+        if (! $rangeStart || ! $rangeEnd) {
+            return null;
+        }
+
+        $startLong = $this->ipToLong($rangeStart);
+        $endLong = $this->ipToLong($rangeEnd);
+        if ($startLong === null || $endLong === null || $startLong > $endLong) {
+            return null;
+        }
+
+        $usedIps = PppUser::query()
+            ->where('profile_group_id', $group->id)
+            ->whereNotNull('ip_static')
+            ->when($existing, fn ($query) => $query->whereKeyNot($existing->id))
+            ->pluck('ip_static')
+            ->map(fn (string $ip) => $this->ipToLong($ip))
+            ->filter(fn (?int $ip) => $ip !== null)
+            ->unique()
+            ->all();
+
+        $usedLookup = array_fill_keys($usedIps, true);
+
+        for ($current = $startLong; $current <= $endLong; $current++) {
+            if (! isset($usedLookup[$current])) {
+                return $this->longToIp($current);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function resolvePoolRange(ProfileGroup $group): array
+    {
+        if ($group->range_start && $group->range_end) {
+            return [$group->range_start, $group->range_end];
+        }
+
+        return [$group->host_min, $group->host_max];
+    }
+
+    private function ipToLong(string $ip): ?int
+    {
+        $long = ip2long($ip);
+        if ($long === false) {
+            return null;
+        }
+
+        return $long < 0 ? $long + (2 ** 32) : $long;
+    }
+
+    private function longToIp(int $long): string
+    {
+        if ($long > 2147483647) {
+            $long -= 2 ** 32;
+        }
+
+        return long2ip($long);
     }
 
     private function normalizePhone(string $phone): string
