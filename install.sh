@@ -136,6 +136,7 @@ set_env() {
     local value="$2"
     local escaped
     local formatted
+    local writer="bash -lc"
 
     escaped="$(printf '%s' "$value" | sed -e 's/"/\\"/g' -e 's/[|&]/\\&/g')"
     if printf '%s' "$value" | grep -q '[[:space:]]'; then
@@ -144,10 +145,14 @@ set_env() {
         formatted="${escaped}"
     fi
 
+    if [ ! -w "$ENV_FILE" ] && [ -n "$SUDO_CMD" ]; then
+        writer="sudo bash -lc"
+    fi
+
     if grep -qE "^${key}=" "$ENV_FILE"; then
-        sed -i "s|^${key}=.*|${key}=${formatted}|" "$ENV_FILE"
+        $writer "sed -i \"s|^${key}=.*|${key}=${formatted}|\" \"$ENV_FILE\""
     else
-        printf '\n%s=%s\n' "$key" "$formatted" >> "$ENV_FILE"
+        $writer "printf '\n%s=%s\n' \"$key\" \"$formatted\" >> \"$ENV_FILE\""
     fi
 }
 
@@ -230,8 +235,11 @@ install_packages_apt() {
 
 setup_env() {
     if [ ! -f "$ENV_FILE" ]; then
-        cp "$APP_DIR/.env.example" "$ENV_FILE"
+        ${SUDO_CMD} cp "$APP_DIR/.env.example" "$ENV_FILE"
     fi
+
+    ${SUDO_CMD} chown "$APP_USER":"$APP_GROUP" "$ENV_FILE"
+    ${SUDO_CMD} chmod 0664 "$ENV_FILE"
 
     local app_url="${APP_URL:-$(read_env APP_URL)}"
     local app_env="${APP_ENV:-$(read_env APP_ENV)}"
@@ -502,9 +510,16 @@ setup_deploy_user() {
 
     if [ ! -f /etc/sudoers.d/rafen-deploy ]; then
         cat <<'EOF' | ${SUDO_CMD} tee /etc/sudoers.d/rafen-deploy >/dev/null
-deploy ALL=(ALL) ALL
+deploy ALL=(ALL) NOPASSWD:ALL
 EOF
         ${SUDO_CMD} chmod 0440 /etc/sudoers.d/rafen-deploy
+    else
+        if ! grep -q "NOPASSWD:ALL" /etc/sudoers.d/rafen-deploy; then
+            cat <<'EOF' | ${SUDO_CMD} tee /etc/sudoers.d/rafen-deploy >/dev/null
+deploy ALL=(ALL) NOPASSWD:ALL
+EOF
+            ${SUDO_CMD} chmod 0440 /etc/sudoers.d/rafen-deploy
+        fi
     fi
 }
 
