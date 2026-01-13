@@ -10,25 +10,51 @@ DEPLOY_USER="${DEPLOY_USER:-deploy}"
 FORCE_SYSTEMD="${FORCE_SYSTEMD:-0}"
 DEPLOY_DB_PASSWORD="${DEPLOY_DB_PASSWORD:-}"
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-}"
+SUDO_CMD=""
 
-require_root() {
-    if [ "$(id -u)" -ne 0 ]; then
-        echo "Please run as root."
+require_privileges() {
+    local current_user
+
+    current_user="$(id -un)"
+    if [ "$(id -u)" -eq 0 ]; then
+        SUDO_CMD=""
+        return
+    fi
+
+    if [ "$current_user" != "$DEPLOY_USER" ]; then
+        echo "Please run as root or ${DEPLOY_USER}."
         exit 1
     fi
+
+    if ! command_exists sudo; then
+        echo "sudo is required when running as ${DEPLOY_USER}."
+        exit 1
+    fi
+
+    SUDO_CMD="sudo"
 }
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+run_root() {
+    local cmd="$1"
+
+    if [ -n "$SUDO_CMD" ]; then
+        sudo bash -lc "$cmd"
+    else
+        bash -lc "$cmd"
+    fi
+}
+
 run_mysql_root() {
     local sql="$1"
 
     if [ -n "$MYSQL_ROOT_PASSWORD" ]; then
-        mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "$sql"
+        ${SUDO_CMD} mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "$sql"
     else
-        mysql -u root -e "$sql"
+        ${SUDO_CMD} mysql -u root -e "$sql"
     fi
 }
 
@@ -59,7 +85,7 @@ enable_service_if_present() {
         if systemctl is-enabled --quiet "$unit"; then
             echo "Service ${unit} sudah enabled, skip."
         else
-            systemctl enable --now "$unit"
+            ${SUDO_CMD} systemctl enable --now "$unit"
         fi
     else
         echo "NOTIFIKASI: service ${unit} tidak ditemukan, skip."
@@ -73,7 +99,7 @@ enable_timer_if_present() {
         if systemctl is-enabled --quiet "$unit"; then
             echo "Timer ${unit} sudah enabled, skip."
         else
-            systemctl enable --now "$unit"
+            ${SUDO_CMD} systemctl enable --now "$unit"
         fi
     else
         echo "NOTIFIKASI: timer ${unit} tidak ditemukan, skip."
@@ -140,20 +166,20 @@ parse_app_host() {
 }
 
 install_packages_apt() {
-    apt-get update
-    apt-get install -y software-properties-common curl ca-certificates gnupg lsb-release unzip git openssl debconf-utils
+    ${SUDO_CMD} apt-get update
+    ${SUDO_CMD} apt-get install -y software-properties-common curl ca-certificates gnupg lsb-release unzip git openssl debconf-utils
 
     if ! command_exists php8.4; then
-        add-apt-repository -y ppa:ondrej/php
-        apt-get update
+        ${SUDO_CMD} add-apt-repository -y ppa:ondrej/php
+        ${SUDO_CMD} apt-get update
     fi
 
     if command_exists debconf-set-selections; then
-        echo "phpmyadmin phpmyadmin/dbconfig-install boolean false" | debconf-set-selections
-        echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect apache2" | debconf-set-selections
+        printf '%s\n' "phpmyadmin phpmyadmin/dbconfig-install boolean false" | ${SUDO_CMD} debconf-set-selections
+        printf '%s\n' "phpmyadmin phpmyadmin/reconfigure-webserver multiselect apache2" | ${SUDO_CMD} debconf-set-selections
     fi
 
-    apt-get install -y \
+    ${SUDO_CMD} apt-get install -y \
         apache2 \
         certbot \
         python3-certbot-apache \
@@ -175,18 +201,18 @@ install_packages_apt() {
         php8.4-readline
 
     if ! command_exists node; then
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-        apt-get install -y nodejs
+        curl -fsSL https://deb.nodesource.com/setup_20.x | ${SUDO_CMD} bash -
+        ${SUDO_CMD} apt-get install -y nodejs
     fi
 
     if ! command_exists composer; then
         curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php
-        php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+        ${SUDO_CMD} php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
         rm -f /tmp/composer-setup.php
     fi
 
     if [ -x /usr/bin/php8.4 ]; then
-        update-alternatives --set php /usr/bin/php8.4 || true
+        ${SUDO_CMD} update-alternatives --set php /usr/bin/php8.4 || true
     fi
 }
 
@@ -259,6 +285,7 @@ setup_database() {
     local db_user_host_sql
     local deploy_db_password
     local deploy_db_password_sql
+    local tmp_sql
 
     db_database="$(read_env DB_DATABASE)"
     db_username="$(read_env DB_USERNAME)"
@@ -274,12 +301,15 @@ setup_database() {
     fi
     deploy_db_password_sql="$(sql_escape "$deploy_db_password")"
 
-    mysql <<SQL
+    tmp_sql="/tmp/rafen-db.sql"
+    cat >"$tmp_sql" <<SQL
 CREATE DATABASE IF NOT EXISTS \`${db_database_sql}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${db_username_sql}'@'${db_user_host_sql}' IDENTIFIED BY '${db_password_sql}';
 GRANT ALL PRIVILEGES ON \`${db_database_sql}\`.* TO '${db_username_sql}'@'${db_user_host_sql}';
 FLUSH PRIVILEGES;
 SQL
+    run_root "mysql < \"$tmp_sql\""
+    rm -f "$tmp_sql"
 
     if [ -n "$deploy_db_password" ]; then
         run_mysql_root "CREATE USER IF NOT EXISTS 'deploy'@'localhost' IDENTIFIED BY '${deploy_db_password_sql}'; GRANT ALL PRIVILEGES ON *.* TO 'deploy'@'localhost' WITH GRANT OPTION; FLUSH PRIVILEGES;"
@@ -292,25 +322,25 @@ setup_freeradius() {
     local clients_path
 
     clients_path="$(read_env RADIUS_CLIENTS_PATH)"
-    install -d -m 0755 "$(dirname "$clients_path")"
+    ${SUDO_CMD} install -d -m 0755 "$(dirname "$clients_path")"
     if [ ! -f "$clients_path" ]; then
-        touch "$clients_path"
+        ${SUDO_CMD} touch "$clients_path"
     fi
 
     if getent group freerad >/dev/null 2>&1; then
-        chown "$APP_USER":freerad "$clients_path"
-        chmod 0640 "$clients_path"
+        ${SUDO_CMD} chown "$APP_USER":freerad "$clients_path"
+        ${SUDO_CMD} chmod 0640 "$clients_path"
     else
-        chown "$APP_USER":"$APP_GROUP" "$clients_path"
-        chmod 0644 "$clients_path"
+        ${SUDO_CMD} chown "$APP_USER":"$APP_GROUP" "$clients_path"
+        ${SUDO_CMD} chmod 0644 "$clients_path"
     fi
 
     if [ ! -f /etc/sudoers.d/rafen-freeradius ]; then
-        cat >/etc/sudoers.d/rafen-freeradius <<'EOF'
+        cat <<'EOF' | ${SUDO_CMD} tee /etc/sudoers.d/rafen-freeradius >/dev/null
 Defaults:www-data !requiretty
 www-data ALL=NOPASSWD:/bin/systemctl reload freeradius,/bin/systemctl restart freeradius
 EOF
-        chmod 0440 /etc/sudoers.d/rafen-freeradius
+        ${SUDO_CMD} chmod 0440 /etc/sudoers.d/rafen-freeradius
     fi
 }
 
@@ -338,6 +368,7 @@ check_permissions() {
     local clients_path
     local env_path
     local deploy_user_uid
+    local app_group_owner
 
     app_user_uid="$(id -u "$APP_USER" 2>/dev/null || true)"
     app_group_gid="$(getent group "$APP_GROUP" | cut -d: -f3 || true)"
@@ -358,6 +389,14 @@ check_permissions() {
     if [ -z "$deploy_user_uid" ]; then
         echo "NOTIFIKASI: user ${DEPLOY_USER} belum ada. Buat user atau set DEPLOY_USER."
         missing=1
+    fi
+
+    if [ -d "$APP_DIR" ]; then
+        app_group_owner="$(stat -c '%G' "$APP_DIR" 2>/dev/null || true)"
+        if [ -n "$app_group_owner" ] && [ "$app_group_owner" != "$APP_GROUP" ]; then
+            echo "NOTIFIKASI: group owner ${APP_DIR} bukan ${APP_GROUP}."
+            missing=1
+        fi
     fi
 
     if ! grep -q '^RADIUS_RELOAD_COMMAND=".*"$' "$env_path"; then
@@ -424,25 +463,36 @@ setup_deploy_user() {
         echo "User ${DEPLOY_USER} sudah ada."
     else
         if [ -n "$DEPLOY_PASSWORD" ]; then
-            useradd -m -s /bin/bash "$DEPLOY_USER"
-            echo "${DEPLOY_USER}:${DEPLOY_PASSWORD}" | chpasswd
+            ${SUDO_CMD} useradd -m -s /bin/bash "$DEPLOY_USER"
+            printf '%s:%s\n' "$DEPLOY_USER" "$DEPLOY_PASSWORD" | ${SUDO_CMD} chpasswd
         fi
     fi
 
     if ! getent group "$APP_GROUP" >/dev/null 2>&1; then
-        groupadd "$APP_GROUP"
+        ${SUDO_CMD} groupadd "$APP_GROUP"
     fi
 
     if id "$APP_USER" >/dev/null 2>&1; then
-        usermod -a -G "$APP_GROUP" "$APP_USER"
+        ${SUDO_CMD} usermod -a -G "$APP_GROUP" "$APP_USER"
     fi
 
     if id "$DEPLOY_USER" >/dev/null 2>&1; then
         if id -nG "$DEPLOY_USER" | grep -qw "$APP_GROUP"; then
             echo "User ${DEPLOY_USER} sudah ada di group ${APP_GROUP}."
         else
-            usermod -a -G "$APP_GROUP" "$DEPLOY_USER"
+            ${SUDO_CMD} usermod -a -G "$APP_GROUP" "$DEPLOY_USER"
         fi
+    fi
+
+    if getent group sudo >/dev/null 2>&1; then
+        ${SUDO_CMD} usermod -a -G sudo "$DEPLOY_USER"
+    fi
+
+    if [ ! -f /etc/sudoers.d/rafen-deploy ]; then
+        cat <<'EOF' | ${SUDO_CMD} tee /etc/sudoers.d/rafen-deploy >/dev/null
+deploy ALL=(ALL) ALL
+EOF
+        ${SUDO_CMD} chmod 0440 /etc/sudoers.d/rafen-deploy
     fi
 }
 
@@ -481,9 +531,16 @@ setup_apache() {
         return
     fi
 
-    a2enmod rewrite ssl >/dev/null
+    if [ -f /etc/apache2/conf-available/php8.4-fpm.conf ]; then
+        ${SUDO_CMD} a2enmod proxy_fcgi setenvif >/dev/null
+        ${SUDO_CMD} a2enconf php8.4-fpm >/dev/null
+    else
+        echo "NOTIFIKASI: php8.4-fpm Apache config tidak ditemukan. Install libapache2-mod-php8.4 atau pastikan php8.4-fpm terpasang."
+    fi
 
-    cat >/etc/apache2/sites-available/rafen.conf <<EOF
+    ${SUDO_CMD} a2enmod rewrite ssl >/dev/null
+
+    cat <<EOF | ${SUDO_CMD} tee /etc/apache2/sites-available/rafen.conf >/dev/null
 <VirtualHost *:80>
     ServerName ${domain}
     DocumentRoot ${APP_DIR}/public
@@ -498,11 +555,11 @@ setup_apache() {
 </VirtualHost>
 EOF
 
-    a2ensite rafen.conf >/dev/null
-    systemctl reload apache2
+    ${SUDO_CMD} a2ensite rafen.conf >/dev/null
+    ${SUDO_CMD} systemctl reload apache2
 
     if [ -n "$CERTBOT_EMAIL" ]; then
-        certbot --apache -d "$domain" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
+        ${SUDO_CMD} certbot --apache -d "$domain" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
     else
         echo "NOTIFIKASI: Email SSL kosong, lewati auto SSL."
     fi
@@ -515,7 +572,7 @@ setup_phpmyadmin() {
     fi
 
     if [ ! -f /etc/phpmyadmin/config.inc.php ]; then
-        cat >/etc/phpmyadmin/config.inc.php <<'EOF'
+        cat <<'EOF' | ${SUDO_CMD} tee /etc/phpmyadmin/config.inc.php >/dev/null
 <?php
 declare(strict_types=1);
 
@@ -530,11 +587,11 @@ EOF
     if grep -q "^\$cfg\['blowfish_secret'\] = '';" /etc/phpmyadmin/config.inc.php; then
         local secret
         secret="$(openssl rand -base64 32)"
-        sed -i "s/^\$cfg\['blowfish_secret'\] = '';/\$cfg['blowfish_secret'] = '${secret}';/" /etc/phpmyadmin/config.inc.php
+        ${SUDO_CMD} sed -i "s/^\$cfg\['blowfish_secret'\] = '';/\$cfg['blowfish_secret'] = '${secret}';/" /etc/phpmyadmin/config.inc.php
     fi
 
     if [ ! -f /etc/apache2/conf-available/phpmyadmin.conf ]; then
-        cat >/etc/apache2/conf-available/phpmyadmin.conf <<'EOF'
+        cat <<'EOF' | ${SUDO_CMD} tee /etc/apache2/conf-available/phpmyadmin.conf >/dev/null
 Alias /phpmyadmin /usr/share/phpmyadmin
 
 <Directory /usr/share/phpmyadmin>
@@ -546,8 +603,8 @@ Alias /phpmyadmin /usr/share/phpmyadmin
 EOF
     fi
 
-    a2enconf phpmyadmin >/dev/null
-    systemctl reload apache2
+    ${SUDO_CMD} a2enconf phpmyadmin >/dev/null
+    ${SUDO_CMD} systemctl reload apache2
 }
 
 setup_systemd_services() {
@@ -556,7 +613,7 @@ setup_systemd_services() {
     if [ -f /etc/systemd/system/rafen-queue.service ] && [ "$FORCE_SYSTEMD" != "1" ]; then
         echo "Service rafen-queue.service sudah ada, skip pembuatan."
     else
-    cat >/etc/systemd/system/rafen-queue.service <<EOF
+    cat <<EOF | ${SUDO_CMD} tee /etc/systemd/system/rafen-queue.service >/dev/null
 [Unit]
 Description=Rafen queue worker
 After=network.target mariadb.service
@@ -578,7 +635,7 @@ EOF
     if [ -f /etc/systemd/system/rafen-schedule.service ] && [ "$FORCE_SYSTEMD" != "1" ]; then
         echo "Service rafen-schedule.service sudah ada, skip pembuatan."
     else
-    cat >/etc/systemd/system/rafen-schedule.service <<EOF
+    cat <<EOF | ${SUDO_CMD} tee /etc/systemd/system/rafen-schedule.service >/dev/null
 [Unit]
 Description=Rafen scheduler
 
@@ -594,7 +651,7 @@ EOF
     if [ -f /etc/systemd/system/rafen-schedule.timer ] && [ "$FORCE_SYSTEMD" != "1" ]; then
         echo "Timer rafen-schedule.timer sudah ada, skip pembuatan."
     else
-    cat >/etc/systemd/system/rafen-schedule.timer <<'EOF'
+    cat <<'EOF' | ${SUDO_CMD} tee /etc/systemd/system/rafen-schedule.timer >/dev/null
 [Unit]
 Description=Rafen scheduler timer
 
@@ -609,7 +666,7 @@ EOF
     fi
 
     if [ "$created" -eq 1 ]; then
-        systemctl daemon-reload
+        ${SUDO_CMD} systemctl daemon-reload
     fi
 
     enable_service_if_present "rafen-queue.service"
@@ -617,9 +674,10 @@ EOF
 }
 
 setup_app() {
-    chown -R "$APP_USER":"$APP_GROUP" "$APP_DIR"
-    chmod -R g+rwX "$APP_DIR"
-    find "$APP_DIR" -type d -exec chmod 2775 {} +
+    ${SUDO_CMD} chown -R "$APP_USER":"$APP_GROUP" "$APP_DIR"
+    ${SUDO_CMD} chgrp -R "$APP_GROUP" "$APP_DIR"
+    ${SUDO_CMD} chmod -R g+rwX "$APP_DIR"
+    ${SUDO_CMD} find "$APP_DIR" -type d -exec chmod 2775 {} +
 
     local app_key
     app_key="$(read_env APP_KEY)"
@@ -649,7 +707,7 @@ enable_services() {
 }
 
 main() {
-    require_root
+    require_privileges
 
     prompt_deploy_password
     setup_deploy_user
