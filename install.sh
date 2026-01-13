@@ -79,7 +79,7 @@ run_mysql_root() {
 service_unit_exists() {
     local unit="$1"
 
-    if systemctl list-unit-files --type=service --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
+    if ${SUDO_CMD} systemctl list-unit-files --type=service --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
         return 0
     fi
 
@@ -89,7 +89,7 @@ service_unit_exists() {
 timer_unit_exists() {
     local unit="$1"
 
-    if systemctl list-unit-files --type=timer --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
+    if ${SUDO_CMD} systemctl list-unit-files --type=timer --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
         return 0
     fi
 
@@ -324,9 +324,9 @@ setup_database() {
     db_password_sql="$(sql_escape "$db_password")"
     db_user_host_sql="$(sql_escape "$DB_USER_HOST")"
 
-    deploy_db_password="$DEPLOY_DB_PASSWORD"
+    deploy_db_password="${DEPLOY_DB_PASSWORD:-}"
     if [ -z "$deploy_db_password" ]; then
-        deploy_db_password="$DEPLOY_PASSWORD"
+        deploy_db_password="${DEPLOY_PASSWORD:-}"
     fi
     deploy_db_password_sql="$(sql_escape "$deploy_db_password")"
 
