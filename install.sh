@@ -22,7 +22,7 @@ require_privileges() {
     fi
 
     if [ "$current_user" != "$DEPLOY_USER" ]; then
-        echo "Please run as root or ${DEPLOY_USER}."
+        echo "Please run as ${DEPLOY_USER}."
         exit 1
     fi
 
@@ -32,6 +32,18 @@ require_privileges() {
     fi
 
     SUDO_CMD="sudo"
+}
+
+ensure_deploy_user_then_exit_if_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        return
+    fi
+
+    prompt_deploy_password
+    setup_deploy_user
+
+    echo "User ${DEPLOY_USER} siap. Melanjutkan instalasi sebagai ${DEPLOY_USER}..."
+    exec su - "$DEPLOY_USER" -c "$APP_DIR/install.sh"
 }
 
 command_exists() {
@@ -707,10 +719,8 @@ enable_services() {
 }
 
 main() {
+    ensure_deploy_user_then_exit_if_root
     require_privileges
-
-    prompt_deploy_password
-    setup_deploy_user
 
     if command_exists apt-get; then
         export DEBIAN_FRONTEND=noninteractive
