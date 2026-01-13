@@ -556,6 +556,9 @@ enable_services() {
 main() {
     require_root
 
+    prompt_deploy_password
+    setup_deploy_user
+
     if command_exists apt-get; then
         install_packages_apt
     else
@@ -564,8 +567,6 @@ main() {
     fi
 
     setup_env
-    prompt_deploy_password
-    setup_deploy_user
     prompt_domain
     if [ -n "$VHOST_DOMAIN" ]; then
         prompt_certbot_email
