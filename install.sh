@@ -283,7 +283,7 @@ setup_env() {
         db_database="rafen"
     fi
 
-    if [ -z "$db_username" ]; then
+    if [ -z "$db_username" ] || { [ "$db_username" = "root" ] && [ -z "$db_password" ]; }; then
         db_username="rafen"
     fi
 
