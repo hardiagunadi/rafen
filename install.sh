@@ -156,8 +156,13 @@ set_env() {
         writer="sudo bash -lc"
     fi
 
-    $writer "awk -v key=\"${key}\" -v val=\"${formatted}\" 'BEGIN{found=0} \$0 ~ \"^\"key\"=\" {print key\"=\"val; found=1; next} {print} END{if(!found){print key\"=\"val}}' \"${ENV_FILE}\" > \"${tmp_file}\""
-    $writer "mv \"${tmp_file}\" \"${ENV_FILE}\""
+    awk -v key="$key" -v val="$formatted" '
+        BEGIN { found=0 }
+        $0 ~ "^"key"=" { print key"="val; found=1; next }
+        { print }
+        END { if (!found) { print key"="val } }
+    ' "$ENV_FILE" > "$tmp_file"
+    $writer "mv \"$tmp_file\" \"$ENV_FILE\""
 }
 
 run_as_app() {
