@@ -143,8 +143,9 @@ set_env() {
     local escaped
     local formatted
     local writer="bash -lc"
+    local tmp_file="/tmp/rafen-env.$$"
 
-    escaped="$(printf '%s' "$value" | sed -e 's/"/\\"/g' -e 's/[|&]/\\&/g')"
+    escaped="$(printf '%s' "$value" | sed -e 's/"/\\"/g')"
     if printf '%s' "$value" | grep -q '[[:space:]]'; then
         formatted="\"${escaped}\""
     else
@@ -155,11 +156,8 @@ set_env() {
         writer="sudo bash -lc"
     fi
 
-    if grep -qE "^${key}=" "$ENV_FILE"; then
-        $writer "sed -i \"s|^${key}=.*|${key}=${formatted}|\" \"$ENV_FILE\""
-    else
-        $writer "printf '\n%s=%s\n' \"$key\" \"$formatted\" >> \"$ENV_FILE\""
-    fi
+    $writer "awk -v key=\"${key}\" -v val=\"${formatted}\" 'BEGIN{found=0} \$0 ~ \"^\"key\"=\" {print key\"=\"val; found=1; next} {print} END{if(!found){print key\"=\"val}}' \"${ENV_FILE}\" > \"${tmp_file}\""
+    $writer "mv \"${tmp_file}\" \"${ENV_FILE}\""
 }
 
 run_as_app() {
