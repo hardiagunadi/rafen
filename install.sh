@@ -46,6 +46,12 @@ ensure_deploy_user_then_exit_if_root() {
     exec su - "$DEPLOY_USER" -c "$APP_DIR/install.sh"
 }
 
+ensure_app_dir_group() {
+    ${SUDO_CMD} chgrp -R "$APP_GROUP" "$APP_DIR"
+    ${SUDO_CMD} chmod -R g+rwX "$APP_DIR"
+    ${SUDO_CMD} find "$APP_DIR" -type d -exec chmod 2775 {} +
+}
+
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
@@ -745,6 +751,7 @@ main() {
         exit 1
     fi
 
+    ensure_app_dir_group
     setup_env
     prompt_domain
     if [ -n "$VHOST_DOMAIN" ]; then
