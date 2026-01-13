@@ -6,6 +6,7 @@ ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
 APP_USER="${APP_USER:-www-data}"
 APP_GROUP="${APP_GROUP:-www-data}"
 DB_USER_HOST="${DB_USER_HOST:-localhost}"
+DEPLOY_USER="${DEPLOY_USER:-deploy}"
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -230,9 +231,11 @@ check_permissions() {
     local app_group_gid
     local clients_path
     local env_path
+    local deploy_user_uid
 
     app_user_uid="$(id -u "$APP_USER" 2>/dev/null || true)"
     app_group_gid="$(getent group "$APP_GROUP" | cut -d: -f3 || true)"
+    deploy_user_uid="$(id -u "$DEPLOY_USER" 2>/dev/null || true)"
     clients_path="$(read_env RADIUS_CLIENTS_PATH)"
     env_path="$ENV_FILE"
 
@@ -243,6 +246,11 @@ check_permissions() {
 
     if [ -z "$app_group_gid" ]; then
         echo "NOTIFIKASI: group ${APP_GROUP} belum ada. Buat group atau set APP_GROUP."
+        missing=1
+    fi
+
+    if [ -z "$deploy_user_uid" ]; then
+        echo "NOTIFIKASI: user ${DEPLOY_USER} belum ada. Buat user atau set DEPLOY_USER."
         missing=1
     fi
 
@@ -273,6 +281,48 @@ check_permissions() {
 
     if [ "$missing" -eq 0 ]; then
         echo "Semua akses penting sudah diset."
+    fi
+}
+
+prompt_deploy_password() {
+    local value
+
+    if [ -n "${DEPLOY_PASSWORD:-}" ]; then
+        DEPLOY_PASSWORD="${DEPLOY_PASSWORD}"
+        return
+    fi
+
+    read -r -s -p "Password untuk user ${DEPLOY_USER}: " value
+    echo
+    if [ -z "$value" ]; then
+        echo "NOTIFIKASI: Password ${DEPLOY_USER} kosong, lewati pembuatan user."
+        DEPLOY_PASSWORD=""
+        return
+    fi
+
+    DEPLOY_PASSWORD="$value"
+}
+
+setup_deploy_user() {
+    if id "$DEPLOY_USER" >/dev/null 2>&1; then
+        echo "User ${DEPLOY_USER} sudah ada."
+    else
+        if [ -n "$DEPLOY_PASSWORD" ]; then
+            useradd -m -s /bin/bash "$DEPLOY_USER"
+            echo "${DEPLOY_USER}:${DEPLOY_PASSWORD}" | chpasswd
+        fi
+    fi
+
+    if ! getent group "$APP_GROUP" >/dev/null 2>&1; then
+        groupadd "$APP_GROUP"
+    fi
+
+    if id "$APP_USER" >/dev/null 2>&1; then
+        usermod -a -G "$APP_GROUP" "$APP_USER"
+    fi
+
+    if id "$DEPLOY_USER" >/dev/null 2>&1; then
+        usermod -a -G "$APP_GROUP" "$DEPLOY_USER"
     fi
 }
 
@@ -386,8 +436,8 @@ EOF
 
 setup_app() {
     chown -R "$APP_USER":"$APP_GROUP" "$APP_DIR"
-    chown -R "$APP_USER":"$APP_GROUP" "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
-    find "$APP_DIR/storage" "$APP_DIR/bootstrap/cache" -type d -exec chmod 0775 {} +
+    chmod -R g+rwX "$APP_DIR"
+    find "$APP_DIR" -type d -exec chmod 2775 {} +
 
     local app_key
     app_key="$(read_env APP_KEY)"
@@ -427,6 +477,8 @@ main() {
     fi
 
     setup_env
+    prompt_deploy_password
+    setup_deploy_user
     prompt_domain
     if [ -n "$VHOST_DOMAIN" ]; then
         prompt_certbot_email
