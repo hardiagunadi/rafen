@@ -79,7 +79,11 @@ run_mysql_root() {
 service_unit_exists() {
     local unit="$1"
 
-    if ${SUDO_CMD} systemctl list-unit-files --type=service --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
+    if systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$unit"; then
+        return 0
+    fi
+
+    if [ -n "$SUDO_CMD" ] && ${SUDO_CMD} systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$unit"; then
         return 0
     fi
 
@@ -89,7 +93,11 @@ service_unit_exists() {
 timer_unit_exists() {
     local unit="$1"
 
-    if ${SUDO_CMD} systemctl list-unit-files --type=timer --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
+    if systemctl list-unit-files --type=timer --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$unit"; then
+        return 0
+    fi
+
+    if [ -n "$SUDO_CMD" ] && ${SUDO_CMD} systemctl list-unit-files --type=timer --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$unit"; then
         return 0
     fi
 
@@ -100,7 +108,7 @@ enable_service_if_present() {
     local unit="$1"
 
     if service_unit_exists "$unit"; then
-        if systemctl is-enabled --quiet "$unit"; then
+        if ${SUDO_CMD} systemctl is-enabled --quiet "$unit"; then
             echo "Service ${unit} sudah enabled, skip."
         else
             ${SUDO_CMD} systemctl enable --now "$unit"
@@ -114,7 +122,7 @@ enable_timer_if_present() {
     local unit="$1"
 
     if timer_unit_exists "$unit"; then
-        if systemctl is-enabled --quiet "$unit"; then
+        if ${SUDO_CMD} systemctl is-enabled --quiet "$unit"; then
             echo "Timer ${unit} sudah enabled, skip."
         else
             ${SUDO_CMD} systemctl enable --now "$unit"
@@ -344,6 +352,32 @@ SQL
         run_mysql_root "CREATE USER IF NOT EXISTS 'deploy'@'localhost' IDENTIFIED BY '${deploy_db_password_sql}'; GRANT ALL PRIVILEGES ON *.* TO 'deploy'@'localhost' WITH GRANT OPTION; FLUSH PRIVILEGES;"
     else
         echo "NOTIFIKASI: DEPLOY_DB_PASSWORD kosong, user MySQL deploy tidak dibuat."
+    fi
+}
+
+verify_database_access() {
+    local db_host
+    local db_port
+    local db_username
+    local db_password
+
+    db_host="$(read_env DB_HOST)"
+    db_port="$(read_env DB_PORT)"
+    db_username="$(read_env DB_USERNAME)"
+    db_password="$(read_env DB_PASSWORD)"
+
+    if [ "$db_username" = "root" ]; then
+        echo "NOTIFIKASI: DB_USERNAME=root tidak disarankan. Gunakan user aplikasi."
+    fi
+
+    if [ -n "$db_password" ]; then
+        if ! MYSQL_PWD="$db_password" mysql -h "$db_host" -P "$db_port" -u "$db_username" -e "SELECT 1;" >/dev/null 2>&1; then
+            echo "NOTIFIKASI: akses database gagal untuk ${db_username}@${db_host}:${db_port}. Pastikan user dan password sudah benar."
+        fi
+    else
+        if ! mysql -h "$db_host" -P "$db_port" -u "$db_username" -e "SELECT 1;" >/dev/null 2>&1; then
+            echo "NOTIFIKASI: akses database gagal untuk ${db_username}@${db_host}:${db_port}. Pastikan user dan password sudah benar."
+        fi
     fi
 }
 
@@ -724,6 +758,7 @@ setup_app() {
         run_as_app "cd \"$APP_DIR\" && php artisan key:generate --force"
     fi
 
+    run_as_app "cd \"$APP_DIR\" && php artisan config:clear"
     run_as_app "cd \"$APP_DIR\" && php artisan migrate --force"
     run_as_app "cd \"$APP_DIR\" && php artisan storage:link"
     run_as_app "cd \"$APP_DIR\" && php artisan config:cache"
@@ -763,6 +798,7 @@ main() {
     enable_services
     secure_mysql
     setup_database
+    verify_database_access
     setup_freeradius
     setup_apache
     setup_phpmyadmin
