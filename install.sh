@@ -8,6 +8,8 @@ APP_GROUP="${APP_GROUP:-www-data}"
 DB_USER_HOST="${DB_USER_HOST:-localhost}"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
 FORCE_SYSTEMD="${FORCE_SYSTEMD:-0}"
+DEPLOY_DB_PASSWORD="${DEPLOY_DB_PASSWORD:-}"
+MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-}"
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -18,6 +20,16 @@ require_root() {
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+run_mysql_root() {
+    local sql="$1"
+
+    if [ -n "$MYSQL_ROOT_PASSWORD" ]; then
+        mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "$sql"
+    else
+        mysql -u root -e "$sql"
+    fi
 }
 
 service_unit_exists() {
@@ -129,17 +141,23 @@ parse_app_host() {
 
 install_packages_apt() {
     apt-get update
-    apt-get install -y software-properties-common curl ca-certificates gnupg lsb-release unzip git openssl
+    apt-get install -y software-properties-common curl ca-certificates gnupg lsb-release unzip git openssl debconf-utils
 
     if ! command_exists php8.4; then
         add-apt-repository -y ppa:ondrej/php
         apt-get update
     fi
 
+    if command_exists debconf-set-selections; then
+        echo "phpmyadmin phpmyadmin/dbconfig-install boolean false" | debconf-set-selections
+        echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect apache2" | debconf-set-selections
+    fi
+
     apt-get install -y \
         apache2 \
         certbot \
         python3-certbot-apache \
+        phpmyadmin \
         mariadb-server \
         redis-server \
         freeradius \
@@ -239,6 +257,8 @@ setup_database() {
     local db_username_sql
     local db_password_sql
     local db_user_host_sql
+    local deploy_db_password
+    local deploy_db_password_sql
 
     db_database="$(read_env DB_DATABASE)"
     db_username="$(read_env DB_USERNAME)"
@@ -248,12 +268,24 @@ setup_database() {
     db_password_sql="$(sql_escape "$db_password")"
     db_user_host_sql="$(sql_escape "$DB_USER_HOST")"
 
+    deploy_db_password="$DEPLOY_DB_PASSWORD"
+    if [ -z "$deploy_db_password" ]; then
+        deploy_db_password="$DEPLOY_PASSWORD"
+    fi
+    deploy_db_password_sql="$(sql_escape "$deploy_db_password")"
+
     mysql <<SQL
 CREATE DATABASE IF NOT EXISTS \`${db_database_sql}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${db_username_sql}'@'${db_user_host_sql}' IDENTIFIED BY '${db_password_sql}';
 GRANT ALL PRIVILEGES ON \`${db_database_sql}\`.* TO '${db_username_sql}'@'${db_user_host_sql}';
 FLUSH PRIVILEGES;
 SQL
+
+    if [ -n "$deploy_db_password" ]; then
+        run_mysql_root "CREATE USER IF NOT EXISTS 'deploy'@'localhost' IDENTIFIED BY '${deploy_db_password_sql}'; GRANT ALL PRIVILEGES ON *.* TO 'deploy'@'localhost' WITH GRANT OPTION; FLUSH PRIVILEGES;"
+    else
+        echo "NOTIFIKASI: DEPLOY_DB_PASSWORD kosong, user MySQL deploy tidak dibuat."
+    fi
 }
 
 setup_freeradius() {
@@ -280,6 +312,23 @@ www-data ALL=NOPASSWD:/bin/systemctl reload freeradius,/bin/systemctl restart fr
 EOF
         chmod 0440 /etc/sudoers.d/rafen-freeradius
     fi
+}
+
+secure_mysql() {
+    if ! command_exists mysql; then
+        return
+    fi
+
+    if ! run_mysql_root "SELECT 1;" >/dev/null 2>&1; then
+        echo "NOTIFIKASI: Tidak bisa mengakses MySQL sebagai root. Set MYSQL_ROOT_PASSWORD untuk hardening."
+        return
+    fi
+
+    run_mysql_root "DELETE FROM mysql.user WHERE User='';"
+    run_mysql_root "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
+    run_mysql_root "DROP DATABASE IF EXISTS test;"
+    run_mysql_root "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1','::1');"
+    run_mysql_root "FLUSH PRIVILEGES;"
 }
 
 check_permissions() {
@@ -455,6 +504,48 @@ EOF
     fi
 }
 
+setup_phpmyadmin() {
+    if [ ! -d /usr/share/phpmyadmin ]; then
+        echo "NOTIFIKASI: phpMyAdmin belum terinstall, skip konfigurasi."
+        return
+    fi
+
+    if [ ! -f /etc/phpmyadmin/config.inc.php ]; then
+        cat >/etc/phpmyadmin/config.inc.php <<'EOF'
+<?php
+declare(strict_types=1);
+
+$cfg['blowfish_secret'] = '';
+$cfg['Servers'][1]['auth_type'] = 'cookie';
+$cfg['Servers'][1]['host'] = 'localhost';
+$cfg['Servers'][1]['compress'] = false;
+$cfg['Servers'][1]['AllowNoPassword'] = false;
+EOF
+    fi
+
+    if grep -q "^\$cfg\['blowfish_secret'\] = '';" /etc/phpmyadmin/config.inc.php; then
+        local secret
+        secret="$(openssl rand -base64 32)"
+        sed -i "s/^\$cfg\['blowfish_secret'\] = '';/\$cfg['blowfish_secret'] = '${secret}';/" /etc/phpmyadmin/config.inc.php
+    fi
+
+    if [ ! -f /etc/apache2/conf-available/phpmyadmin.conf ]; then
+        cat >/etc/apache2/conf-available/phpmyadmin.conf <<'EOF'
+Alias /phpmyadmin /usr/share/phpmyadmin
+
+<Directory /usr/share/phpmyadmin>
+    Options SymLinksIfOwnerMatch
+    DirectoryIndex index.php
+    AllowOverride All
+    Require all granted
+</Directory>
+EOF
+    fi
+
+    a2enconf phpmyadmin >/dev/null
+    systemctl reload apache2
+}
+
 setup_systemd_services() {
     local created=0
 
@@ -560,6 +651,7 @@ main() {
     setup_deploy_user
 
     if command_exists apt-get; then
+        export DEBIAN_FRONTEND=noninteractive
         install_packages_apt
     else
         echo "Unsupported OS. Please use a Debian/Ubuntu-based system."
@@ -572,9 +664,11 @@ main() {
         prompt_certbot_email
     fi
     enable_services
+    secure_mysql
     setup_database
     setup_freeradius
     setup_apache
+    setup_phpmyadmin
     setup_systemd_services
     setup_app
     check_permissions
