@@ -7,6 +7,7 @@ APP_USER="${APP_USER:-www-data}"
 APP_GROUP="${APP_GROUP:-www-data}"
 DB_USER_HOST="${DB_USER_HOST:-localhost}"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
+FORCE_SYSTEMD="${FORCE_SYSTEMD:-0}"
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -17,6 +18,54 @@ require_root() {
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+service_unit_exists() {
+    local unit="$1"
+
+    if systemctl list-unit-files --type=service --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
+        return 0
+    fi
+
+    return 1
+}
+
+timer_unit_exists() {
+    local unit="$1"
+
+    if systemctl list-unit-files --type=timer --no-legend | awk '{print $1}' | grep -Fxq "$unit"; then
+        return 0
+    fi
+
+    return 1
+}
+
+enable_service_if_present() {
+    local unit="$1"
+
+    if service_unit_exists "$unit"; then
+        if systemctl is-enabled --quiet "$unit"; then
+            echo "Service ${unit} sudah enabled, skip."
+        else
+            systemctl enable --now "$unit"
+        fi
+    else
+        echo "NOTIFIKASI: service ${unit} tidak ditemukan, skip."
+    fi
+}
+
+enable_timer_if_present() {
+    local unit="$1"
+
+    if timer_unit_exists "$unit"; then
+        if systemctl is-enabled --quiet "$unit"; then
+            echo "Timer ${unit} sudah enabled, skip."
+        else
+            systemctl enable --now "$unit"
+        fi
+    else
+        echo "NOTIFIKASI: timer ${unit} tidak ditemukan, skip."
+    fi
 }
 
 read_env() {
@@ -36,13 +85,19 @@ set_env() {
     local key="$1"
     local value="$2"
     local escaped
+    local formatted
 
-    escaped="$(printf '%s' "$value" | sed -e 's/[|&]/\\&/g')"
+    escaped="$(printf '%s' "$value" | sed -e 's/"/\\"/g' -e 's/[|&]/\\&/g')"
+    if printf '%s' "$value" | grep -q '[[:space:]]'; then
+        formatted="\"${escaped}\""
+    else
+        formatted="${escaped}"
+    fi
 
     if grep -qE "^${key}=" "$ENV_FILE"; then
-        sed -i "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
+        sed -i "s|^${key}=.*|${key}=${formatted}|" "$ENV_FILE"
     else
-        printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+        printf '\n%s=%s\n' "$key" "$formatted" >> "$ENV_FILE"
     fi
 }
 
@@ -218,11 +273,13 @@ setup_freeradius() {
         chmod 0644 "$clients_path"
     fi
 
-    cat >/etc/sudoers.d/rafen-freeradius <<'EOF'
+    if [ ! -f /etc/sudoers.d/rafen-freeradius ]; then
+        cat >/etc/sudoers.d/rafen-freeradius <<'EOF'
 Defaults:www-data !requiretty
 www-data ALL=NOPASSWD:/bin/systemctl reload freeradius,/bin/systemctl restart freeradius
 EOF
-    chmod 0440 /etc/sudoers.d/rafen-freeradius
+        chmod 0440 /etc/sudoers.d/rafen-freeradius
+    fi
 }
 
 check_permissions() {
@@ -251,6 +308,16 @@ check_permissions() {
 
     if [ -z "$deploy_user_uid" ]; then
         echo "NOTIFIKASI: user ${DEPLOY_USER} belum ada. Buat user atau set DEPLOY_USER."
+        missing=1
+    fi
+
+    if ! grep -q '^RADIUS_RELOAD_COMMAND=".*"$' "$env_path"; then
+        echo "NOTIFIKASI: RADIUS_RELOAD_COMMAND harus di-quote (contoh: \"sudo systemctl reload freeradius\")."
+        missing=1
+    fi
+
+    if ! grep -q '^RADIUS_RESTART_COMMAND=".*"$' "$env_path"; then
+        echo "NOTIFIKASI: RADIUS_RESTART_COMMAND harus di-quote (contoh: \"sudo systemctl restart freeradius\")."
         missing=1
     fi
 
@@ -389,6 +456,11 @@ EOF
 }
 
 setup_systemd_services() {
+    local created=0
+
+    if [ -f /etc/systemd/system/rafen-queue.service ] && [ "$FORCE_SYSTEMD" != "1" ]; then
+        echo "Service rafen-queue.service sudah ada, skip pembuatan."
+    else
     cat >/etc/systemd/system/rafen-queue.service <<EOF
 [Unit]
 Description=Rafen queue worker
@@ -405,7 +477,12 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
+        created=1
+    fi
 
+    if [ -f /etc/systemd/system/rafen-schedule.service ] && [ "$FORCE_SYSTEMD" != "1" ]; then
+        echo "Service rafen-schedule.service sudah ada, skip pembuatan."
+    else
     cat >/etc/systemd/system/rafen-schedule.service <<EOF
 [Unit]
 Description=Rafen scheduler
@@ -416,7 +493,12 @@ Group=${APP_GROUP}
 WorkingDirectory=${APP_DIR}
 ExecStart=/usr/bin/php ${APP_DIR}/artisan schedule:run
 EOF
+        created=1
+    fi
 
+    if [ -f /etc/systemd/system/rafen-schedule.timer ] && [ "$FORCE_SYSTEMD" != "1" ]; then
+        echo "Timer rafen-schedule.timer sudah ada, skip pembuatan."
+    else
     cat >/etc/systemd/system/rafen-schedule.timer <<'EOF'
 [Unit]
 Description=Rafen scheduler timer
@@ -428,10 +510,15 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 EOF
+        created=1
+    fi
 
-    systemctl daemon-reload
-    systemctl enable --now rafen-queue.service
-    systemctl enable --now rafen-schedule.timer
+    if [ "$created" -eq 1 ]; then
+        systemctl daemon-reload
+    fi
+
+    enable_service_if_present "rafen-queue.service"
+    enable_timer_if_present "rafen-schedule.timer"
 }
 
 setup_app() {
@@ -459,11 +546,11 @@ setup_app() {
 }
 
 enable_services() {
-    systemctl enable --now php8.4-fpm
-    systemctl enable --now mariadb
-    systemctl enable --now redis-server
-    systemctl enable --now freeradius
-    systemctl enable --now apache2
+    enable_service_if_present "php8.4-fpm.service"
+    enable_service_if_present "mariadb.service"
+    enable_service_if_present "redis-server.service"
+    enable_service_if_present "freeradius.service"
+    enable_service_if_present "apache2.service"
 }
 
 main() {
