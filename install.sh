@@ -5,7 +5,6 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
 APP_USER="${APP_USER:-www-data}"
 APP_GROUP="${APP_GROUP:-www-data}"
-DISABLE_DEFAULT_NGINX_SITE="${DISABLE_DEFAULT_NGINX_SITE:-1}"
 DB_USER_HOST="${DB_USER_HOST:-localhost}"
 
 require_root() {
@@ -82,7 +81,9 @@ install_packages_apt() {
     fi
 
     apt-get install -y \
-        nginx \
+        apache2 \
+        certbot \
+        python3-certbot-apache \
         mariadb-server \
         redis-server \
         freeradius \
@@ -275,41 +276,65 @@ check_permissions() {
     fi
 }
 
-setup_nginx() {
-    local app_url
-    local app_host
+prompt_domain() {
+    local value
 
-    app_url="$(read_env APP_URL)"
-    app_host="$(parse_app_host "$app_url")"
+    if [ -n "${VHOST_DOMAIN:-}" ]; then
+        VHOST_DOMAIN="${VHOST_DOMAIN}"
+        return
+    fi
 
-    cat >/etc/nginx/sites-available/rafen.conf <<EOF
-server {
-    listen 80;
-    server_name ${app_host};
-    root ${APP_DIR}/public;
-
-    index index.php index.html;
-    charset utf-8;
-
-    location / {
-        try_files \$uri \$uri/ /index.php?\$query_string;
-    }
-
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
-    }
-
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
+    read -r -p "Masukkan domain vhost (kosongkan jika skip Apache/SSL): " value
+    VHOST_DOMAIN="$value"
 }
+
+prompt_certbot_email() {
+    local value
+
+    if [ -n "${CERTBOT_EMAIL:-}" ]; then
+        CERTBOT_EMAIL="${CERTBOT_EMAIL}"
+        return
+    fi
+
+    read -r -p "Email untuk SSL (Let's Encrypt): " value
+    if [ -z "$value" ] && [ -n "$VHOST_DOMAIN" ]; then
+        value="admin@${VHOST_DOMAIN}"
+    fi
+    CERTBOT_EMAIL="$value"
+}
+
+setup_apache() {
+    local domain
+
+    domain="$VHOST_DOMAIN"
+    if [ -z "$domain" ]; then
+        return
+    fi
+
+    a2enmod rewrite ssl >/dev/null
+
+    cat >/etc/apache2/sites-available/rafen.conf <<EOF
+<VirtualHost *:80>
+    ServerName ${domain}
+    DocumentRoot ${APP_DIR}/public
+
+    <Directory ${APP_DIR}/public>
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog \${APACHE_LOG_DIR}/rafen_error.log
+    CustomLog \${APACHE_LOG_DIR}/rafen_access.log combined
+</VirtualHost>
 EOF
 
-    ln -sf /etc/nginx/sites-available/rafen.conf /etc/nginx/sites-enabled/rafen.conf
+    a2ensite rafen.conf >/dev/null
+    systemctl reload apache2
 
-    if [ "$DISABLE_DEFAULT_NGINX_SITE" = "1" ] && [ -f /etc/nginx/sites-enabled/default ]; then
-        rm -f /etc/nginx/sites-enabled/default
+    if [ -n "$CERTBOT_EMAIL" ]; then
+        certbot --apache -d "$domain" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
+    else
+        echo "NOTIFIKASI: Email SSL kosong, lewati auto SSL."
     fi
 }
 
@@ -388,7 +413,7 @@ enable_services() {
     systemctl enable --now mariadb
     systemctl enable --now redis-server
     systemctl enable --now freeradius
-    systemctl enable --now nginx
+    systemctl enable --now apache2
 }
 
 main() {
@@ -402,15 +427,17 @@ main() {
     fi
 
     setup_env
+    prompt_domain
+    if [ -n "$VHOST_DOMAIN" ]; then
+        prompt_certbot_email
+    fi
     enable_services
     setup_database
     setup_freeradius
-    setup_nginx
+    setup_apache
     setup_systemd_services
     setup_app
     check_permissions
-
-    systemctl reload nginx
 
     echo "Installation complete."
     echo "APP_URL=$(read_env APP_URL)"
