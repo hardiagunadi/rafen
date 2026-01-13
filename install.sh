@@ -438,7 +438,11 @@ setup_deploy_user() {
     fi
 
     if id "$DEPLOY_USER" >/dev/null 2>&1; then
-        usermod -a -G "$APP_GROUP" "$DEPLOY_USER"
+        if id -nG "$DEPLOY_USER" | grep -qw "$APP_GROUP"; then
+            echo "User ${DEPLOY_USER} sudah ada di group ${APP_GROUP}."
+        else
+            usermod -a -G "$APP_GROUP" "$DEPLOY_USER"
+        fi
     fi
 }
 
