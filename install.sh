@@ -187,6 +187,30 @@ sql_escape() {
     printf '%s' "$1" | sed "s/'/''/g"
 }
 
+add_ondrej_php_repository() {
+    local codename
+    local list_file
+    local keyring
+
+    if ${SUDO_CMD} add-apt-repository -y ppa:ondrej/php; then
+        return 0
+    fi
+
+    echo "NOTIFIKASI: add-apt-repository gagal, coba konfigurasi repository ondrej/php secara manual."
+
+    codename="$(lsb_release -sc)"
+    list_file="/etc/apt/sources.list.d/ondrej-php.list"
+    keyring="/usr/share/keyrings/ondrej-php.gpg"
+
+    ${SUDO_CMD} mkdir -p /usr/share/keyrings
+
+    curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x4F4EA0AAE5267A6C" \
+        | ${SUDO_CMD} gpg --dearmor -o "$keyring"
+
+    printf '%s\n' "deb [signed-by=${keyring}] https://ppa.launchpadcontent.net/ondrej/php/ubuntu ${codename} main" \
+        | ${SUDO_CMD} tee "$list_file" >/dev/null
+}
+
 parse_app_host() {
     local url="$1"
     local host
@@ -204,7 +228,7 @@ install_packages_apt() {
     ${SUDO_CMD} apt-get install -y software-properties-common curl ca-certificates gnupg lsb-release unzip git openssl debconf-utils
 
     if ! command_exists php8.4; then
-        ${SUDO_CMD} add-apt-repository -y ppa:ondrej/php
+        add_ondrej_php_repository
         ${SUDO_CMD} apt-get update
     fi
 
