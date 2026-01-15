@@ -781,6 +781,10 @@ setup_app() {
     ${SUDO_CMD} chmod -R g+rwX "$APP_DIR"
     ${SUDO_CMD} find "$APP_DIR" -type d -exec chmod 2775 {} +
 
+    if [ -d /var/www/.npm ]; then
+        ${SUDO_CMD} chown -R "$APP_USER":"$APP_GROUP" /var/www/.npm
+    fi
+
     local app_key
     app_key="$(read_env APP_KEY)"
 
