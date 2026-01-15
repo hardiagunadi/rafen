@@ -320,8 +320,12 @@ setup_database() {
     local db_username_sql
     local db_password_sql
     local db_user_host_sql
+    local deploy_db_username
+    local deploy_db_username_sql
     local deploy_db_password
     local deploy_db_password_sql
+    local deploy_db_host
+    local deploy_db_host_sql
     local tmp_sql
 
     db_database="$(read_env DB_DATABASE)"
@@ -332,11 +336,15 @@ setup_database() {
     db_password_sql="$(sql_escape "$db_password")"
     db_user_host_sql="$(sql_escape "$DB_USER_HOST")"
 
+    deploy_db_username="${DEPLOY_USER}"
+    deploy_db_username_sql="$(sql_escape "$deploy_db_username")"
     deploy_db_password="${DEPLOY_DB_PASSWORD:-}"
     if [ -z "$deploy_db_password" ]; then
         deploy_db_password="${DEPLOY_PASSWORD:-}"
     fi
     deploy_db_password_sql="$(sql_escape "$deploy_db_password")"
+    deploy_db_host="localhost"
+    deploy_db_host_sql="$(sql_escape "$deploy_db_host")"
 
     tmp_sql="/tmp/rafen-db.sql"
     cat >"$tmp_sql" <<SQL
@@ -349,9 +357,9 @@ SQL
     rm -f "$tmp_sql"
 
     if [ -n "$deploy_db_password" ]; then
-        run_mysql_root "CREATE USER IF NOT EXISTS 'deploy'@'localhost' IDENTIFIED BY '${deploy_db_password_sql}'; GRANT ALL PRIVILEGES ON *.* TO 'deploy'@'localhost' WITH GRANT OPTION; FLUSH PRIVILEGES;"
+        run_mysql_root "CREATE USER IF NOT EXISTS '${deploy_db_username_sql}'@'${deploy_db_host_sql}' IDENTIFIED BY '${deploy_db_password_sql}'; GRANT ALL PRIVILEGES ON *.* TO '${deploy_db_username_sql}'@'${deploy_db_host_sql}' WITH GRANT OPTION; FLUSH PRIVILEGES;"
     else
-        echo "NOTIFIKASI: DEPLOY_DB_PASSWORD kosong, user MySQL deploy tidak dibuat."
+        echo "NOTIFIKASI: DEPLOY_PASSWORD/DEPLOY_DB_PASSWORD kosong, user MySQL ${deploy_db_username} tidak dibuat."
     fi
 }
 
