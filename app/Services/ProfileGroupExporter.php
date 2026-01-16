@@ -91,7 +91,8 @@ class ProfileGroupExporter
     {
         $attributes = [
             'local-address' => $this->resolveLocalAddress($group),
-            'remote-address' => $this->resolvePppRemoteAddress($group, $poolName),
+            'remote-address' => '',
+            'comment' => 'added by TMDRadius',
         ];
 
         $dns = trim((string) $group->dns_servers);
@@ -155,43 +156,6 @@ class ProfileGroupExporter
         }
 
         return $localAddress;
-    }
-
-    private function resolvePppRemoteAddress(ProfileGroup $group, ?string $poolName): string
-    {
-        if ($group->ip_pool_mode === 'group_only') {
-            if (! $poolName) {
-                throw new RuntimeException('Nama pool Mikrotik belum diisi.');
-            }
-
-            return $poolName;
-        }
-
-        return $this->resolveSqlRemoteAddress($group);
-    }
-
-    private function resolveSqlRemoteAddress(ProfileGroup $group): string
-    {
-        $rangeEnd = $this->resolveSqlPoolEnd($group);
-
-        if (! $rangeEnd) {
-            throw new RuntimeException('IP terakhir belum diisi.');
-        }
-
-        return $rangeEnd;
-    }
-
-    private function resolveSqlPoolEnd(ProfileGroup $group): ?string
-    {
-        $rangeEnd = trim((string) $group->range_end);
-
-        if ($rangeEnd !== '') {
-            return $rangeEnd;
-        }
-
-        $hostMax = trim((string) $group->host_max);
-
-        return $hostMax !== '' ? $hostMax : null;
     }
 
     /**
