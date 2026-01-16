@@ -498,6 +498,8 @@ check_permissions() {
     local clients_dir
     local dir_writable=0
     local file_writable=0
+    local dir_exists=0
+    local file_exists=0
     local env_path
     local deploy_user_uid
     local app_group_owner
@@ -558,32 +560,66 @@ check_permissions() {
 
     if [ -n "$clients_path" ]; then
         clients_dir="$(dirname "$clients_path")"
-        if [ -d "$clients_dir" ] && run_as_app "test -w \"$clients_dir\""; then
+        if [ -n "$SUDO_CMD" ]; then
+            if run_root "test -d \"$clients_dir\""; then
+                dir_exists=1
+            fi
+            if run_root "test -f \"$clients_path\""; then
+                file_exists=1
+            fi
+        else
+            if [ -d "$clients_dir" ]; then
+                dir_exists=1
+            fi
+            if [ -f "$clients_path" ]; then
+                file_exists=1
+            fi
+        fi
+
+        if [ "$dir_exists" -eq 1 ] && run_as_app "test -w \"$clients_dir\""; then
             dir_writable=1
         fi
 
-        if [ -f "$clients_path" ] && run_as_app "test -w \"$clients_path\""; then
+        if [ "$file_exists" -eq 1 ] && run_as_app "test -w \"$clients_path\""; then
             file_writable=1
         fi
 
-        if { [ -n "$SUDO_CMD" ] && ! run_root "test -d \"$clients_dir\""; } || [ ! -d "$clients_dir" ] || [ "$dir_writable" -eq 0 ] || { [ -f "$clients_path" ] && [ "$file_writable" -eq 0 ]; }; then
+        if [ "$dir_exists" -eq 0 ] || [ "$dir_writable" -eq 0 ] || { [ "$file_exists" -eq 1 ] && [ "$file_writable" -eq 0 ]; }; then
             if [ -n "$SUDO_CMD" ]; then
                 setup_freeradius
             fi
 
             dir_writable=0
             file_writable=0
+            dir_exists=0
+            file_exists=0
 
-            if [ -d "$clients_dir" ] && run_as_app "test -w \"$clients_dir\""; then
+            if [ -n "$SUDO_CMD" ]; then
+                if run_root "test -d \"$clients_dir\""; then
+                    dir_exists=1
+                fi
+                if run_root "test -f \"$clients_path\""; then
+                    file_exists=1
+                fi
+            else
+                if [ -d "$clients_dir" ]; then
+                    dir_exists=1
+                fi
+                if [ -f "$clients_path" ]; then
+                    file_exists=1
+                fi
+            fi
+
+            if [ "$dir_exists" -eq 1 ] && run_as_app "test -w \"$clients_dir\""; then
                 dir_writable=1
             fi
 
-            if [ -f "$clients_path" ] && run_as_app "test -w \"$clients_path\""; then
+            if [ "$file_exists" -eq 1 ] && run_as_app "test -w \"$clients_path\""; then
                 file_writable=1
             fi
         fi
 
-        if [ ! -d "$clients_dir" ]; then
+        if [ "$dir_exists" -eq 0 ]; then
             echo "NOTIFIKASI: direktori ${clients_dir} belum ada untuk sync RADIUS."
             missing=1
         elif [ "$dir_writable" -eq 0 ]; then
@@ -591,7 +627,7 @@ check_permissions() {
             missing=1
         fi
 
-        if [ -f "$clients_path" ] && [ "$file_writable" -eq 0 ]; then
+        if [ "$file_exists" -eq 1 ] && [ "$file_writable" -eq 0 ]; then
             echo "NOTIFIKASI: ${clients_path} belum writable untuk ${APP_USER} agar sync RADIUS berjalan."
             missing=1
         fi
