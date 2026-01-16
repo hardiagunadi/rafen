@@ -46,23 +46,10 @@ class ProfileGroupExporter
             $payload['numbers'] = $existingId;
             $client->command($basePath.'/set', $payload);
 
-            if ($isPppProfile) {
-                $this->clearPppRemoteAddress($client, $existingId);
-            }
-
             return;
         }
 
         $client->command($basePath.'/add', $payload);
-
-        if (! $isPppProfile) {
-            return;
-        }
-
-        $newId = $this->findId($client, $basePath.'/print', ['name' => $profileName]);
-        if ($newId) {
-            $this->clearPppRemoteAddress($client, $newId);
-        }
     }
 
     private function pppProfileAttributes(ProfileGroup $group): array
@@ -129,14 +116,6 @@ class ProfileGroupExporter
         }
 
         return $localAddress;
-    }
-
-    private function clearPppRemoteAddress(MikrotikApiClient $client, string $profileId): void
-    {
-        $client->command('/ppp/profile/set', [
-            'numbers' => $profileId,
-            'remote-address' => '',
-        ]);
     }
 
     /**
