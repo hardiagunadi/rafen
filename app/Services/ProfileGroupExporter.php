@@ -69,8 +69,9 @@ class ProfileGroupExporter
             throw new RuntimeException('Nama profil group belum diisi.');
         }
 
-        [$basePath, $attributes] = $group->type === 'pppoe'
-            ? ['/ppp/profile', $this->pppProfileAttributes($group, $poolName)]
+        $isPppProfile = $group->type === 'pppoe';
+        [$basePath, $attributes] = $isPppProfile
+            ? ['/ppp/profile', $this->pppProfileAttributes($group)]
             : ['/ip/hotspot/user/profile', $this->hotspotProfileAttributes($group, $poolName)];
 
         $existingId = $this->findId($client, $basePath.'/print', ['name' => $profileName]);
@@ -81,17 +82,29 @@ class ProfileGroupExporter
             $payload['numbers'] = $existingId;
             $client->command($basePath.'/set', $payload);
 
+            if ($isPppProfile) {
+                $this->clearPppRemoteAddress($client, $existingId);
+            }
+
             return;
         }
 
         $client->command($basePath.'/add', $payload);
+
+        if (! $isPppProfile) {
+            return;
+        }
+
+        $newId = $this->findId($client, $basePath.'/print', ['name' => $profileName]);
+        if ($newId) {
+            $this->clearPppRemoteAddress($client, $newId);
+        }
     }
 
-    private function pppProfileAttributes(ProfileGroup $group, ?string $poolName): array
+    private function pppProfileAttributes(ProfileGroup $group): array
     {
         $attributes = [
             'local-address' => $this->resolveLocalAddress($group),
-            'remote-address' => 'none',
             'comment' => 'added by TMDRadius',
         ];
 
@@ -156,6 +169,14 @@ class ProfileGroupExporter
         }
 
         return $localAddress;
+    }
+
+    private function clearPppRemoteAddress(MikrotikApiClient $client, string $profileId): void
+    {
+        $client->command('/ppp/profile/set', [
+            'numbers' => $profileId,
+            'remote-address' => '',
+        ]);
     }
 
     /**
