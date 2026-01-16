@@ -26,6 +26,8 @@ class UpdateOvpnClientRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:150'],
             'common_name' => ['required', 'string', 'max:150', 'unique:ovpn_clients,common_name,'.$clientId],
+            'username' => ['required', 'string', 'max:150', 'unique:ovpn_clients,username,'.$clientId],
+            'password' => ['required', 'string', 'max:150', 'unique:ovpn_clients,password,'.$clientId],
             'vpn_ip' => ['nullable', 'ip', 'unique:ovpn_clients,vpn_ip,'.$clientId],
             'is_active' => ['sometimes', 'boolean'],
         ];
@@ -40,6 +42,9 @@ class UpdateOvpnClientRequest extends FormRequest
             'name.required' => 'Nama client wajib diisi.',
             'common_name.required' => 'Common Name wajib diisi.',
             'common_name.unique' => 'Common Name sudah digunakan.',
+            'username.required' => 'Username wajib diisi.',
+            'username.unique' => 'Username sudah digunakan.',
+            'password.required' => 'Password wajib diisi.',
             'vpn_ip.unique' => 'IP VPN sudah digunakan.',
             'vpn_ip.ip' => 'IP VPN tidak valid.',
         ];

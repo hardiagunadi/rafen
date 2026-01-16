@@ -18,6 +18,8 @@ class OvpnClient extends Model
         'mikrotik_connection_id',
         'name',
         'common_name',
+        'username',
+        'password',
         'vpn_ip',
         'is_active',
         'last_synced_at',

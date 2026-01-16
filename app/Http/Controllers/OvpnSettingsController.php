@@ -46,6 +46,8 @@ class OvpnSettingsController extends Controller
         $data = $request->validated();
         $data['is_active'] = $request->boolean('is_active', true);
         $data['common_name'] = $this->resolveCommonName($data['common_name'] ?? null, $data['name']);
+        $data['username'] = $this->resolveUsername($data['username'] ?? null, $data['common_name']);
+        $data['password'] = $this->resolvePassword($data['password'] ?? null);
         $data['vpn_ip'] = $data['vpn_ip'] ?? $this->allocateVpnIp();
 
         if (! $data['vpn_ip']) {
@@ -139,6 +141,38 @@ class OvpnSettingsController extends Controller
             $counter++;
             $candidate = $slug.'-'.$counter;
         }
+
+        return $candidate;
+    }
+
+    private function resolveUsername(?string $username, string $fallback): string
+    {
+        $base = trim((string) ($username ?: $fallback));
+        $slug = Str::slug($base, '-');
+        if ($slug === '') {
+            $slug = 'ovpn';
+        }
+
+        $candidate = $slug;
+        $counter = 1;
+
+        while (OvpnClient::query()->where('username', $candidate)->exists()) {
+            $counter++;
+            $candidate = $slug.'-'.$counter;
+        }
+
+        return $candidate;
+    }
+
+    private function resolvePassword(?string $password): string
+    {
+        if ($password) {
+            return $password;
+        }
+
+        do {
+            $candidate = Str::random(12);
+        } while (OvpnClient::query()->where('password', $candidate)->exists());
 
         return $candidate;
     }

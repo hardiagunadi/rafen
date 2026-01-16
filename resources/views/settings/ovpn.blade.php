@@ -80,6 +80,18 @@
                         @error('vpn_ip')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="form-group col-md-4">
+                        <label>Username (opsional)</label>
+                        <input type="text" name="username" value="{{ old('username') }}" class="form-control @error('username') is-invalid @enderror" placeholder="auto jika kosong">
+                        @error('username')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label>Password (opsional)</label>
+                        <input type="text" name="password" value="{{ old('password') }}" class="form-control @error('password') is-invalid @enderror" placeholder="auto jika kosong">
+                        @error('password')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-4">
                         <label>Status</label>
                         <select name="is_active" class="form-control @error('is_active') is-invalid @enderror">
                             <option value="1" @selected(old('is_active', '1') == '1')>Aktif</option>
@@ -109,6 +121,8 @@
                         <th>Nama</th>
                         <th>Common Name</th>
                         <th>IP VPN</th>
+                        <th>Username</th>
+                        <th>Password</th>
                         <th>Status</th>
                         <th>Sync Terakhir</th>
                         <th class="text-right">Aksi</th>
@@ -121,6 +135,8 @@
                             <td>{{ $client->name }}</td>
                             <td>{{ $client->common_name }}</td>
                             <td>{{ $client->vpn_ip ?? '-' }}</td>
+                            <td>{{ $client->username ?? '-' }}</td>
+                            <td>{{ $client->password ?? '-' }}</td>
                             <td>{{ $client->is_active ? 'Aktif' : 'Nonaktif' }}</td>
                             <td>{{ $client->last_synced_at?->format('Y-m-d H:i:s') ?? '-' }}</td>
                             <td class="text-right">
@@ -142,7 +158,7 @@
                             </td>
                         </tr>
                         <tr class="collapse" id="ovpn-edit-{{ $client->id }}">
-                            <td colspan="7">
+                            <td colspan="9">
                                 <form action="{{ route('settings.ovpn.clients.update', $client) }}" method="POST">
                                     @csrf
                                     @method('PATCH')
@@ -162,6 +178,14 @@
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group col-md-4">
+                                            <label>Username</label>
+                                            <input type="text" name="username" value="{{ old('username', $client->username) }}" class="form-control" required>
+                                        </div>
+                                        <div class="form-group col-md-4">
+                                            <label>Password</label>
+                                            <input type="text" name="password" value="{{ old('password', $client->password) }}" class="form-control" required>
+                                        </div>
+                                        <div class="form-group col-md-4">
                                             <label>Status</label>
                                             <select name="is_active" class="form-control">
                                                 <option value="1" @selected(old('is_active', $client->is_active ? '1' : '0') == '1')>Aktif</option>
@@ -174,26 +198,54 @@
                             </td>
                         </tr>
                         <tr class="collapse" id="ovpn-script-{{ $client->id }}">
-                            <td colspan="7">
+                            <td colspan="9">
                                 @php
                                     $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
                                     $ovpnPort = $ovpn['port'] !== '' ? $ovpn['port'] : '1194';
                                     $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'udp';
-                                    $ovpnUser = $ovpn['username'] !== '' ? $ovpn['username'] : '<username>';
-                                    $ovpnPass = $ovpn['password'] !== '' ? $ovpn['password'] : '<password>';
+                                    $ovpnUser = $client->username ?: '<username>';
+                                    $ovpnPass = $client->password ?: '<password>';
                                     $ovpnName = 'ovpn-'.$client->common_name;
+                                    $scriptId = 'ovpn-script-'.$client->id;
                                 @endphp
-                                <div class="mb-2 text-muted">Salin perintah berikut ke Mikrotik.</div>
-                                <pre class="mb-0">/interface ovpn-client add name={{ $ovpnName }} connect-to={{ $ovpnHost }} port={{ $ovpnPort }} user={{ $ovpnUser }} password={{ $ovpnPass }} protocol={{ $ovpnProto }} disabled=no</pre>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div class="text-muted">Salin perintah berikut ke Mikrotik.</div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary copy-ovpn-script" data-target="{{ $scriptId }}">Copy Script</button>
+                                </div>
+                                <pre class="mb-0" id="{{ $scriptId }}">/interface ovpn-client add name={{ $ovpnName }} connect-to={{ $ovpnHost }} port={{ $ovpnPort }} user={{ $ovpnUser }} password={{ $ovpnPass }} protocol={{ $ovpnProto }} disabled=no</pre>
                                 <div class="text-muted mt-2">Jika server membutuhkan sertifikat, import cert di Mikrotik lalu tambahkan parameter <code>certificate=</code>.</div>
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center p-4">Belum ada client OpenVPN.</td></tr>
+                        <tr><td colspan="9" class="text-center p-4">Belum ada client OpenVPN.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
+
+    <script>
+        document.querySelectorAll('.copy-ovpn-script').forEach(button => {
+            button.addEventListener('click', () => {
+                const targetId = button.dataset.target;
+                const node = targetId ? document.getElementById(targetId) : null;
+                if (! node) {
+                    return;
+                }
+
+                const text = node.textContent || '';
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text);
+                } else {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                }
+            });
+        });
+    </script>
 @endsection
