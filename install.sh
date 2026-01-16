@@ -543,6 +543,17 @@ check_permissions() {
             if [ -n "$SUDO_CMD" ]; then
                 setup_freeradius
             fi
+
+            dir_writable=0
+            file_writable=0
+
+            if [ -d "$clients_dir" ] && run_as_app "test -w \"$clients_dir\""; then
+                dir_writable=1
+            fi
+
+            if [ -f "$clients_path" ] && run_as_app "test -w \"$clients_path\""; then
+                file_writable=1
+            fi
         fi
 
         if [ ! -d "$clients_dir" ]; then
