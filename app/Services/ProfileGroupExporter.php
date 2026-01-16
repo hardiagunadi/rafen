@@ -20,46 +20,10 @@ class ProfileGroupExporter
 
         try {
             $poolName = $this->resolvePoolName($group);
-
-            if ($group->ip_pool_mode === 'group_only') {
-                $this->exportPool($client, $group, $poolName);
-            }
-
             $this->exportProfile($client, $group, $poolName);
         } finally {
             $client->disconnect();
         }
-    }
-
-    private function exportPool(MikrotikApiClient $client, ProfileGroup $group, ?string $poolName): void
-    {
-        if (! $poolName) {
-            throw new RuntimeException('Nama pool Mikrotik belum diisi.');
-        }
-
-        $rangeStart = trim((string) $group->range_start);
-        $rangeEnd = trim((string) $group->range_end);
-
-        if ($rangeStart === '' || $rangeEnd === '') {
-            throw new RuntimeException('Range IP pool belum lengkap.');
-        }
-
-        $ranges = $rangeStart.'-'.$rangeEnd;
-        $existingId = $this->findId($client, '/ip/pool/print', ['name' => $poolName]);
-
-        $payload = [
-            'name' => $poolName,
-            'ranges' => $ranges,
-        ];
-
-        if ($existingId) {
-            $payload['numbers'] = $existingId;
-            $client->command('/ip/pool/set', $payload);
-
-            return;
-        }
-
-        $client->command('/ip/pool/add', $payload);
     }
 
     private function exportProfile(MikrotikApiClient $client, ProfileGroup $group, ?string $poolName): void
@@ -153,10 +117,6 @@ class ProfileGroupExporter
 
     private function resolvePoolAssignment(ProfileGroup $group, ?string $poolName): string
     {
-        if ($group->ip_pool_mode === 'group_only' && $poolName) {
-            return $poolName;
-        }
-
         return 'none';
     }
 
