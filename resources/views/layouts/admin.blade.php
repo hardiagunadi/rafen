@@ -287,6 +287,12 @@
                                     <p>FreeRADIUS</p>
                                 </a>
                             </li>
+                            <li class="nav-item">
+                                <a href="{{ route('settings.ovpn') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>OpenVPN</p>
+                                </a>
+                            </li>
                         </ul>
                     </li>
                     <li class="nav-item has-treeview">

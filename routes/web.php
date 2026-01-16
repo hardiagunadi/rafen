@@ -9,6 +9,7 @@ use App\Http\Controllers\HotspotProfileController;
 use App\Http\Controllers\IncomeReportController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\MikrotikConnectionController;
+use App\Http\Controllers\OvpnSettingsController;
 use App\Http\Controllers\ProfileGroupController;
 use App\Http\Controllers\RadiusAccountController;
 use App\Http\Controllers\UserManagementController;
@@ -47,6 +48,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('users', UserManagementController::class);
     Route::get('settings/freeradius', [FreeRadiusSettingsController::class, 'index'])->name('settings.freeradius');
     Route::post('settings/freeradius/sync', [FreeRadiusSettingsController::class, 'sync'])->name('settings.freeradius.sync');
+    Route::get('settings/ovpn', [OvpnSettingsController::class, 'index'])->name('settings.ovpn');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
