@@ -14,6 +14,14 @@ CLIENT_DIR="/etc/openvpn/client-configs"
 CCD_DIR="/etc/openvpn/ccd"
 CCD_OWNER="${CCD_OWNER:-www-data}"
 CCD_GROUP="${CCD_GROUP:-www-data}"
+config_only=0
+
+if [ "${1:-}" = "--config-only" ]; then
+    config_only=1
+elif [ -n "${1:-}" ]; then
+    echo "Usage: $0 [--config-only]"
+    exit 1
+fi
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -37,6 +45,9 @@ install_packages() {
 }
 
 setup_easy_rsa() {
+    if [ "$config_only" -eq 1 ]; then
+        return
+    fi
     mkdir -p "$EASYRSA_DIR"
     rm -rf "${EASYRSA_DIR:?}/"*
     cp -r /usr/share/easy-rsa/* "$EASYRSA_DIR"
@@ -46,15 +57,17 @@ setup_easy_rsa() {
     EASYRSA_BATCH=1 ./easyrsa build-server-full server nopass
     EASYRSA_BATCH=1 ./easyrsa build-client-full "$OVPN_CLIENT_NAME" nopass
     ./easyrsa gen-dh
-    openvpn --genkey --secret ta.key
+    # No tls-auth for Mikrotik compatibility.
     popd >/dev/null
 }
 
 install_server_files() {
+    if [ "$config_only" -eq 1 ]; then
+        return
+    fi
     mkdir -p "$SERVER_DIR"
     cp "$EASYRSA_DIR/pki/ca.crt" "$SERVER_DIR"
     cp "$EASYRSA_DIR/pki/dh.pem" "$SERVER_DIR"
-    cp "$EASYRSA_DIR/ta.key" "$SERVER_DIR"
     cp "$EASYRSA_DIR/pki/issued/server.crt" "$SERVER_DIR"
     cp "$EASYRSA_DIR/pki/private/server.key" "$SERVER_DIR"
 }
@@ -77,10 +90,13 @@ dh dh.pem
 ca ca.crt
 cert server.crt
 key server.key
-# tls-auth ta.key 0
 cipher BF-CBC
 auth SHA1
 data-ciphers BF-CBC:AES-256-CBC:AES-128-CBC
+verify-client-cert none
+username-as-common-name
+auth-user-pass-verify /etc/openvpn/checkpsw.sh via-file
+script-security 2
 push "dhcp-option DNS ${OVPN_DNS//,/ }"
 push "redirect-gateway def1 bypass-dhcp"
 verb 3
@@ -115,6 +131,9 @@ setup_ccd() {
 }
 
 write_client_config() {
+    if [ "$config_only" -eq 1 ]; then
+        return
+    fi
     mkdir -p "$CLIENT_DIR"
     cat > "$CLIENT_DIR/${OVPN_CLIENT_NAME}.ovpn" <<EOF
 client
@@ -126,9 +145,8 @@ nobind
 persist-key
 persist-tun
 remote-cert-tls server
-cipher AES-256-CBC
-auth SHA256
-key-direction 1
+cipher BF-CBC
+auth SHA1
 verb 3
 
 <ca>
@@ -140,9 +158,6 @@ $(cat "$EASYRSA_DIR/pki/issued/${OVPN_CLIENT_NAME}.crt")
 <key>
 $(cat "$EASYRSA_DIR/pki/private/${OVPN_CLIENT_NAME}.key")
 </key>
-<tls-auth>
-$(cat "$EASYRSA_DIR/ta.key")
-</tls-auth>
 EOF
 }
 
@@ -162,7 +177,11 @@ main() {
     write_client_config
     enable_service
 
-    echo "OpenVPN siap. Client file: ${CLIENT_DIR}/${OVPN_CLIENT_NAME}.ovpn"
+    if [ "$config_only" -eq 1 ]; then
+        echo "OpenVPN config-only selesai. server.conf diperbarui."
+    else
+        echo "OpenVPN siap. Client file: ${CLIENT_DIR}/${OVPN_CLIENT_NAME}.ovpn"
+    fi
 }
 
 main "$@"
