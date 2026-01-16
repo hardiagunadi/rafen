@@ -131,6 +131,9 @@
                                 <button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#ovpn-edit-{{ $client->id }}">
                                     Edit
                                 </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-toggle="collapse" data-target="#ovpn-script-{{ $client->id }}">
+                                    Script Mikrotik
+                                </button>
                                 <form action="{{ route('settings.ovpn.clients.destroy', $client) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus client ini?');">
                                     @csrf
                                     @method('DELETE')
@@ -168,6 +171,21 @@
                                     </div>
                                     <button type="submit" class="btn btn-primary btn-sm">Simpan Perubahan</button>
                                 </form>
+                            </td>
+                        </tr>
+                        <tr class="collapse" id="ovpn-script-{{ $client->id }}">
+                            <td colspan="7">
+                                @php
+                                    $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
+                                    $ovpnPort = $ovpn['port'] !== '' ? $ovpn['port'] : '1194';
+                                    $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'udp';
+                                    $ovpnUser = $ovpn['username'] !== '' ? $ovpn['username'] : '<username>';
+                                    $ovpnPass = $ovpn['password'] !== '' ? $ovpn['password'] : '<password>';
+                                    $ovpnName = 'ovpn-'.$client->common_name;
+                                @endphp
+                                <div class="mb-2 text-muted">Salin perintah berikut ke Mikrotik.</div>
+                                <pre class="mb-0">/interface ovpn-client add name={{ $ovpnName }} connect-to={{ $ovpnHost }} port={{ $ovpnPort }} user={{ $ovpnUser }} password={{ $ovpnPass }} protocol={{ $ovpnProto }} disabled=no</pre>
+                                <div class="text-muted mt-2">Jika server membutuhkan sertifikat, import cert di Mikrotik lalu tambahkan parameter <code>certificate=</code>.</div>
                             </td>
                         </tr>
                     @empty

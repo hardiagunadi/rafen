@@ -490,6 +490,34 @@ EOF
     fi
 }
 
+setup_ovpn_ccd() {
+    local ccd_path
+    local ccd_dir
+    local ccd_owner
+    local ccd_group
+
+    ccd_path="$(read_env OVPN_CCD_PATH)"
+    if [ -z "$ccd_path" ]; then
+        ccd_path="/etc/openvpn/ccd"
+    fi
+
+    ccd_dir="$ccd_path"
+    ccd_owner="$APP_USER"
+    ccd_group="$APP_GROUP"
+
+    if [ -d /etc/openvpn ] && [ -n "$SUDO_CMD" ]; then
+        ${SUDO_CMD} chmod g+rx /etc/openvpn || true
+    fi
+
+    ${SUDO_CMD} install -d -m 0775 "$ccd_dir"
+    ${SUDO_CMD} chown "$ccd_owner":"$ccd_group" "$ccd_dir"
+
+    if command_exists setfacl && id "$APP_USER" >/dev/null 2>&1; then
+        ${SUDO_CMD} setfacl -m "u:${APP_USER}:rwx" /etc/openvpn || true
+        ${SUDO_CMD} setfacl -m "u:${APP_USER}:rwx" "$ccd_dir" || true
+    fi
+}
+
 secure_mysql() {
     if ! command_exists mysql; then
         return
@@ -962,6 +990,7 @@ main() {
     setup_database
     verify_database_access
     setup_freeradius
+    setup_ovpn_ccd
     setup_apache
     setup_phpmyadmin
     setup_systemd_services

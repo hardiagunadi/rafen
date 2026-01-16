@@ -12,6 +12,8 @@ EASYRSA_DIR="/etc/openvpn/easy-rsa"
 SERVER_DIR="/etc/openvpn/server"
 CLIENT_DIR="/etc/openvpn/client-configs"
 CCD_DIR="/etc/openvpn/ccd"
+CCD_OWNER="${CCD_OWNER:-www-data}"
+CCD_GROUP="${CCD_GROUP:-www-data}"
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -107,6 +109,7 @@ setup_nat() {
 
 setup_ccd() {
     mkdir -p "$CCD_DIR"
+    chown "$CCD_OWNER":"$CCD_GROUP" "$CCD_DIR"
     chmod 0775 "$CCD_DIR"
 }
 

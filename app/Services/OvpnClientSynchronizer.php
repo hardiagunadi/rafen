@@ -17,10 +17,12 @@ class OvpnClientSynchronizer
             throw new RuntimeException('Path CCD belum diatur.');
         }
 
-        $this->filesystem->ensureDirectoryExists($ccdPath);
+        if (! $this->filesystem->isDirectory($ccdPath)) {
+            throw new RuntimeException('Direktori CCD belum ada. Jalankan installer OpenVPN atau buat folder CCD terlebih dahulu.');
+        }
 
         if (! $this->filesystem->isWritable($ccdPath)) {
-            throw new RuntimeException('Direktori CCD tidak writable.');
+            throw new RuntimeException('Direktori CCD tidak writable untuk webserver.');
         }
 
         $vpnIp = $client->vpn_ip;
