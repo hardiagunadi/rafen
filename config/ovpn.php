@@ -12,4 +12,5 @@ return [
     'pool_end' => env('OVPN_POOL_END', '10.8.0.254'),
     'ccd_path' => env('OVPN_CCD_PATH', '/etc/openvpn/ccd'),
     'auth_users_path' => env('OVPN_AUTH_USERS_PATH', '/etc/openvpn/ovpn-users'),
+    'route_dst' => env('OVPN_ROUTE_DST', ''),
 ];

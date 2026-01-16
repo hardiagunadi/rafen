@@ -35,6 +35,7 @@ class OvpnSettingsController extends Controller
                 'netmask' => (string) config('ovpn.netmask'),
                 'pool_start' => (string) config('ovpn.pool_start'),
                 'pool_end' => (string) config('ovpn.pool_end'),
+                'route_dst' => (string) config('ovpn.route_dst'),
             ],
             'clients' => $clients,
             'routers' => $routers,

@@ -31,6 +31,7 @@
                         -
                         {{ $ovpn['pool_end'] !== '' ? $ovpn['pool_end'] : '-' }}
                     </div>
+                    <div class="mb-2"><strong>Route Dst:</strong> {{ $ovpn['route_dst'] !== '' ? $ovpn['route_dst'] : '-' }}</div>
                 </div>
                 <div class="col-md-6">
                     <div class="mb-2"><strong>Username:</strong> {{ $ovpn['username'] !== '' ? $ovpn['username'] : '-' }}</div>
@@ -207,12 +208,30 @@
                                     $ovpnPass = $client->password ?: '<password>';
                                     $ovpnName = 'ovpn-'.$client->common_name;
                                     $scriptId = 'ovpn-script-'.$client->id;
+                                    $routeDst = $ovpn['route_dst'];
+                                    $routeComment = 'static route '.$ovpnName;
+                                    $scriptLines = [
+                                        '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
+                                        '/interface sstp-client remove [find name="'.$ovpnName.'"]',
+                                        '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
+                                        '/interface pptp-client remove [find name="'.$ovpnName.'"]',
+                                        '/routing table remove [find name="'.$ovpnName.'"]',
+                                        '/routing rule remove [find comment="'.$routeComment.'"]',
+                                        '/ip route remove [find comment="'.$routeComment.'"]',
+                                        '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
+                                    ];
+                                    if ($routeDst !== '') {
+                                        $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
+                                        $scriptLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                                        $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                                    }
+                                    $scriptPayload = implode(';', $scriptLines).';';
                                 @endphp
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <div class="text-muted">Salin perintah berikut ke Mikrotik.</div>
                                     <button type="button" class="btn btn-sm btn-outline-secondary copy-ovpn-script" data-target="{{ $scriptId }}">Copy Script</button>
                                 </div>
-                                <pre class="mb-0" id="{{ $scriptId }}">/interface ovpn-client add name={{ $ovpnName }} connect-to={{ $ovpnHost }} port={{ $ovpnPort }} user={{ $ovpnUser }} password={{ $ovpnPass }} protocol={{ $ovpnProto }} disabled=no</pre>
+                                <pre class="mb-0" id="{{ $scriptId }}">{{ $scriptPayload }}</pre>
                                 <div class="text-muted mt-2">Jika server membutuhkan sertifikat, import cert di Mikrotik lalu tambahkan parameter <code>certificate=</code>.</div>
                             </td>
                         </tr>

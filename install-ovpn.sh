@@ -77,9 +77,10 @@ dh dh.pem
 ca ca.crt
 cert server.crt
 key server.key
-tls-auth ta.key 0
-cipher AES-256-CBC
-auth SHA256
+# tls-auth ta.key 0
+cipher BF-CBC
+auth SHA1
+data-ciphers BF-CBC:AES-256-CBC:AES-128-CBC
 push "dhcp-option DNS ${OVPN_DNS//,/ }"
 push "redirect-gateway def1 bypass-dhcp"
 verb 3

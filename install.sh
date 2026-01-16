@@ -528,6 +528,15 @@ setup_ovpn_ccd() {
     ${SUDO_CMD} touch "$auth_users_path"
     ${SUDO_CMD} chown "$ccd_owner":"$ccd_group" "$auth_users_path"
     ${SUDO_CMD} chmod 0660 "$auth_users_path"
+
+    ${SUDO_CMD} bash -lc "cat > /etc/openvpn/checkpsw.sh <<'EOF'
+#!/usr/bin/env bash
+PASSFILE=\"${auth_users_path}\"
+USERNAME=\"\$1\"
+PASSWORD=\"\$2\"
+grep -Fxq \"\${USERNAME} \${PASSWORD}\" \"\${PASSFILE}\"
+EOF"
+    ${SUDO_CMD} chmod 0700 /etc/openvpn/checkpsw.sh
 }
 
 secure_mysql() {
