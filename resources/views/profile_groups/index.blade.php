@@ -95,7 +95,7 @@
 
     <div class="modal fade" id="bulk-export-modal" tabindex="-1" aria-labelledby="bulk-export-modal-label" aria-hidden="true">
         <div class="modal-dialog">
-            <form class="modal-content" id="bulk-export-form" action="{{ route('profile-groups.export-bulk') }}" method="POST">
+            <form class="modal-content" id="bulk-export-form" action="{{ route('profile-groups.export-bulk') }}" method="POST" data-turbo="false">
                 @csrf
                 <div class="modal-header">
                     <h5 class="modal-title" id="bulk-export-modal-label">Ekspor Profil Group ke Router</h5>
@@ -176,6 +176,17 @@
         if (selectAllRouters) {
             selectAllRouters.addEventListener('change', function (e) {
                 document.querySelectorAll('.router-checkbox').forEach(cb => cb.checked = e.target.checked);
+            });
+        }
+
+        const bulkExportForm = document.getElementById('bulk-export-form');
+        if (bulkExportForm) {
+            bulkExportForm.addEventListener('submit', function (event) {
+                const anyRouter = Array.from(document.querySelectorAll('.router-checkbox')).some(cb => cb.checked);
+                if (! anyRouter) {
+                    event.preventDefault();
+                    alert('Pilih minimal satu router (NAS) untuk export.');
+                }
             });
         }
     </script>
