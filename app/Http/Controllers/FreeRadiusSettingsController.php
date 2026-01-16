@@ -60,11 +60,30 @@ class FreeRadiusSettingsController extends Controller
         }
 
         if (! $this->filesystem->exists($clientsPath)) {
+            $parent = dirname($clientsPath);
+            if ($this->filesystem->isDirectory($parent) && ! $this->filesystem->isReadable($parent)) {
+                return [
+                    'status' => 'denied',
+                    'updated_at' => null,
+                    'size' => null,
+                    'message' => 'Akses ke direktori clients dibatasi. Periksa izin webserver.',
+                ];
+            }
+
             return [
                 'status' => 'missing',
                 'updated_at' => null,
                 'size' => null,
                 'message' => 'File clients belum ditemukan.',
+            ];
+        }
+
+        if (! $this->filesystem->isReadable($clientsPath)) {
+            return [
+                'status' => 'denied',
+                'updated_at' => null,
+                'size' => null,
+                'message' => 'File clients tidak dapat dibaca. Periksa izin webserver.',
             ];
         }
 

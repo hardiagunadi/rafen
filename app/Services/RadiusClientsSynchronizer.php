@@ -31,7 +31,12 @@ class RadiusClientsSynchronizer
 
         $directory = dirname($path);
         if (! $this->filesystem->isDirectory($directory)) {
-            throw new RuntimeException("Direktori {$directory} belum ada. Buat manual dan beri izin tulis untuk webserver.");
+            $parent = dirname($directory);
+            if ($this->filesystem->isDirectory($parent) && $this->filesystem->isReadable($parent)) {
+                throw new RuntimeException("Direktori {$directory} belum ada. Buat manual dan beri izin tulis untuk webserver.");
+            }
+
+            throw new RuntimeException("Tidak dapat mengakses direktori {$directory}. Periksa izin untuk webserver.");
         } elseif (! $this->filesystem->isWritable($directory)) {
             throw new RuntimeException("Direktori {$directory} tidak writable untuk sinkronisasi FreeRADIUS.");
         }
