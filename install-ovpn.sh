@@ -11,6 +11,7 @@ OVPN_INTERFACE="${OVPN_INTERFACE:-}"
 EASYRSA_DIR="/etc/openvpn/easy-rsa"
 SERVER_DIR="/etc/openvpn/server"
 CLIENT_DIR="/etc/openvpn/client-configs"
+CCD_DIR="/etc/openvpn/ccd"
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -69,6 +70,7 @@ keepalive 10 120
 topology subnet
 server ${OVPN_NETWORK} ${OVPN_NETMASK}
 ifconfig-pool-persist ipp.txt
+client-config-dir ${CCD_DIR}
 dh dh.pem
 ca ca.crt
 cert server.crt
@@ -101,6 +103,11 @@ setup_nat() {
         iptables -t nat -A POSTROUTING -s "${OVPN_NETWORK}/24" -o "$iface" -j MASQUERADE
 
     netfilter-persistent save
+}
+
+setup_ccd() {
+    mkdir -p "$CCD_DIR"
+    chmod 0775 "$CCD_DIR"
 }
 
 write_client_config() {
@@ -145,6 +152,7 @@ main() {
     setup_easy_rsa
     install_server_files
     write_server_config
+    setup_ccd
     enable_ip_forwarding
     setup_nat
     write_client_config

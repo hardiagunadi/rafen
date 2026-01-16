@@ -49,6 +49,10 @@ Route::middleware('auth')->group(function () {
     Route::get('settings/freeradius', [FreeRadiusSettingsController::class, 'index'])->name('settings.freeradius');
     Route::post('settings/freeradius/sync', [FreeRadiusSettingsController::class, 'sync'])->name('settings.freeradius.sync');
     Route::get('settings/ovpn', [OvpnSettingsController::class, 'index'])->name('settings.ovpn');
+    Route::post('settings/ovpn/clients', [OvpnSettingsController::class, 'store'])->name('settings.ovpn.clients.store');
+    Route::patch('settings/ovpn/clients/{ovpnClient}', [OvpnSettingsController::class, 'update'])->name('settings.ovpn.clients.update');
+    Route::delete('settings/ovpn/clients/{ovpnClient}', [OvpnSettingsController::class, 'destroy'])->name('settings.ovpn.clients.destroy');
+    Route::post('settings/ovpn/clients/{ovpnClient}/sync', [OvpnSettingsController::class, 'sync'])->name('settings.ovpn.clients.sync');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
