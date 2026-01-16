@@ -7,6 +7,7 @@ use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Symfony\Component\Process\Process;
 
@@ -29,7 +30,15 @@ class RadiusClientsSynchronizer
         $path = (string) config('radius.clients_path');
 
         $directory = dirname($path);
-        $this->filesystem->ensureDirectoryExists($directory);
+        if (! $this->filesystem->isDirectory($directory)) {
+            $this->filesystem->ensureDirectoryExists($directory);
+        } elseif (! $this->filesystem->isWritable($directory)) {
+            throw new RuntimeException("Direktori {$directory} tidak writable untuk sinkronisasi FreeRADIUS.");
+        }
+
+        if ($this->filesystem->exists($path) && ! $this->filesystem->isWritable($path)) {
+            throw new RuntimeException("File {$path} tidak writable untuk sinkronisasi FreeRADIUS.");
+        }
         $this->filesystem->put($path, $payload);
 
         $command = (string) config('radius.reload_command');
