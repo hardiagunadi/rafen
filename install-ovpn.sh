@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OVPN_PORT="${OVPN_PORT:-1194}"
+OVPN_PROTO="${OVPN_PROTO:-udp}"
+OVPN_NETWORK="${OVPN_NETWORK:-10.8.0.0}"
+OVPN_NETMASK="${OVPN_NETMASK:-255.255.255.0}"
+OVPN_DNS="${OVPN_DNS:-1.1.1.1,8.8.8.8}"
+OVPN_CLIENT_NAME="${OVPN_CLIENT_NAME:-mikrotik}"
+OVPN_INTERFACE="${OVPN_INTERFACE:-}"
+EASYRSA_DIR="/etc/openvpn/easy-rsa"
+SERVER_DIR="/etc/openvpn/server"
+CLIENT_DIR="/etc/openvpn/client-configs"
+
+require_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "Please run as root (sudo)."
+        exit 1
+    fi
+}
+
+detect_interface() {
+    if [ -n "$OVPN_INTERFACE" ]; then
+        echo "$OVPN_INTERFACE"
+        return
+    fi
+
+    ip -4 route list default | awk '{print $5}' | head -n1
+}
+
+install_packages() {
+    apt-get update -y
+    apt-get install -y openvpn easy-rsa iptables-persistent
+}
+
+setup_easy_rsa() {
+    mkdir -p "$EASYRSA_DIR"
+    rm -rf "${EASYRSA_DIR:?}/"*
+    cp -r /usr/share/easy-rsa/* "$EASYRSA_DIR"
+    pushd "$EASYRSA_DIR" >/dev/null
+    ./easyrsa init-pki
+    EASYRSA_BATCH=1 ./easyrsa build-ca nopass
+    EASYRSA_BATCH=1 ./easyrsa build-server-full server nopass
+    EASYRSA_BATCH=1 ./easyrsa build-client-full "$OVPN_CLIENT_NAME" nopass
+    ./easyrsa gen-dh
+    openvpn --genkey --secret ta.key
+    popd >/dev/null
+}
+
+install_server_files() {
+    mkdir -p "$SERVER_DIR"
+    cp "$EASYRSA_DIR/pki/ca.crt" "$SERVER_DIR"
+    cp "$EASYRSA_DIR/pki/dh.pem" "$SERVER_DIR"
+    cp "$EASYRSA_DIR/ta.key" "$SERVER_DIR"
+    cp "$EASYRSA_DIR/pki/issued/server.crt" "$SERVER_DIR"
+    cp "$EASYRSA_DIR/pki/private/server.key" "$SERVER_DIR"
+}
+
+write_server_config() {
+    cat > "$SERVER_DIR/server.conf" <<EOF
+port ${OVPN_PORT}
+proto ${OVPN_PROTO}
+dev tun
+user nobody
+group nogroup
+persist-key
+persist-tun
+keepalive 10 120
+topology subnet
+server ${OVPN_NETWORK} ${OVPN_NETMASK}
+ifconfig-pool-persist ipp.txt
+dh dh.pem
+ca ca.crt
+cert server.crt
+key server.key
+tls-auth ta.key 0
+cipher AES-256-CBC
+auth SHA256
+push "dhcp-option DNS ${OVPN_DNS//,/ }"
+push "redirect-gateway def1 bypass-dhcp"
+verb 3
+EOF
+}
+
+enable_ip_forwarding() {
+    sysctl -w net.ipv4.ip_forward=1
+    if ! grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf; then
+        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+    fi
+}
+
+setup_nat() {
+    local iface
+    iface="$(detect_interface)"
+    if [ -z "$iface" ]; then
+        echo "Tidak bisa mendeteksi interface keluar. Set OVPN_INTERFACE lalu jalankan ulang."
+        exit 1
+    fi
+
+    iptables -t nat -C POSTROUTING -s "${OVPN_NETWORK}/24" -o "$iface" -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -s "${OVPN_NETWORK}/24" -o "$iface" -j MASQUERADE
+
+    netfilter-persistent save
+}
+
+write_client_config() {
+    mkdir -p "$CLIENT_DIR"
+    cat > "$CLIENT_DIR/${OVPN_CLIENT_NAME}.ovpn" <<EOF
+client
+dev tun
+proto ${OVPN_PROTO}
+remote $(curl -fsSL ifconfig.me) ${OVPN_PORT}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-CBC
+auth SHA256
+key-direction 1
+verb 3
+
+<ca>
+$(cat "$EASYRSA_DIR/pki/ca.crt")
+</ca>
+<cert>
+$(cat "$EASYRSA_DIR/pki/issued/${OVPN_CLIENT_NAME}.crt")
+</cert>
+<key>
+$(cat "$EASYRSA_DIR/pki/private/${OVPN_CLIENT_NAME}.key")
+</key>
+<tls-auth>
+$(cat "$EASYRSA_DIR/ta.key")
+</tls-auth>
+EOF
+}
+
+enable_service() {
+    systemctl enable --now openvpn-server@server.service
+}
+
+main() {
+    require_root
+    install_packages
+    setup_easy_rsa
+    install_server_files
+    write_server_config
+    enable_ip_forwarding
+    setup_nat
+    write_client_config
+    enable_service
+
+    echo "OpenVPN siap. Client file: ${CLIENT_DIR}/${OVPN_CLIENT_NAME}.ovpn"
+}
+
+main "$@"
