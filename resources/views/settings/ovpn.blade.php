@@ -55,8 +55,8 @@
                 <div class="form-row">
                     <div class="form-group col-md-4">
                         <label>Router (NAS)</label>
-                        <select name="mikrotik_connection_id" class="form-control @error('mikrotik_connection_id') is-invalid @enderror" required>
-                            <option value="">- pilih -</option>
+                        <select name="mikrotik_connection_id" class="form-control @error('mikrotik_connection_id') is-invalid @enderror">
+                            <option value="">Tanpa Router (gunakan VPN saja)</option>
                             @foreach($routers as $router)
                                 <option value="{{ $router->id }}" @selected(old('mikrotik_connection_id') == $router->id)>{{ $router->name }}</option>
                             @endforeach

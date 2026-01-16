@@ -22,7 +22,7 @@ class StoreOvpnClientRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'mikrotik_connection_id' => ['required', 'integer', 'exists:mikrotik_connections,id', 'unique:ovpn_clients,mikrotik_connection_id'],
+            'mikrotik_connection_id' => ['nullable', 'integer', 'exists:mikrotik_connections,id', 'unique:ovpn_clients,mikrotik_connection_id'],
             'name' => ['required', 'string', 'max:150'],
             'common_name' => ['nullable', 'string', 'max:150', 'unique:ovpn_clients,common_name'],
             'username' => ['nullable', 'string', 'max:150', 'unique:ovpn_clients,username'],
@@ -38,7 +38,6 @@ class StoreOvpnClientRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'mikrotik_connection_id.required' => 'Pilih router untuk client OpenVPN.',
             'mikrotik_connection_id.exists' => 'Router tidak ditemukan.',
             'mikrotik_connection_id.unique' => 'Router sudah memiliki client OpenVPN.',
             'name.required' => 'Nama client wajib diisi.',
