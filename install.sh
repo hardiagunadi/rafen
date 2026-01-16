@@ -449,6 +449,11 @@ setup_freeradius() {
                 needs_restart=1
             fi
         fi
+        if id freerad >/dev/null 2>&1; then
+            if ! id -nG freerad | grep -qw "$APP_GROUP"; then
+                ${SUDO_CMD} usermod -a -G "$APP_GROUP" freerad
+            fi
+        fi
         ${SUDO_CMD} chown "$APP_USER":freerad "$clients_dir"
         ${SUDO_CMD} chmod 0775 "$clients_dir"
         ${SUDO_CMD} chown "$APP_USER":freerad "$clients_path"
@@ -465,6 +470,10 @@ setup_freeradius() {
         ${SUDO_CMD} setfacl -m "u:${app_user_acl}" /etc/freeradius || true
         ${SUDO_CMD} setfacl -m "u:${app_user_acl}" "$clients_dir" || true
         ${SUDO_CMD} setfacl -m "u:${APP_USER}:rw" "$clients_path" || true
+    fi
+
+    if command_exists getent; then
+        echo "INFO: anggota group ${APP_GROUP}: $(getent group "$APP_GROUP" | cut -d: -f4)"
     fi
 
     if [ ! -f /etc/sudoers.d/rafen-freeradius ]; then
