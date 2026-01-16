@@ -22,10 +22,7 @@ class ProfileGroupController extends Controller
     public function index(): View
     {
         $groups = ProfileGroup::query()->with('mikrotikConnection')->latest()->paginate(10);
-        $mikrotikConnections = MikrotikConnection::query()
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get();
+        $mikrotikConnections = MikrotikConnection::query()->orderBy('name')->get();
 
         return view('profile_groups.index', compact('groups', 'mikrotikConnections'));
     }

@@ -17,6 +17,11 @@
                 <button type="button" class="btn btn-danger btn-sm" id="bulk-delete-btn">Hapus</button>
             </div>
         </div>
+        @if ($errors->any())
+            <div class="alert alert-danger m-3">
+                {{ $errors->first() }}
+            </div>
+        @endif
         <form id="bulk-delete-form" action="{{ route('profile-groups.bulk-destroy') }}" method="POST">
             @csrf
             @method('DELETE')

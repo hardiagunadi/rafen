@@ -172,35 +172,26 @@ class ProfileGroupExporter
 
     private function resolveSqlRemoteAddress(ProfileGroup $group): string
     {
-        [$rangeStart, $rangeEnd] = $this->resolveSqlPoolRange($group);
+        $rangeEnd = $this->resolveSqlPoolEnd($group);
 
         if (! $rangeEnd) {
             throw new RuntimeException('IP terakhir belum diisi.');
         }
 
-        if ($rangeStart && $rangeStart !== $rangeEnd) {
-            return $rangeStart.'-'.$rangeEnd;
-        }
-
         return $rangeEnd;
     }
 
-    /**
-     * @return array{0: ?string, 1: ?string}
-     */
-    private function resolveSqlPoolRange(ProfileGroup $group): array
+    private function resolveSqlPoolEnd(ProfileGroup $group): ?string
     {
-        $rangeStart = trim((string) $group->range_start);
         $rangeEnd = trim((string) $group->range_end);
 
-        if ($rangeStart !== '' || $rangeEnd !== '') {
-            return [$rangeStart !== '' ? $rangeStart : null, $rangeEnd !== '' ? $rangeEnd : null];
+        if ($rangeEnd !== '') {
+            return $rangeEnd;
         }
 
-        $hostMin = trim((string) $group->host_min);
         $hostMax = trim((string) $group->host_max);
 
-        return [$hostMin !== '' ? $hostMin : null, $hostMax !== '' ? $hostMax : null];
+        return $hostMax !== '' ? $hostMax : null;
     }
 
     /**
