@@ -426,6 +426,9 @@ setup_freeradius() {
     fi
 
     if getent group freerad >/dev/null 2>&1; then
+        if id "$APP_USER" >/dev/null 2>&1; then
+            ${SUDO_CMD} usermod -a -G freerad "$APP_USER"
+        fi
         ${SUDO_CMD} chown "$APP_USER":freerad "$clients_dir"
         ${SUDO_CMD} chmod 0775 "$clients_dir"
         ${SUDO_CMD} chown "$APP_USER":freerad "$clients_path"
