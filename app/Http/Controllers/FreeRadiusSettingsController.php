@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\RadiusClientsSynchronizer;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 use SplFileObject;
@@ -26,6 +28,21 @@ class FreeRadiusSettingsController extends Controller
             'syncStatus' => $syncStatus,
             'logPayload' => $logPayload,
         ]);
+    }
+
+    public function sync(RadiusClientsSynchronizer $synchronizer): RedirectResponse
+    {
+        try {
+            $synchronizer->sync();
+
+            return redirect()
+                ->route('settings.freeradius')
+                ->with('status', 'Sinkronisasi FreeRADIUS berhasil.');
+        } catch (Throwable $exception) {
+            return redirect()
+                ->route('settings.freeradius')
+                ->with('error', 'Sinkronisasi FreeRADIUS gagal: '.$exception->getMessage());
+        }
     }
 
     /**

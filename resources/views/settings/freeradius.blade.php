@@ -5,7 +5,15 @@
 @section('content')
     <div class="card mb-4">
         <div class="card-header">
-            <h4 class="mb-0">Status Sinkronisasi</h4>
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Status Sinkronisasi</h4>
+                <form action="{{ route('settings.freeradius.sync') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="btn btn-success btn-sm">
+                        Sync FreeRADIUS
+                    </button>
+                </form>
+            </div>
         </div>
         <div class="card-body">
             <div class="mb-2"><strong>Clients Path:</strong> {{ $clientsPath ?: '-' }}</div>

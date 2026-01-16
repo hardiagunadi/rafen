@@ -331,6 +331,7 @@ setup_env() {
     set_env DB_PASSWORD "$db_password"
     set_env DB_HOST "$db_host"
     set_env RADIUS_CLIENTS_PATH "/etc/freeradius/clients.d/laravel.conf"
+    set_env RADIUS_LOG_PATH "/var/log/freeradius/radius.log"
     set_env RADIUS_RELOAD_COMMAND "sudo systemctl reload freeradius"
     set_env RADIUS_RESTART_COMMAND "sudo systemctl restart freeradius"
     set_env RADIUS_SERVER_IP "$radius_server_ip"
@@ -415,17 +416,23 @@ verify_database_access() {
 
 setup_freeradius() {
     local clients_path
+    local clients_dir
 
     clients_path="$(read_env RADIUS_CLIENTS_PATH)"
-    ${SUDO_CMD} install -d -m 0755 "$(dirname "$clients_path")"
+    clients_dir="$(dirname "$clients_path")"
+    ${SUDO_CMD} install -d -m 0755 "$clients_dir"
     if [ ! -f "$clients_path" ]; then
         ${SUDO_CMD} touch "$clients_path"
     fi
 
     if getent group freerad >/dev/null 2>&1; then
+        ${SUDO_CMD} chown "$APP_USER":freerad "$clients_dir"
+        ${SUDO_CMD} chmod 0775 "$clients_dir"
         ${SUDO_CMD} chown "$APP_USER":freerad "$clients_path"
         ${SUDO_CMD} chmod 0640 "$clients_path"
     else
+        ${SUDO_CMD} chown "$APP_USER":"$APP_GROUP" "$clients_dir"
+        ${SUDO_CMD} chmod 0775 "$clients_dir"
         ${SUDO_CMD} chown "$APP_USER":"$APP_GROUP" "$clients_path"
         ${SUDO_CMD} chmod 0644 "$clients_path"
     fi
@@ -522,6 +529,17 @@ check_permissions() {
     if [ -n "$clients_path" ] && [ ! -w "$clients_path" ]; then
         echo "NOTIFIKASI: ${clients_path} belum writable untuk ${APP_USER} agar sync RADIUS berjalan."
         missing=1
+    fi
+
+    if [ -n "$clients_path" ]; then
+        clients_dir="$(dirname "$clients_path")"
+        if [ ! -d "$clients_dir" ]; then
+            echo "NOTIFIKASI: direktori ${clients_dir} belum ada untuk sync RADIUS."
+            missing=1
+        elif [ ! -w "$clients_dir" ]; then
+            echo "NOTIFIKASI: direktori ${clients_dir} belum writable untuk ${APP_USER} agar sync RADIUS berjalan."
+            missing=1
+        fi
     fi
 
     if [ ! -f /etc/sudoers.d/rafen-freeradius ]; then
