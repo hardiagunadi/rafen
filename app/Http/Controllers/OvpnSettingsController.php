@@ -60,6 +60,7 @@ class OvpnSettingsController extends Controller
 
         try {
             $synchronizer->sync($client);
+            $synchronizer->syncAuthUsers(OvpnClient::query()->get());
             $client->update(['last_synced_at' => now()]);
         } catch (Throwable $exception) {
             return redirect()
@@ -85,6 +86,7 @@ class OvpnSettingsController extends Controller
                 $synchronizer->remove($previousCommonName);
             }
             $synchronizer->sync($ovpnClient);
+            $synchronizer->syncAuthUsers(OvpnClient::query()->get());
             $ovpnClient->update(['last_synced_at' => now()]);
         } catch (Throwable $exception) {
             return redirect()
@@ -104,6 +106,7 @@ class OvpnSettingsController extends Controller
         }
 
         $ovpnClient->delete();
+        $synchronizer->syncAuthUsers(OvpnClient::query()->get());
 
         return redirect()
             ->route('settings.ovpn')

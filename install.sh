@@ -495,6 +495,8 @@ setup_ovpn_ccd() {
     local ccd_dir
     local ccd_owner
     local ccd_group
+    local auth_users_path
+    local auth_dir
 
     ccd_path="$(read_env OVPN_CCD_PATH)"
     if [ -z "$ccd_path" ]; then
@@ -516,6 +518,16 @@ setup_ovpn_ccd() {
         ${SUDO_CMD} setfacl -m "u:${APP_USER}:rwx" /etc/openvpn || true
         ${SUDO_CMD} setfacl -m "u:${APP_USER}:rwx" "$ccd_dir" || true
     fi
+
+    auth_users_path="$(read_env OVPN_AUTH_USERS_PATH)"
+    if [ -z "$auth_users_path" ]; then
+        auth_users_path="/etc/openvpn/ovpn-users"
+    fi
+    auth_dir="$(dirname "$auth_users_path")"
+    ${SUDO_CMD} install -d -m 0775 "$auth_dir"
+    ${SUDO_CMD} touch "$auth_users_path"
+    ${SUDO_CMD} chown "$ccd_owner":"$ccd_group" "$auth_users_path"
+    ${SUDO_CMD} chmod 0660 "$auth_users_path"
 }
 
 secure_mysql() {
