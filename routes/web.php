@@ -24,6 +24,8 @@ Route::post('register', [RegisterController::class, 'register']);
 
 Route::middleware('auth')->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('api-dashboard', [DashboardController::class, 'apiDashboard'])->name('dashboard.api');
+    Route::get('api-dashboard/data', [DashboardController::class, 'apiDashboardData'])->name('dashboard.api.data');
     Route::get('reports/income', IncomeReportController::class)->name('reports.income');
     Route::post('mikrotik-connections/test', [MikrotikConnectionController::class, 'test'])->name('mikrotik-connections.test');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
@@ -31,6 +33,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('radius-accounts', RadiusAccountController::class);
     Route::delete('bandwidth-profiles/bulk-destroy', [BandwidthProfileController::class, 'bulkDestroy'])->name('bandwidth-profiles.bulk-destroy');
     Route::resource('bandwidth-profiles', BandwidthProfileController::class);
+    Route::post('profile-groups/{profileGroup}/export', [ProfileGroupController::class, 'export'])->name('profile-groups.export');
     Route::delete('profile-groups/bulk-destroy', [ProfileGroupController::class, 'bulkDestroy'])->name('profile-groups.bulk-destroy');
     Route::resource('profile-groups', ProfileGroupController::class);
     Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');

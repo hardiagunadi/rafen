@@ -4,10 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreProfileGroupRequest;
 use App\Http\Requests\UpdateProfileGroupRequest;
+use App\Models\MikrotikConnection;
 use App\Models\ProfileGroup;
+use App\Services\ProfileGroupExporter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
+use Throwable;
 
 class ProfileGroupController extends Controller
 {
@@ -95,6 +99,40 @@ class ProfileGroupController extends Controller
         return redirect()->route('profile-groups.index')->with('status', 'Profil group terpilih dihapus.');
     }
 
+    public function export(ProfileGroup $profileGroup, ProfileGroupExporter $exporter): RedirectResponse
+    {
+        $connections = $this->resolveExportConnections($profileGroup);
+        if ($connections->isEmpty()) {
+            return redirect()
+                ->route('profile-groups.index')
+                ->with('error', 'Tidak ada koneksi Mikrotik aktif untuk export profil group.');
+        }
+
+        $success = [];
+        $errors = [];
+
+        foreach ($connections as $connection) {
+            try {
+                $exporter->export($profileGroup, $connection);
+                $success[] = $connection->name;
+            } catch (Throwable $exception) {
+                $errors[] = $connection->name.': '.$exception->getMessage();
+            }
+        }
+
+        $redirect = redirect()->route('profile-groups.index');
+
+        if (! empty($success)) {
+            $redirect = $redirect->with('status', 'Export profil group sukses: '.implode(', ', $success).'.');
+        }
+
+        if (! empty($errors)) {
+            $redirect = $redirect->with('error', 'Sebagian export gagal: '.implode(' | ', $errors));
+        }
+
+        return $redirect;
+    }
+
     private function hydrateHostRange(array $data): array
     {
         if (($data['ip_pool_mode'] ?? null) !== 'sql') {
@@ -137,5 +175,22 @@ class ProfileGroupController extends Controller
         $hostMax = $broadcast - 1;
 
         return [long2ip($hostMin), long2ip($hostMax)];
+    }
+
+    /**
+     * @return Collection<int, MikrotikConnection>
+     */
+    private function resolveExportConnections(ProfileGroup $profileGroup): Collection
+    {
+        if ($profileGroup->mikrotik_connection_id) {
+            return MikrotikConnection::query()
+                ->whereKey($profileGroup->mikrotik_connection_id)
+                ->get();
+        }
+
+        return MikrotikConnection::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
     }
 }

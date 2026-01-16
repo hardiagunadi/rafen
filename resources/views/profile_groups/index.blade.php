@@ -64,6 +64,10 @@
                             </td>
                             <td class="text-right">
                                 <a href="{{ route('profile-groups.edit', $group) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                <form action="{{ route('profile-groups.export', $group) }}" method="POST" class="d-inline" onsubmit="return confirm('Export profil group ini ke Mikrotik?');">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-success">Export</button>
+                                </form>
                                 <form action="{{ route('profile-groups.destroy', $group) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus group ini?');">
                                     @csrf
                                     @method('DELETE')

@@ -81,6 +81,27 @@ class DashboardController extends Controller
         return view('dashboard', compact('stats', 'serviceInfo', 'owners', 'systemInfo'));
     }
 
+    public function apiDashboard(Request $request): View
+    {
+        $connections = MikrotikConnection::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+        $selectedConnection = $this->resolveConnection($request->integer('connection_id'), $connections);
+        $resource = $this->apiDashboardPayload($selectedConnection);
+
+        return view('api-dashboard', compact('connections', 'selectedConnection', 'resource'));
+    }
+
+    public function apiDashboardData(Request $request): JsonResponse
+    {
+        $connection = $this->resolveConnection($request->integer('connection_id'));
+
+        return response()->json([
+            'data' => $this->apiDashboardPayload($connection),
+        ]);
+    }
+
     public function restartRadius(Request $request): JsonResponse|RedirectResponse
     {
         $command = config('radius.reload_command', 'systemctl reload freeradius');
@@ -116,6 +137,20 @@ class DashboardController extends Controller
         ];
     }
 
+    /**
+     * @return array{uptime:int, ram_total:int, ram_free:int, disk_total:int, disk_free:int}
+     */
+    private function systemMetricsRaw(): array
+    {
+        return [
+            'uptime' => $this->uptimeSeconds(),
+            'ram_total' => $this->memoryInfo('MemTotal'),
+            'ram_free' => $this->memoryInfo('MemAvailable'),
+            'disk_total' => (int) (@disk_total_space('/') ?: 0),
+            'disk_free' => (int) (@disk_free_space('/') ?: 0),
+        ];
+    }
+
     private function uptimeSeconds(): int
     {
         $contents = @file_get_contents('/proc/uptime');
@@ -148,6 +183,53 @@ class DashboardController extends Controller
         return 0;
     }
 
+    /**
+     * @return array{model:?string, cores:int, mhz:?int}
+     */
+    private function cpuMetrics(): array
+    {
+        $contents = @file('/proc/cpuinfo');
+        if (! $contents) {
+            return [
+                'model' => null,
+                'cores' => 1,
+                'mhz' => null,
+            ];
+        }
+
+        $model = null;
+        $mhz = null;
+        $cores = 0;
+        foreach ($contents as $line) {
+            if (str_starts_with($line, 'model name')) {
+                $model = trim(explode(':', $line, 2)[1] ?? '');
+            }
+            if (str_starts_with($line, 'cpu MHz')) {
+                $value = trim(explode(':', $line, 2)[1] ?? '');
+                $mhz = is_numeric($value) ? (int) round((float) $value) : $mhz;
+            }
+            if (str_starts_with($line, 'processor')) {
+                $cores++;
+            }
+        }
+
+        return [
+            'model' => $model ?: null,
+            'cores' => max(1, $cores),
+            'mhz' => $mhz,
+        ];
+    }
+
+    private function cpuLoadPercent(int $cores): ?float
+    {
+        $load = sys_getloadavg();
+        if (! $load || $cores <= 0) {
+            return null;
+        }
+
+        return min(100, max(0, ($load[0] / $cores) * 100));
+    }
+
     private function formatUptime(int $seconds): string
     {
         if ($seconds <= 0) {
@@ -174,6 +256,15 @@ class DashboardController extends Controller
         return implode(' ', $parts) ?: '0m';
     }
 
+    private function formatPercent(?float $value): string
+    {
+        if ($value === null) {
+            return 'N/A';
+        }
+
+        return number_format($value, 3, '.', '').'%';
+    }
+
     private function formatBytes(int $bytes): string
     {
         if ($bytes <= 0) {
@@ -186,5 +277,94 @@ class DashboardController extends Controller
         $value = $bytes / (1024 ** $power);
 
         return number_format($value, 1).' '.$units[$power];
+    }
+
+    private function buildTimestamp(): ?int
+    {
+        $candidates = [
+            base_path('bootstrap/cache/config.php'),
+            base_path('composer.lock'),
+        ];
+
+        foreach ($candidates as $path) {
+            if (is_file($path)) {
+                $timestamp = filemtime($path);
+
+                return $timestamp ?: null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  Collection<int, MikrotikConnection>|null  $connections
+     */
+    private function resolveConnection(?int $connectionId, ?Collection $connections = null): ?MikrotikConnection
+    {
+        if ($connections) {
+            if ($connectionId) {
+                return $connections->firstWhere('id', $connectionId) ?? $connections->first();
+            }
+
+            return $connections->first();
+        }
+
+        $query = MikrotikConnection::query()->where('is_active', true)->orderBy('name');
+        if ($connectionId) {
+            $selected = $query->whereKey($connectionId)->first();
+
+            return $selected ?: MikrotikConnection::query()->where('is_active', true)->orderBy('name')->first();
+        }
+
+        return $query->first();
+    }
+
+    /**
+     * @return array{
+     *     platform_vendor:string,
+     *     platform_model:string,
+     *     routeros:string,
+     *     cpu_type:string,
+     *     cpu_cores:string,
+     *     cpu_mhz:string,
+     *     cpu_load:string,
+     *     ram_free_percent:string,
+     *     disk_free_percent:string,
+     *     build_date:string,
+     *     build_time:string,
+     *     uptime:string
+     * }
+     */
+    private function apiDashboardPayload(?MikrotikConnection $connection): array
+    {
+        $systemRaw = $this->systemMetricsRaw();
+        $cpu = $this->cpuMetrics();
+        $cpuLoad = $this->cpuLoadPercent($cpu['cores']);
+        $ramPercent = $systemRaw['ram_total'] > 0
+            ? ($systemRaw['ram_free'] / $systemRaw['ram_total']) * 100
+            : null;
+        $diskPercent = $systemRaw['disk_total'] > 0
+            ? ($systemRaw['disk_free'] / $systemRaw['disk_total']) * 100
+            : null;
+        $buildTimestamp = $this->buildTimestamp();
+
+        $platformModel = $connection?->name ?? 'Belum ada router';
+        $routeros = $connection?->ros_version ? 'ROS '.$connection->ros_version : 'N/A';
+
+        return [
+            'platform_vendor' => 'MikroTik',
+            'platform_model' => $platformModel,
+            'routeros' => $routeros,
+            'cpu_type' => $cpu['model'] ?? 'N/A',
+            'cpu_cores' => $cpu['cores'].' core(s)',
+            'cpu_mhz' => $cpu['mhz'] ? $cpu['mhz'].' MHz' : 'N/A',
+            'cpu_load' => $this->formatPercent($cpuLoad),
+            'ram_free_percent' => $this->formatPercent($ramPercent),
+            'disk_free_percent' => $this->formatPercent($diskPercent),
+            'build_date' => $buildTimestamp ? date('Y-m-d', $buildTimestamp) : 'N/A',
+            'build_time' => $buildTimestamp ? date('H:i:s', $buildTimestamp) : 'N/A',
+            'uptime' => $this->formatUptime($systemRaw['uptime']),
+        ];
     }
 }
