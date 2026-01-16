@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BandwidthProfileController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FreeRadiusSettingsController;
 use App\Http\Controllers\HotspotProfileController;
 use App\Http\Controllers\IncomeReportController;
 use App\Http\Controllers\InvoiceController;
@@ -44,6 +45,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
     Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
     Route::resource('users', UserManagementController::class);
+    Route::get('settings/freeradius', [FreeRadiusSettingsController::class, 'index'])->name('settings.freeradius');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
