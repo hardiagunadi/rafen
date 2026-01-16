@@ -90,7 +90,8 @@ class ProfileGroupExporter
     private function pppProfileAttributes(ProfileGroup $group, ?string $poolName): array
     {
         $attributes = [
-            'remote-address' => $this->resolvePoolAssignment($group, $poolName),
+            'local-address' => $this->resolveLocalAddress($group),
+            'remote-address' => $this->resolvePppRemoteAddress($group, $poolName),
         ];
 
         $dns = trim((string) $group->dns_servers);
@@ -143,6 +144,63 @@ class ProfileGroupExporter
         }
 
         return 'none';
+    }
+
+    private function resolveLocalAddress(ProfileGroup $group): string
+    {
+        $localAddress = trim((string) $group->ip_address);
+
+        if ($localAddress === '') {
+            throw new RuntimeException('IP lokal belum diisi.');
+        }
+
+        return $localAddress;
+    }
+
+    private function resolvePppRemoteAddress(ProfileGroup $group, ?string $poolName): string
+    {
+        if ($group->ip_pool_mode === 'group_only') {
+            if (! $poolName) {
+                throw new RuntimeException('Nama pool Mikrotik belum diisi.');
+            }
+
+            return $poolName;
+        }
+
+        return $this->resolveSqlRemoteAddress($group);
+    }
+
+    private function resolveSqlRemoteAddress(ProfileGroup $group): string
+    {
+        [$rangeStart, $rangeEnd] = $this->resolveSqlPoolRange($group);
+
+        if (! $rangeEnd) {
+            throw new RuntimeException('IP terakhir belum diisi.');
+        }
+
+        if ($rangeStart && $rangeStart !== $rangeEnd) {
+            return $rangeStart.'-'.$rangeEnd;
+        }
+
+        return $rangeEnd;
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function resolveSqlPoolRange(ProfileGroup $group): array
+    {
+        $rangeStart = trim((string) $group->range_start);
+        $rangeEnd = trim((string) $group->range_end);
+
+        if ($rangeStart !== '' || $rangeEnd !== '') {
+            return [$rangeStart !== '' ? $rangeStart : null, $rangeEnd !== '' ? $rangeEnd : null];
+        }
+
+        $hostMin = trim((string) $group->host_min);
+        $hostMax = trim((string) $group->host_max);
+
+        return [$hostMin !== '' ? $hostMin : null, $hostMax !== '' ? $hostMax : null];
     }
 
     /**

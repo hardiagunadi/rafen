@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\BulkExportProfileGroupRequest;
 use App\Http\Requests\StoreProfileGroupRequest;
 use App\Http\Requests\UpdateProfileGroupRequest;
 use App\Models\MikrotikConnection;
@@ -21,8 +22,12 @@ class ProfileGroupController extends Controller
     public function index(): View
     {
         $groups = ProfileGroup::query()->with('mikrotikConnection')->latest()->paginate(10);
+        $mikrotikConnections = MikrotikConnection::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
 
-        return view('profile_groups.index', compact('groups'));
+        return view('profile_groups.index', compact('groups', 'mikrotikConnections'));
     }
 
     /**
@@ -117,6 +122,52 @@ class ProfileGroupController extends Controller
                 $success[] = $connection->name;
             } catch (Throwable $exception) {
                 $errors[] = $connection->name.': '.$exception->getMessage();
+            }
+        }
+
+        $redirect = redirect()->route('profile-groups.index');
+
+        if (! empty($success)) {
+            $redirect = $redirect->with('status', 'Export profil group sukses: '.implode(', ', $success).'.');
+        }
+
+        if (! empty($errors)) {
+            $redirect = $redirect->with('error', 'Sebagian export gagal: '.implode(' | ', $errors));
+        }
+
+        return $redirect;
+    }
+
+    public function bulkExport(BulkExportProfileGroupRequest $request, ProfileGroupExporter $exporter): RedirectResponse
+    {
+        $groupIds = $request->input('profile_group_ids', []);
+        $connectionIds = $request->input('mikrotik_connection_ids', []);
+
+        $groups = ProfileGroup::query()
+            ->whereIn('id', $groupIds)
+            ->get();
+
+        $connections = MikrotikConnection::query()
+            ->whereIn('id', $connectionIds)
+            ->get();
+
+        if ($groups->isEmpty() || $connections->isEmpty()) {
+            return redirect()
+                ->route('profile-groups.index')
+                ->with('error', 'Data export tidak lengkap.');
+        }
+
+        $success = [];
+        $errors = [];
+
+        foreach ($groups as $group) {
+            foreach ($connections as $connection) {
+                try {
+                    $exporter->export($group, $connection);
+                    $success[] = $group->name.' -> '.$connection->name;
+                } catch (Throwable $exception) {
+                    $errors[] = $group->name.' -> '.$connection->name.': '.$exception->getMessage();
+                }
             }
         }
 
