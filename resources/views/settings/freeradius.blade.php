@@ -16,6 +16,16 @@
             </div>
         </div>
         <div class="card-body">
+            @if (session('status'))
+                <div class="alert alert-success">
+                    {{ session('status') }}
+                </div>
+            @endif
+            @if (session('error'))
+                <div class="alert alert-danger">
+                    {{ session('error') }}
+                </div>
+            @endif
             <div class="mb-2"><strong>Clients Path:</strong> {{ $clientsPath ?: '-' }}</div>
             <div class="mb-2"><strong>Status:</strong> {{ $syncStatus['message'] }}</div>
             <div class="mb-2"><strong>Terakhir Update:</strong> {{ $syncStatus['updated_at'] ?? '-' }}</div>
