@@ -469,6 +469,8 @@ check_permissions() {
     local app_group_gid
     local clients_path
     local clients_dir
+    local dir_writable=0
+    local file_writable=0
     local env_path
     local deploy_user_uid
     local app_group_owner
@@ -529,7 +531,15 @@ check_permissions() {
 
     if [ -n "$clients_path" ]; then
         clients_dir="$(dirname "$clients_path")"
-        if [ ! -d "$clients_dir" ] || [ ! -w "$clients_dir" ] || [ ! -w "$clients_path" ]; then
+        if [ -d "$clients_dir" ] && run_as_app "test -w \"$clients_dir\""; then
+            dir_writable=1
+        fi
+
+        if [ -f "$clients_path" ] && run_as_app "test -w \"$clients_path\""; then
+            file_writable=1
+        fi
+
+        if [ ! -d "$clients_dir" ] || [ "$dir_writable" -eq 0 ] || { [ -f "$clients_path" ] && [ "$file_writable" -eq 0 ]; }; then
             if [ -n "$SUDO_CMD" ]; then
                 setup_freeradius
             fi
@@ -538,12 +548,12 @@ check_permissions() {
         if [ ! -d "$clients_dir" ]; then
             echo "NOTIFIKASI: direktori ${clients_dir} belum ada untuk sync RADIUS."
             missing=1
-        elif [ ! -w "$clients_dir" ]; then
+        elif [ "$dir_writable" -eq 0 ]; then
             echo "NOTIFIKASI: direktori ${clients_dir} belum writable untuk ${APP_USER} agar sync RADIUS berjalan."
             missing=1
         fi
 
-        if [ ! -w "$clients_path" ]; then
+        if [ -f "$clients_path" ] && [ "$file_writable" -eq 0 ]; then
             echo "NOTIFIKASI: ${clients_path} belum writable untuk ${APP_USER} agar sync RADIUS berjalan."
             missing=1
         fi
