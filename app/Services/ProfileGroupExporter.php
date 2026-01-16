@@ -91,7 +91,7 @@ class ProfileGroupExporter
     {
         $attributes = [
             'local-address' => $this->resolveLocalAddress($group),
-            'remote-address' => '',
+            'remote-address' => 'none',
             'comment' => 'added by TMDRadius',
         ];
 
