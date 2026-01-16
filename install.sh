@@ -430,6 +430,7 @@ setup_freeradius() {
     local clients_path
     local clients_dir
     local needs_restart=0
+    local app_user_acl
 
     clients_path="$(read_env RADIUS_CLIENTS_PATH)"
     clients_dir="$(dirname "$clients_path")"
@@ -457,6 +458,13 @@ setup_freeradius() {
         ${SUDO_CMD} chmod 0775 "$clients_dir"
         ${SUDO_CMD} chown "$APP_USER":"$APP_GROUP" "$clients_path"
         ${SUDO_CMD} chmod 0644 "$clients_path"
+    fi
+
+    if command_exists setfacl && id "$APP_USER" >/dev/null 2>&1; then
+        app_user_acl="$APP_USER:rwx"
+        ${SUDO_CMD} setfacl -m "u:${app_user_acl}" /etc/freeradius || true
+        ${SUDO_CMD} setfacl -m "u:${app_user_acl}" "$clients_dir" || true
+        ${SUDO_CMD} setfacl -m "u:${APP_USER}:rw" "$clients_path" || true
     fi
 
     if [ ! -f /etc/sudoers.d/rafen-freeradius ]; then
