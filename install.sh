@@ -118,6 +118,18 @@ enable_service_if_present() {
     fi
 }
 
+restart_service_if_present() {
+    local unit="$1"
+
+    if service_unit_exists "$unit"; then
+        if [ -n "$SUDO_CMD" ]; then
+            ${SUDO_CMD} systemctl restart "$unit"
+        else
+            systemctl restart "$unit"
+        fi
+    fi
+}
+
 enable_timer_if_present() {
     local unit="$1"
 
@@ -417,9 +429,13 @@ verify_database_access() {
 setup_freeradius() {
     local clients_path
     local clients_dir
+    local needs_restart=0
 
     clients_path="$(read_env RADIUS_CLIENTS_PATH)"
     clients_dir="$(dirname "$clients_path")"
+    if [ -d /etc/freeradius ] && [ -n "$SUDO_CMD" ]; then
+        ${SUDO_CMD} chmod g+rx /etc/freeradius || true
+    fi
     ${SUDO_CMD} install -d -m 0755 "$clients_dir"
     if [ ! -f "$clients_path" ]; then
         ${SUDO_CMD} touch "$clients_path"
@@ -427,7 +443,10 @@ setup_freeradius() {
 
     if getent group freerad >/dev/null 2>&1; then
         if id "$APP_USER" >/dev/null 2>&1; then
-            ${SUDO_CMD} usermod -a -G freerad "$APP_USER"
+            if ! id -nG "$APP_USER" | grep -qw freerad; then
+                ${SUDO_CMD} usermod -a -G freerad "$APP_USER"
+                needs_restart=1
+            fi
         fi
         ${SUDO_CMD} chown "$APP_USER":freerad "$clients_dir"
         ${SUDO_CMD} chmod 0775 "$clients_dir"
@@ -446,6 +465,11 @@ Defaults:www-data !requiretty
 www-data ALL=NOPASSWD:/bin/systemctl reload freeradius,/bin/systemctl restart freeradius
 EOF
         ${SUDO_CMD} chmod 0440 /etc/sudoers.d/rafen-freeradius
+    fi
+
+    if [ "$needs_restart" -eq 1 ]; then
+        restart_service_if_present "php8.4-fpm.service"
+        restart_service_if_present "apache2.service"
     fi
 }
 
@@ -542,7 +566,7 @@ check_permissions() {
             file_writable=1
         fi
 
-        if [ ! -d "$clients_dir" ] || [ "$dir_writable" -eq 0 ] || { [ -f "$clients_path" ] && [ "$file_writable" -eq 0 ]; }; then
+        if { [ -n "$SUDO_CMD" ] && ! run_root "test -d \"$clients_dir\""; } || [ ! -d "$clients_dir" ] || [ "$dir_writable" -eq 0 ] || { [ -f "$clients_path" ] && [ "$file_writable" -eq 0 ]; }; then
             if [ -n "$SUDO_CMD" ]; then
                 setup_freeradius
             fi
