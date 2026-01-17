@@ -2,6 +2,7 @@
 
 return [
     'host' => env('OVPN_HOST', ''),
+    'server_ip' => env('OVPN_SERVER_IP', '10.8.0.1'),
     'port' => env('OVPN_PORT', '1194'),
     'proto' => env('OVPN_PROTO', 'udp'),
     'username' => env('OVPN_USERNAME', ''),
