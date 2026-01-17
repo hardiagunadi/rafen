@@ -92,7 +92,8 @@ cert server.crt
 key server.key
 cipher BF-CBC
 auth SHA1
-data-ciphers BF-CBC:AES-256-CBC:AES-128-CBC
+data-ciphers AES-256-CBC:AES-128-CBC
+data-ciphers-fallback BF-CBC
 verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/checkpsw.sh via-file
