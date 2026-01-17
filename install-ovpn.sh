@@ -90,10 +90,10 @@ dh dh.pem
 ca ca.crt
 cert server.crt
 key server.key
-cipher AES-128-CBC
+cipher AES-256-CBC
 auth SHA1
 data-ciphers AES-256-CBC:AES-128-CBC
-data-ciphers-fallback AES-128-CBC
+data-ciphers-fallback AES-256-CBC
 verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/checkpsw.sh via-file
@@ -146,7 +146,7 @@ nobind
 persist-key
 persist-tun
 remote-cert-tls server
-cipher AES-128-CBC
+cipher AES-256-CBC
 auth SHA1
 verb 3
 

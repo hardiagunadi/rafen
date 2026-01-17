@@ -148,7 +148,7 @@
                                 '/routing table remove [find name="'.$ovpnName.'"]',
                                 '/routing rule remove [find comment="'.$routeComment.'"]',
                                 '/ip route remove [find comment="'.$routeComment.'"]',
-                                '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes128-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
+                                '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes256-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
                             ];
                             if ($routeDst !== '') {
                                 $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
