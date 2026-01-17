@@ -139,7 +139,7 @@
                             $ovpnPass = $client->password ?: '<password>';
                             $ovpnName = 'ovpn-'.$client->common_name;
                             $routeDst = $ovpn['route_dst'];
-                            $routeComment = 'static route '.$ovpnName;
+                            $routeComment = 'added by TMDRadius '.$ovpnName;
                             $scriptLines = [
                                 '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
                                 '/interface sstp-client remove [find name="'.$ovpnName.'"]',
@@ -153,7 +153,7 @@
                             if ($routeDst !== '') {
                                 $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
                                 $scriptLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
-                                $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                                $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" distance=2 comment="'.$routeComment.'"';
                             }
                             $scriptPayload = implode(';', $scriptLines).';';
                         @endphp
