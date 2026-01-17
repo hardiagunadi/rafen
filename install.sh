@@ -958,6 +958,7 @@ setup_app() {
 
     if [ -d /var/www/.npm ]; then
         ${SUDO_CMD} chown -R "$APP_USER":"$APP_GROUP" /var/www/.npm
+        ${SUDO_CMD} chown -R 33:33 "/var/www/.npm"
     fi
 
     local app_key
