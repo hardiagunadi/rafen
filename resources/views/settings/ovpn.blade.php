@@ -131,6 +131,32 @@
                     </thead>
                     <tbody>
                     @forelse($clients as $client)
+                        @php
+                            $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
+                            $ovpnPort = $ovpn['port'] !== '' ? $ovpn['port'] : '1194';
+                            $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'udp';
+                            $ovpnUser = $client->username ?: '<username>';
+                            $ovpnPass = $client->password ?: '<password>';
+                            $ovpnName = 'ovpn-'.$client->common_name;
+                            $routeDst = $ovpn['route_dst'];
+                            $routeComment = 'static route '.$ovpnName;
+                            $scriptLines = [
+                                '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
+                                '/interface sstp-client remove [find name="'.$ovpnName.'"]',
+                                '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
+                                '/interface pptp-client remove [find name="'.$ovpnName.'"]',
+                                '/routing table remove [find name="'.$ovpnName.'"]',
+                                '/routing rule remove [find comment="'.$routeComment.'"]',
+                                '/ip route remove [find comment="'.$routeComment.'"]',
+                                '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
+                            ];
+                            if ($routeDst !== '') {
+                                $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
+                                $scriptLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                                $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                            }
+                            $scriptPayload = implode(';', $scriptLines).';';
+                        @endphp
                         <tr>
                             <td>{{ $client->mikrotikConnection?->name ?? '-' }}</td>
                             <td>{{ $client->name }}</td>
@@ -148,7 +174,7 @@
                                 <button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#ovpn-edit-{{ $client->id }}">
                                     Edit
                                 </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary ovpn-script-btn" data-toggle="modal" data-target="#ovpn-script-modal" data-script="{{ $scriptPayload }}">
+                                <button type="button" class="btn btn-sm btn-outline-secondary ovpn-script-btn" data-toggle="modal" data-target="#ovpn-script-modal" data-script='@json($scriptPayload)'>
                                     Script Mikrotik
                                 </button>
                                 <form action="{{ route('settings.ovpn.clients.destroy', $client) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus client ini?');">
@@ -198,32 +224,6 @@
                                 </form>
                             </td>
                         </tr>
-                        @php
-                            $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
-                            $ovpnPort = $ovpn['port'] !== '' ? $ovpn['port'] : '1194';
-                            $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'udp';
-                            $ovpnUser = $client->username ?: '<username>';
-                            $ovpnPass = $client->password ?: '<password>';
-                            $ovpnName = 'ovpn-'.$client->common_name;
-                            $routeDst = $ovpn['route_dst'];
-                            $routeComment = 'static route '.$ovpnName;
-                            $scriptLines = [
-                                '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
-                                '/interface sstp-client remove [find name="'.$ovpnName.'"]',
-                                '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
-                                '/interface pptp-client remove [find name="'.$ovpnName.'"]',
-                                '/routing table remove [find name="'.$ovpnName.'"]',
-                                '/routing rule remove [find comment="'.$routeComment.'"]',
-                                '/ip route remove [find comment="'.$routeComment.'"]',
-                                '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
-                            ];
-                            if ($routeDst !== '') {
-                                $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
-                                $scriptLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
-                                $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" comment="'.$routeComment.'"';
-                            }
-                            $scriptPayload = implode(';', $scriptLines).';';
-                        @endphp
                     @empty
                         <tr><td colspan="9" class="text-center p-4">Belum ada client OpenVPN.</td></tr>
                     @endforelse
@@ -262,7 +262,8 @@
             document.querySelectorAll('.ovpn-script-btn').forEach(button => {
                 button.addEventListener('click', () => {
                     if (scriptText) {
-                        scriptText.value = button.dataset.script || '';
+                        const payload = button.dataset.script || '""';
+                        scriptText.value = JSON.parse(payload);
                     }
                 });
             });
