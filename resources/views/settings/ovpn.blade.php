@@ -148,7 +148,7 @@
                                 <button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#ovpn-edit-{{ $client->id }}">
                                     Edit
                                 </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" data-toggle="collapse" data-target="#ovpn-script-{{ $client->id }}">
+                                <button type="button" class="btn btn-sm btn-outline-secondary ovpn-script-btn" data-toggle="modal" data-target="#ovpn-script-modal" data-script="{{ $scriptPayload }}">
                                     Script Mikrotik
                                 </button>
                                 <form action="{{ route('settings.ovpn.clients.destroy', $client) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus client ini?');">
@@ -198,43 +198,32 @@
                                 </form>
                             </td>
                         </tr>
-                        <tr class="collapse" id="ovpn-script-{{ $client->id }}">
-                            <td colspan="9">
-                                @php
-                                    $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
-                                    $ovpnPort = $ovpn['port'] !== '' ? $ovpn['port'] : '1194';
-                                    $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'udp';
-                                    $ovpnUser = $client->username ?: '<username>';
-                                    $ovpnPass = $client->password ?: '<password>';
-                                    $ovpnName = 'ovpn-'.$client->common_name;
-                                    $scriptId = 'ovpn-script-'.$client->id;
-                                    $routeDst = $ovpn['route_dst'];
-                                    $routeComment = 'static route '.$ovpnName;
-                                    $scriptLines = [
-                                        '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
-                                        '/interface sstp-client remove [find name="'.$ovpnName.'"]',
-                                        '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
-                                        '/interface pptp-client remove [find name="'.$ovpnName.'"]',
-                                        '/routing table remove [find name="'.$ovpnName.'"]',
-                                        '/routing rule remove [find comment="'.$routeComment.'"]',
-                                        '/ip route remove [find comment="'.$routeComment.'"]',
-                                        '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
-                                    ];
-                                    if ($routeDst !== '') {
-                                        $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
-                                        $scriptLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
-                                        $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" comment="'.$routeComment.'"';
-                                    }
-                                    $scriptPayload = implode(';', $scriptLines).';';
-                                @endphp
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <div class="text-muted">Salin perintah berikut ke Mikrotik.</div>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary copy-ovpn-script" data-target="{{ $scriptId }}">Copy Script</button>
-                                </div>
-                                <pre class="mb-0" id="{{ $scriptId }}">{{ $scriptPayload }}</pre>
-                                <div class="text-muted mt-2">Jika server membutuhkan sertifikat, import cert di Mikrotik lalu tambahkan parameter <code>certificate=</code>.</div>
-                            </td>
-                        </tr>
+                        @php
+                            $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
+                            $ovpnPort = $ovpn['port'] !== '' ? $ovpn['port'] : '1194';
+                            $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'udp';
+                            $ovpnUser = $client->username ?: '<username>';
+                            $ovpnPass = $client->password ?: '<password>';
+                            $ovpnName = 'ovpn-'.$client->common_name;
+                            $routeDst = $ovpn['route_dst'];
+                            $routeComment = 'static route '.$ovpnName;
+                            $scriptLines = [
+                                '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
+                                '/interface sstp-client remove [find name="'.$ovpnName.'"]',
+                                '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
+                                '/interface pptp-client remove [find name="'.$ovpnName.'"]',
+                                '/routing table remove [find name="'.$ovpnName.'"]',
+                                '/routing rule remove [find comment="'.$routeComment.'"]',
+                                '/ip route remove [find comment="'.$routeComment.'"]',
+                                '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
+                            ];
+                            if ($routeDst !== '') {
+                                $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
+                                $scriptLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                                $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                            }
+                            $scriptPayload = implode(';', $scriptLines).';';
+                        @endphp
                     @empty
                         <tr><td colspan="9" class="text-center p-4">Belum ada client OpenVPN.</td></tr>
                     @endforelse
@@ -244,27 +233,53 @@
         </div>
     </div>
 
-    <script>
-        document.querySelectorAll('.copy-ovpn-script').forEach(button => {
-            button.addEventListener('click', () => {
-                const targetId = button.dataset.target;
-                const node = targetId ? document.getElementById(targetId) : null;
-                if (! node) {
-                    return;
-                }
+    <div class="modal fade" id="ovpn-script-modal" tabindex="-1" aria-labelledby="ovpn-script-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="ovpn-script-modal-label">Script Mikrotik</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted">Salin perintah berikut ke Mikrotik.</div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="copy-ovpn-script">Copy Script</button>
+                    </div>
+                    <textarea class="form-control" rows="6" id="ovpn-script-text" readonly></textarea>
+                    <div class="text-muted mt-2">Jika server membutuhkan sertifikat, import cert di Mikrotik lalu tambahkan parameter <code>certificate=</code>.</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                const text = node.textContent || '';
+    <script>
+        (function () {
+            const scriptText = document.getElementById('ovpn-script-text');
+            const copyButton = document.getElementById('copy-ovpn-script');
+
+            document.querySelectorAll('.ovpn-script-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (scriptText) {
+                        scriptText.value = button.dataset.script || '';
+                    }
+                });
+            });
+
+            if (! copyButton || ! scriptText) {
+                return;
+            }
+
+            copyButton.addEventListener('click', () => {
+                scriptText.focus();
+                scriptText.select();
                 if (navigator.clipboard && window.isSecureContext) {
-                    navigator.clipboard.writeText(text);
+                    navigator.clipboard.writeText(scriptText.value);
                 } else {
-                    const textarea = document.createElement('textarea');
-                    textarea.value = text;
-                    document.body.appendChild(textarea);
-                    textarea.select();
                     document.execCommand('copy');
-                    document.body.removeChild(textarea);
                 }
             });
-        });
+        })();
     </script>
 @endsection
