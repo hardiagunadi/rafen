@@ -14,6 +14,10 @@ CLIENT_DIR="/etc/openvpn/client-configs"
 CCD_DIR="/etc/openvpn/ccd"
 CCD_OWNER="${CCD_OWNER:-www-data}"
 CCD_GROUP="${CCD_GROUP:-www-data}"
+AUTH_FILE="/etc/openvpn/ovpn-users"
+AUTH_OWNER="${OVPN_AUTH_OWNER:-www-data}"
+AUTH_GROUP="${OVPN_AUTH_GROUP:-www-data}"
+AUTH_SCRIPT="/etc/openvpn/checkpsw.sh"
 config_only=0
 
 if [ "${1:-}" = "--config-only" ]; then
@@ -131,6 +135,44 @@ setup_ccd() {
     chmod 0775 "$CCD_DIR"
 }
 
+write_auth_files() {
+    mkdir -p "/etc/openvpn"
+    if [ ! -f "$AUTH_FILE" ]; then
+        touch "$AUTH_FILE"
+    fi
+
+    cat > "$AUTH_SCRIPT" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+PASSFILE="/etc/openvpn/ovpn-users"
+CRED_FILE="${1:-}"
+
+if [ -z "$CRED_FILE" ] || [ ! -f "$CRED_FILE" ]; then
+    exit 1
+fi
+
+if [ ! -r "$PASSFILE" ]; then
+    exit 1
+fi
+
+USERNAME="$(sed -n '1p' "$CRED_FILE" | tr -d '\r')"
+PASSWORD="$(sed -n '2p' "$CRED_FILE" | tr -d '\r')"
+
+if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+    exit 1
+fi
+
+grep -Fxq "${USERNAME} ${PASSWORD}" "$PASSFILE"
+EOF
+
+    chown root:root "$AUTH_SCRIPT"
+    chmod 0755 "$AUTH_SCRIPT"
+
+    chown "$AUTH_OWNER":"$AUTH_GROUP" "$AUTH_FILE"
+    chmod 0644 "$AUTH_FILE"
+}
+
 write_client_config() {
     if [ "$config_only" -eq 1 ]; then
         return
@@ -173,6 +215,7 @@ main() {
     install_server_files
     write_server_config
     setup_ccd
+    write_auth_files
     enable_ip_forwarding
     setup_nat
     write_client_config
