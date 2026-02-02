@@ -5,15 +5,39 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class InvoiceController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $invoices = Invoice::query()->with(['pppUser.profile', 'owner'])->latest()->paginate(15);
+        $user = $request->user();
+
+        $query = Invoice::query()->with(['pppUser.profile', 'owner']);
+
+        // Apply tenant data isolation
+        $query->accessibleBy($user);
+
+        $invoices = $query->latest()->paginate(15);
 
         return view('invoices.index', compact('invoices'));
+    }
+
+    public function show(Invoice $invoice): View
+    {
+        $user = auth()->user();
+
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->id) {
+            abort(403);
+        }
+
+        $invoice->load(['pppUser.profile', 'owner', 'payment']);
+
+        $bankAccounts = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
+        $settings = $invoice->owner?->getSettings();
+
+        return view('invoices.show', compact('invoice', 'bankAccounts', 'settings'));
     }
 
     public function pay(Invoice $invoice): RedirectResponse

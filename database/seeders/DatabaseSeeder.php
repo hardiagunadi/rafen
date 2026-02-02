@@ -23,7 +23,11 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Administrator',
                 'password' => 'password',
                 'role' => 'administrator',
+                'is_super_admin' => true,
             ],
         );
+
+        // Run subscription seeder
+        $this->call(SubscriptionSeeder::class);
     }
 }

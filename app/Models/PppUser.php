@@ -82,4 +82,65 @@ class PppUser extends Model
     {
         return $this->hasMany(Invoice::class);
     }
+
+    /**
+     * Scope for tenant data isolation
+     */
+    public function scopeAccessibleBy($query, User $user)
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+        return $query->where('owner_id', $user->id);
+    }
+
+    /**
+     * Hide sensitive credentials from non-super admins
+     */
+    public function getHiddenCredentialsAttribute(): array
+    {
+        $user = auth()->user();
+
+        if ($user && $user->canViewPppCredentials()) {
+            return [
+                'username' => $this->username,
+                'ppp_password' => $this->ppp_password,
+                'password_clientarea' => $this->password_clientarea,
+            ];
+        }
+
+        return [
+            'username' => $this->username,
+            'ppp_password' => '********',
+            'password_clientarea' => '********',
+        ];
+    }
+
+    /**
+     * Get masked password for display
+     */
+    public function getMaskedPppPasswordAttribute(): string
+    {
+        $user = auth()->user();
+
+        if ($user && $user->canViewPppCredentials()) {
+            return $this->ppp_password ?? '';
+        }
+
+        return '********';
+    }
+
+    /**
+     * Get masked client area password for display
+     */
+    public function getMaskedClientareaPasswordAttribute(): string
+    {
+        $user = auth()->user();
+
+        if ($user && $user->canViewPppCredentials()) {
+            return $this->password_clientarea ?? '';
+        }
+
+        return '********';
+    }
 }
