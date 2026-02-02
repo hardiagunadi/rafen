@@ -26,7 +26,10 @@ class MikrotikConnectionController extends Controller
      */
     public function index(): View
     {
+        $user = auth()->user();
+
         $connections = MikrotikConnection::query()
+            ->accessibleBy($user)
             ->withCount('radiusAccounts')
             ->latest()
             ->paginate(10);
@@ -48,6 +51,7 @@ class MikrotikConnectionController extends Controller
     public function store(StoreMikrotikConnectionRequest $request): RedirectResponse
     {
         $data = $request->validated();
+        $data['owner_id'] = auth()->id();
         $data['use_ssl'] = $request->boolean('use_ssl');
         $data['is_active'] = $request->boolean('is_active', true);
         $data['username'] = $data['username'] ?: $this->generateApiUsername();
@@ -75,6 +79,8 @@ class MikrotikConnectionController extends Controller
      */
     public function edit(MikrotikConnection $mikrotikConnection): View
     {
+        $this->authorizeAccess($mikrotikConnection);
+
         return view('mikrotik_connections.edit', compact('mikrotikConnection'));
     }
 
@@ -83,6 +89,8 @@ class MikrotikConnectionController extends Controller
      */
     public function update(UpdateMikrotikConnectionRequest $request, MikrotikConnection $mikrotikConnection): RedirectResponse
     {
+        $this->authorizeAccess($mikrotikConnection);
+
         $data = $request->validated();
         $data['use_ssl'] = $request->boolean('use_ssl', $mikrotikConnection->use_ssl);
         $data['is_active'] = $request->boolean('is_active', $mikrotikConnection->is_active);
@@ -101,6 +109,8 @@ class MikrotikConnectionController extends Controller
      */
     public function destroy(MikrotikConnection $mikrotikConnection): RedirectResponse
     {
+        $this->authorizeAccess($mikrotikConnection);
+
         $mikrotikConnection->delete();
 
         return $this->syncAndRedirect('Koneksi Mikrotik dihapus.');
@@ -154,5 +164,14 @@ class MikrotikConnectionController extends Controller
     private function generateApiSecret(): string
     {
         return Str::password(10);
+    }
+
+    private function authorizeAccess(MikrotikConnection $connection): void
+    {
+        $user = auth()->user();
+
+        if (!$user->isSuperAdmin() && $connection->owner_id !== $user->id) {
+            abort(403, 'Anda tidak memiliki akses ke koneksi ini.');
+        }
     }
 }

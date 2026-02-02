@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MikrotikConnection extends Model
@@ -15,6 +16,7 @@ class MikrotikConnection extends Model
      * @var array<int, string>
      */
     protected $fillable = [
+        'owner_id',
         'name',
         'host',
         'api_port',
@@ -62,5 +64,23 @@ class MikrotikConnection extends Model
     public function radiusAccounts(): HasMany
     {
         return $this->hasMany(RadiusAccount::class);
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function scopeForOwner($query, $userId)
+    {
+        return $query->where('owner_id', $userId);
+    }
+
+    public function scopeAccessibleBy($query, User $user)
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+        return $query->where('owner_id', $user->id);
     }
 }

@@ -24,10 +24,14 @@ class PppUserController extends Controller
     {
         $perPage = (int) $request->input('per_page', 10);
         $search = $request->input('search');
+        $currentUser = $request->user();
 
         $query = PppUser::query()->with(['owner', 'profileGroup', 'profile', 'invoices' => function ($q) {
             $q->latest();
         }]);
+
+        // Apply tenant data isolation
+        $query->accessibleBy($currentUser);
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -45,10 +49,10 @@ class PppUserController extends Controller
 
         $now = now();
         $stats = [
-            'registrasi_bulan_ini' => PppUser::query()->whereMonth('created_at', $now->month)->whereYear('created_at', $now->year)->count(),
-            'renewal_bulan_ini' => PppUser::query()->whereMonth('updated_at', $now->month)->whereYear('updated_at', $now->year)->count(),
-            'pelanggan_isolir' => PppUser::query()->where('status_akun', 'isolir')->count(),
-            'akun_disable' => PppUser::query()->where('status_akun', 'disable')->count(),
+            'registrasi_bulan_ini' => PppUser::query()->accessibleBy($currentUser)->whereMonth('created_at', $now->month)->whereYear('created_at', $now->year)->count(),
+            'renewal_bulan_ini' => PppUser::query()->accessibleBy($currentUser)->whereMonth('updated_at', $now->month)->whereYear('updated_at', $now->year)->count(),
+            'pelanggan_isolir' => PppUser::query()->accessibleBy($currentUser)->where('status_akun', 'isolir')->count(),
+            'akun_disable' => PppUser::query()->accessibleBy($currentUser)->where('status_akun', 'disable')->count(),
         ];
 
         return view('ppp_users.index', compact('users', 'stats', 'perPage', 'search'));

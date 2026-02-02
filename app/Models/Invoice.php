@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Invoice extends Model
 {
@@ -26,6 +27,11 @@ class Invoice extends Model
         'promo_applied',
         'due_date',
         'status',
+        'payment_method',
+        'payment_channel',
+        'payment_reference',
+        'paid_at',
+        'payment_id',
     ];
 
     protected function casts(): array
@@ -33,6 +39,7 @@ class Invoice extends Model
         return [
             'promo_applied' => 'boolean',
             'due_date' => 'date',
+            'paid_at' => 'datetime',
         ];
     }
 
@@ -49,5 +56,60 @@ class Invoice extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class);
+    }
+
+    public function payments(): HasOne
+    {
+        return $this->hasOne(Payment::class);
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->status === 'paid';
+    }
+
+    public function isUnpaid(): bool
+    {
+        return $this->status === 'unpaid';
+    }
+
+    public function isOverdue(): bool
+    {
+        return $this->isUnpaid() && $this->due_date && $this->due_date->isPast();
+    }
+
+    public function scopeUnpaid($query)
+    {
+        return $query->where('status', 'unpaid');
+    }
+
+    public function scopePaid($query)
+    {
+        return $query->where('status', 'paid');
+    }
+
+    public function scopeOverdue($query)
+    {
+        return $query->where('status', 'unpaid')
+            ->whereNotNull('due_date')
+            ->where('due_date', '<', now());
+    }
+
+    public function scopeAccessibleBy($query, User $user)
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+        return $query->where('owner_id', $user->id);
+    }
+
+    public function getFormattedTotalAttribute(): string
+    {
+        return 'Rp ' . number_format($this->total, 0, ',', '.');
     }
 }

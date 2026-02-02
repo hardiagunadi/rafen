@@ -282,6 +282,12 @@
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a href="{{ route('tenant-settings.index') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Pengaturan Bisnis</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="{{ route('settings.freeradius') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>FreeRADIUS</p>
@@ -295,6 +301,62 @@
                             </li>
                         </ul>
                     </li>
+                    <li class="nav-item has-treeview">
+                        <a href="#" class="nav-link">
+                            <i class="nav-icon fas fa-credit-card"></i>
+                            <p>
+                                Langganan
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('subscription.index') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Status Langganan</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('subscription.plans') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Paket Tersedia</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('subscription.history') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Riwayat Pembayaran</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    @if(auth()->user()->isSuperAdmin())
+                    <li class="nav-header">SUPER ADMIN</li>
+                    <li class="nav-item">
+                        <a href="{{ route('super-admin.dashboard') }}" class="nav-link">
+                            <i class="nav-icon fas fa-crown"></i>
+                            <p>Admin Dashboard</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ route('super-admin.tenants') }}" class="nav-link">
+                            <i class="nav-icon fas fa-building"></i>
+                            <p>Kelola Tenant</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ route('super-admin.subscription-plans.index') }}" class="nav-link">
+                            <i class="nav-icon fas fa-tags"></i>
+                            <p>Paket Langganan</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ route('super-admin.reports.revenue') }}" class="nav-link">
+                            <i class="nav-icon fas fa-chart-line"></i>
+                            <p>Laporan Pendapatan</p>
+                        </a>
+                    </li>
+                    @endif
                     <li class="nav-item has-treeview">
                         <a href="#" class="nav-link">
                             <i class="nav-icon fas fa-box"></i>
