@@ -34,9 +34,8 @@ proto tcp-server        # WAJIB tcp-server — bukan udp
 dev tun
 ...
 cipher AES-256-CBC
+data-ciphers AES-256-CBC
 auth SHA1
-data-ciphers AES-256-CBC:AES-128-CBC
-data-ciphers-fallback AES-256-CBC
 verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/checkpsw.sh via-file
@@ -45,6 +44,18 @@ script-security 2
 # TIDAK ada push "dhcp-option DNS"  — menyebabkan poll error di Mikrotik
 verb 3
 ```
+
+### Kenapa `data-ciphers` hanya `AES-256-CBC` saja
+
+OpenVPN 2.5+/2.6+ menggunakan **NCP (Negotiable Cipher Parameters)** — server akan menawarkan
+semua cipher di `data-ciphers` ke client. Mikrotik ROS v6/v7 tidak support cipher modern
+seperti `AES-256-GCM` atau format list NCP yang panjang, sehingga muncul error
+`unsupported cipher AES-256-CBC` (paradoks — nama cipher benar tapi NCP list-nya ditolak).
+
+Solusi: isi `data-ciphers` hanya satu entri `AES-256-CBC` agar NCP hanya menawarkan
+satu pilihan yang pasti didukung Mikrotik.
+
+> **Catatan**: `ncp-disable` sudah **dihapus di OpenVPN 2.6** dan tidak bisa digunakan.
 
 ### Kenapa TIDAK boleh ada `push "redirect-gateway"` dan `push "dhcp-option DNS"`
 
@@ -128,6 +139,11 @@ sudo systemctl restart openvpn.service
 - **Penyebab**: Port 1194 TCP belum terbuka di firewall VPS, atau server belum di-restart setelah config diubah
 - **Cek**: `ss -tlnp | grep 1194` — harus ada output (bukan kosong)
 - **Cek**: `sudo systemctl status openvpn-server@server.service`
+
+### Mikrotik log: `unsupported cipher AES-256-CBC`
+- **Penyebab**: OpenVPN 2.5+/2.6+ menawarkan beberapa cipher via NCP, Mikrotik tidak bisa memilih
+- **Solusi**: Pastikan `server.conf` menggunakan `data-ciphers AES-256-CBC` (satu entri saja), lalu jalankan `--config-only` dan restart
+- **Catatan**: `ncp-disable` sudah dihapus di OpenVPN 2.6, tidak bisa digunakan
 
 ### Auth gagal (username/password salah)
 - Cek file `/etc/openvpn/ovpn-users` di VPS — format: `username password` per baris

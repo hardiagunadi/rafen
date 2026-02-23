@@ -113,9 +113,11 @@ ca ca.crt
 cert server.crt
 key server.key
 cipher AES-256-CBC
+# data-ciphers hanya satu entri — agar NCP negotiation OpenVPN 2.5+/2.6+
+# hanya menawarkan AES-256-CBC ke client Mikrotik RouterOS.
+# Beberapa cipher seperti AES-256-GCM tidak didukung Mikrotik ROS v6/v7.
+data-ciphers AES-256-CBC
 auth SHA1
-data-ciphers AES-256-CBC:AES-128-CBC
-data-ciphers-fallback AES-256-CBC
 verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/checkpsw.sh via-file
