@@ -193,7 +193,7 @@
                                 ];
                             }
 
-                            // === Script ROS v6 (hanya TCP, tanpa protocol= di beberapa field) ===
+                            // === Script ROS v6 (TCP only, minimal params - biarkan Mikrotik negotiate) ===
                             $v6MultiLines = array_merge([
                                 '# ============================================',
                                 '# OVPN Client : '.$client->name,
@@ -206,7 +206,6 @@
                             ], $cleanupLines, [
                                 '',
                                 '# --- Buat interface OVPN client (ROS v6) ---',
-                                '# ROS v6: protocol selalu TCP, tidak perlu menentukan protocol=',
                                 '/interface ovpn-client add \\',
                                 '    disabled=no \\',
                                 '    connect-to="'.$ovpnHost.'" \\',
@@ -215,19 +214,17 @@
                                 '    password="'.$ovpnPass.'" \\',
                                 '    port='.$ovpnPort.' \\',
                                 '    mode=ip \\',
-                                '    auth=sha1 \\',
-                                '    cipher=aes256-cbc \\',
                                 '    comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
                             ], $routingMultiLines);
 
-                            $v6SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes256-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
+                            $v6SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" port='.$ovpnPort.' mode=ip comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
                             $v6SingleLines = array_merge($cleanupLines, [$v6SingleAdd], $routingSingleLines);
 
-                            // === Script ROS v7 (support TCP & UDP, syntax tambah protocol=) ===
+                            // === Script ROS v7 (minimal params, biarkan Mikrotik negotiate cipher/auth) ===
                             $v7MultiLines = array_merge([
                                 '# ============================================',
                                 '# OVPN Client : '.$client->name,
-                                '# RouterOS    : v7 (TCP/UDP)',
+                                '# RouterOS    : v7',
                                 '# IP VPN      : '.($client->vpn_ip ?? '-'),
                                 '# Interface   : '.$ovpnName,
                                 '# Proto       : '.strtoupper($ovpnProto),
@@ -244,15 +241,12 @@
                                 '    name="'.$ovpnName.'" \\',
                                 '    user="'.$ovpnUser.'" \\',
                                 '    password="'.$ovpnPass.'" \\',
-                                '    protocol='.$ovpnProto.' \\',
                                 '    port='.$ovpnPort.' \\',
                                 '    mode=ip \\',
-                                '    auth=sha1 \\',
-                                '    cipher=aes256-cbc \\',
                                 '    comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
                             ], $routingMultiLines);
 
-                            $v7SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes256-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
+                            $v7SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" port='.$ovpnPort.' mode=ip comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
                             $v7SingleLines = array_merge($cleanupLines, [$v7SingleAdd], $routingSingleLines);
 
                             $scriptData = [
@@ -372,11 +366,11 @@
                     <div class="d-flex align-items-center mb-3" style="gap:8px;">
                         <span class="font-weight-bold" style="white-space:nowrap;">RouterOS:</span>
                         <div class="btn-group btn-group-sm" id="ovpn-ros-version">
-                            <button type="button" class="btn btn-primary active" data-ros="v6">ROS v6 (TCP)</button>
-                            <button type="button" class="btn btn-outline-primary" data-ros="v7">ROS v7 (TCP/UDP)</button>
+                            <button type="button" class="btn btn-primary active" data-ros="v6">ROS v6</button>
+                            <button type="button" class="btn btn-outline-primary" data-ros="v7">ROS v7</button>
                         </div>
                         <small class="text-muted ml-2" id="ovpn-ros-hint">
-                            ROS v6: hanya mendukung TCP — pastikan server OpenVPN di-set <code>proto tcp-server</code>
+                            ROS v6: hanya mendukung TCP &mdash; pastikan server OpenVPN di-set <code>proto tcp-server</code>
                         </small>
                     </div>
 
@@ -693,7 +687,7 @@
 
             const rosHints = {
                 v6: 'ROS v6: hanya mendukung TCP — pastikan server OpenVPN di-set <code>proto tcp-server</code>',
-                v7: 'ROS v7: mendukung TCP &amp; UDP — sesuaikan dengan proto server OpenVPN Anda',
+                v7: 'ROS v7: cipher &amp; auth dinegosiasi otomatis oleh Mikrotik — tidak perlu diset manual',
             };
 
             function getHost() {
