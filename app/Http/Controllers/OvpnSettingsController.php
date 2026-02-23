@@ -24,9 +24,12 @@ class OvpnSettingsController extends Controller
             ->orderBy('name')
             ->get();
 
+        $configuredHost = (string) config('ovpn.host');
+        $detectedIp = $configuredHost !== '' ? null : $this->detectPublicIp();
+
         return view('settings.ovpn', [
             'ovpn' => [
-                'host' => (string) config('ovpn.host'),
+                'host' => $configuredHost,
                 'port' => (string) config('ovpn.port'),
                 'proto' => (string) config('ovpn.proto'),
                 'username' => (string) config('ovpn.username'),
@@ -37,9 +40,54 @@ class OvpnSettingsController extends Controller
                 'pool_end' => (string) config('ovpn.pool_end'),
                 'route_dst' => (string) config('ovpn.route_dst'),
             ],
+            'detectedIp' => $detectedIp,
             'clients' => $clients,
             'routers' => $routers,
         ]);
+    }
+
+    private function detectPublicIp(): ?string
+    {
+        // Coba baca dari file cache sementara agar tidak query setiap request
+        $cacheFile = storage_path('app/detected_public_ip.txt');
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 300) {
+            $cached = trim((string) file_get_contents($cacheFile));
+            if ($cached !== '') {
+                return $cached;
+            }
+        }
+
+        $ip = null;
+
+        // 1. Coba hostname -I (ambil IP pertama yang bukan loopback/private — cocok untuk VPS)
+        $output = shell_exec('curl -s --max-time 3 https://api.ipify.org 2>/dev/null');
+        if ($output !== null) {
+            $candidate = trim($output);
+            if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                $ip = $candidate;
+            }
+        }
+
+        // 2. Fallback: ambil dari hostname -I lalu filter IP publik
+        if ($ip === null) {
+            $output = shell_exec('hostname -I 2>/dev/null');
+            if ($output !== null) {
+                foreach (explode(' ', trim($output)) as $candidate) {
+                    $candidate = trim($candidate);
+                    if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                        $ip = $candidate;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Simpan ke cache
+        if ($ip !== null) {
+            @file_put_contents($cacheFile, $ip);
+        }
+
+        return $ip;
     }
 
     public function store(StoreOvpnClientRequest $request, OvpnClientSynchronizer $synchronizer): RedirectResponse

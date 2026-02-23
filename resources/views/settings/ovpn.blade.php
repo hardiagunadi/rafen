@@ -20,7 +20,18 @@
             @endif
             <div class="row">
                 <div class="col-md-6">
-                    <div class="mb-2"><strong>IP/Host:</strong> {{ $ovpn['host'] !== '' ? $ovpn['host'] : '-' }}</div>
+                    <div class="mb-2">
+                        <strong>IP/Host:</strong>
+                        @if ($ovpn['host'] !== '')
+                            <span class="text-dark">{{ $ovpn['host'] }}</span>
+                        @elseif ($detectedIp !== null)
+                            <span class="text-success font-weight-bold">{{ $detectedIp }}</span>
+                            <span class="badge badge-warning ml-1" title="IP publik terdeteksi otomatis. Set OVPN_HOST di .env untuk menetapkan permanen.">Auto-detect</span>
+                        @else
+                            <span class="text-danger">-</span>
+                            <small class="text-muted ml-1">(set OVPN_HOST di .env)</small>
+                        @endif
+                    </div>
                     <div class="mb-2"><strong>Port:</strong> {{ $ovpn['port'] !== '' ? $ovpn['port'] : '-' }}</div>
                     <div class="mb-2"><strong>Proto:</strong> {{ $ovpn['proto'] !== '' ? strtoupper($ovpn['proto']) : '-' }}</div>
                     <div class="mb-2"><strong>Network:</strong> {{ $ovpn['network'] !== '' ? $ovpn['network'] : '-' }}</div>
@@ -38,6 +49,13 @@
                     <div class="mb-2"><strong>Password:</strong> {{ $ovpn['password'] !== '' ? $ovpn['password'] : '-' }}</div>
                 </div>
             </div>
+            @if ($ovpn['host'] === '' && $detectedIp !== null)
+                <div class="alert alert-warning mb-0 mt-3 py-2">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    IP publik <strong>{{ $detectedIp }}</strong> terdeteksi otomatis dari server.
+                    Tambahkan <code>OVPN_HOST={{ $detectedIp }}</code> di file <code>.env</code> untuk menetapkannya secara permanen.
+                </div>
+            @endif
             <div class="alert alert-info mb-0 mt-3">
                 Untuk banyak Mikrotik, disarankan membuat client OpenVPN per router dan atur IP lokal
                 statis via CCD (client-config-dir) agar tiap router punya IP berbeda.
@@ -314,7 +332,7 @@
                             </div>
                             <input type="text" id="ovpn-host-override" class="form-control"
                                 placeholder="Contoh: 203.0.113.1 atau vpn.domain.com"
-                                value="{{ $ovpn['host'] }}">
+                                value="{{ $ovpn['host'] !== '' ? $ovpn['host'] : ($detectedIp ?? '') }}">
                             <div class="input-group-append">
                                 <span class="input-group-text text-muted" style="font-size:12px;" id="ovpn-host-status"></span>
                             </div>
