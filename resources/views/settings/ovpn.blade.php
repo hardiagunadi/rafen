@@ -212,12 +212,10 @@
                                 '    name="'.$ovpnName.'" \\',
                                 '    user="'.$ovpnUser.'" \\',
                                 '    password="'.$ovpnPass.'" \\',
-                                '    port='.$ovpnPort.' \\',
-                                '    mode=ip \\',
                                 '    comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
                             ], $routingMultiLines);
 
-                            $v6SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" port='.$ovpnPort.' mode=ip comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
+                            $v6SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
                             $v6SingleLines = array_merge($cleanupLines, [$v6SingleAdd], $routingSingleLines);
 
                             // === Script ROS v7 (minimal params, biarkan Mikrotik negotiate cipher/auth) ===
@@ -241,12 +239,10 @@
                                 '    name="'.$ovpnName.'" \\',
                                 '    user="'.$ovpnUser.'" \\',
                                 '    password="'.$ovpnPass.'" \\',
-                                '    port='.$ovpnPort.' \\',
-                                '    mode=ip \\',
                                 '    comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
                             ], $routingMultiLines);
 
-                            $v7SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" port='.$ovpnPort.' mode=ip comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
+                            $v7SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
                             $v7SingleLines = array_merge($cleanupLines, [$v7SingleAdd], $routingSingleLines);
 
                             $scriptData = [
