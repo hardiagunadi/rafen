@@ -140,7 +140,59 @@
                             $ovpnName = 'ovpn-'.$client->common_name;
                             $routeDst = $ovpn['route_dst'];
                             $routeComment = 'added by TMDRadius '.$ovpnName;
-                            $scriptLines = [
+
+                            // Script multi-baris (untuk Terminal Mikrotik)
+                            $scriptMultiLines = [
+                                '# ============================================',
+                                '# OVPN Client: '.$client->name,
+                                '# IP VPN     : '.($client->vpn_ip ?? '-'),
+                                '# Interface  : '.$ovpnName,
+                                '# ============================================',
+                                '',
+                                '# --- Hapus interface lama (jika ada) ---',
+                                '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
+                                '/interface sstp-client remove [find name="'.$ovpnName.'"]',
+                                '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
+                                '/interface pptp-client remove [find name="'.$ovpnName.'"]',
+                                '/routing table remove [find name="'.$ovpnName.'"]',
+                                '/routing rule remove [find comment="'.$routeComment.'"]',
+                                '/ip route remove [find comment="'.$routeComment.'"]',
+                                '',
+                                '# --- Buat interface OVPN client ---',
+                                '/interface ovpn-client add \\',
+                                '    disabled=no \\',
+                                '    connect-to="'.$ovpnHost.'" \\',
+                                '    name="'.$ovpnName.'" \\',
+                                '    user="'.$ovpnUser.'" \\',
+                                '    password="'.$ovpnPass.'" \\',
+                                '    protocol='.$ovpnProto.' \\',
+                                '    port='.$ovpnPort.' \\',
+                                '    mode=ip \\',
+                                '    auth=sha1 \\',
+                                '    cipher=aes256-cbc \\',
+                                '    comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
+                            ];
+                            if ($routeDst !== '') {
+                                $scriptMultiLines[] = '';
+                                $scriptMultiLines[] = '# --- Tambah routing ke '.$routeDst.' ---';
+                                $scriptMultiLines[] = '/routing table add name="'.$ovpnName.'" fib';
+                                $scriptMultiLines[] = '/routing rule add \\';
+                                $scriptMultiLines[] = '    dst-address="'.$routeDst.'" \\';
+                                $scriptMultiLines[] = '    action=lookup-only-in-table \\';
+                                $scriptMultiLines[] = '    table="'.$ovpnName.'" \\';
+                                $scriptMultiLines[] = '    comment="'.$routeComment.'"';
+                                $scriptMultiLines[] = '/ip route add \\';
+                                $scriptMultiLines[] = '    disabled=no \\';
+                                $scriptMultiLines[] = '    gateway="'.$ovpnName.'" \\';
+                                $scriptMultiLines[] = '    dst-address="'.$routeDst.'" \\';
+                                $scriptMultiLines[] = '    routing-table="'.$ovpnName.'" \\';
+                                $scriptMultiLines[] = '    distance=2 \\';
+                                $scriptMultiLines[] = '    comment="'.$routeComment.'"';
+                            }
+                            $scriptMultiPayload = implode("\n", $scriptMultiLines);
+
+                            // Script satu baris (untuk copy-paste cepat di terminal/scheduler)
+                            $scriptSingleLines = [
                                 '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
                                 '/interface sstp-client remove [find name="'.$ovpnName.'"]',
                                 '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
@@ -151,11 +203,17 @@
                                 '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes256-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
                             ];
                             if ($routeDst !== '') {
-                                $scriptLines[] = '/routing table add name="'.$ovpnName.'" fib';
-                                $scriptLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
-                                $scriptLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" distance=2 comment="'.$routeComment.'"';
+                                $scriptSingleLines[] = '/routing table add name="'.$ovpnName.'" fib';
+                                $scriptSingleLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
+                                $scriptSingleLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" distance=2 comment="'.$routeComment.'"';
                             }
-                            $scriptPayload = implode(';', $scriptLines).';';
+                            $scriptSinglePayload = implode(';', $scriptSingleLines).';';
+
+                            $scriptData = [
+                                'multi' => $scriptMultiPayload,
+                                'single' => $scriptSinglePayload,
+                                'name' => $client->name,
+                            ];
                         @endphp
                         <tr>
                             <td>{{ $client->mikrotikConnection?->name ?? '-' }}</td>
@@ -174,7 +232,7 @@
                                 <button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#ovpn-edit-{{ $client->id }}">
                                     Edit
                                 </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary ovpn-script-btn" data-toggle="modal" data-target="#ovpn-script-modal" data-script='@json($scriptPayload)'>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ovpn-script-btn" data-toggle="modal" data-target="#ovpn-script-modal" data-script='@json($scriptData)'>
                                     Script Mikrotik
                                 </button>
                                 <form action="{{ route('settings.ovpn.clients.destroy', $client) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus client ini?');">
@@ -234,21 +292,78 @@
     </div>
 
     <div class="modal fade" id="ovpn-script-modal" tabindex="-1" aria-labelledby="ovpn-script-modal-label" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="ovpn-script-modal-label">Script Mikrotik</h5>
+                    <div>
+                        <h5 class="modal-title" id="ovpn-script-modal-label">Script Mikrotik</h5>
+                        <small class="text-muted" id="ovpn-script-client-name"></small>
+                    </div>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
                 <div class="modal-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="text-muted">Salin perintah berikut ke Mikrotik.</div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="copy-ovpn-script">Copy Script</button>
+                    <div class="form-group mb-3">
+                        <label class="font-weight-bold mb-1" for="ovpn-host-override">
+                            <i class="fas fa-server mr-1"></i>IP / Host Server OVPN
+                        </label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text"><i class="fas fa-network-wired"></i></span>
+                            </div>
+                            <input type="text" id="ovpn-host-override" class="form-control"
+                                placeholder="Contoh: 203.0.113.1 atau vpn.domain.com"
+                                value="{{ $ovpn['host'] }}">
+                            <div class="input-group-append">
+                                <span class="input-group-text text-muted" style="font-size:12px;" id="ovpn-host-status"></span>
+                            </div>
+                        </div>
+                        <small class="text-muted">Ubah IP/Host di sini — script akan diperbarui otomatis.</small>
                     </div>
-                    <textarea class="form-control" rows="6" id="ovpn-script-text" readonly></textarea>
-                    <div class="text-muted mt-2">Jika server membutuhkan sertifikat, import cert di Mikrotik lalu tambahkan parameter <code>certificate=</code>.</div>
+
+                    <ul class="nav nav-tabs mb-3" id="ovpn-script-tabs">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#" data-tab="multi">
+                                <i class="fas fa-list-ul mr-1"></i>Script Per Baris
+                                <span class="badge badge-success ml-1" style="font-size:10px;">Mudah dibaca</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-tab="single">
+                                <i class="fas fa-terminal mr-1"></i>Script Satu Baris
+                                <span class="badge badge-secondary ml-1" style="font-size:10px;">Untuk scheduler</span>
+                            </a>
+                        </li>
+                    </ul>
+
+                    <div id="tab-multi">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-muted">Tempel di <strong>Terminal &gt; New Terminal</strong> pada Mikrotik (WinBox/SSH). Setiap baris dijalankan terpisah.</small>
+                            <button type="button" class="btn btn-sm btn-success" id="copy-ovpn-multi">
+                                <i class="fas fa-copy mr-1"></i>Copy Script
+                            </button>
+                        </div>
+                        <textarea class="form-control font-weight-normal" rows="22" id="ovpn-script-multi" readonly
+                            style="font-family: 'Courier New', monospace; font-size: 12.5px; background:#1e1e2e; color:#cdd6f4; border-radius:6px; resize:vertical;"></textarea>
+                    </div>
+
+                    <div id="tab-single" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-muted">Script satu baris dipisah titik koma <code>;</code> — cocok untuk <strong>Scheduler</strong> atau <strong>Script</strong> Mikrotik.</small>
+                            <button type="button" class="btn btn-sm btn-success" id="copy-ovpn-single">
+                                <i class="fas fa-copy mr-1"></i>Copy Script
+                            </button>
+                        </div>
+                        <textarea class="form-control" rows="6" id="ovpn-script-single" readonly
+                            style="font-family: 'Courier New', monospace; font-size: 12px; background:#1e1e2e; color:#cdd6f4; border-radius:6px; resize:vertical;"></textarea>
+                    </div>
+
+                    <div class="alert alert-info mb-0 mt-3 py-2">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Jika server membutuhkan sertifikat, import cert di Mikrotik terlebih dahulu lalu tambahkan parameter
+                        <code>certificate=&lt;nama-cert&gt;</code> pada perintah <code>ovpn-client add</code>.
+                    </div>
                 </div>
             </div>
         </div>
@@ -256,31 +371,120 @@
 
     <script>
         (function () {
-            const scriptText = document.getElementById('ovpn-script-text');
-            const copyButton = document.getElementById('copy-ovpn-script');
+            let currentData = {};
+            let activeTab = 'multi';
+            const defaultHost = @json($ovpn['host']);
 
-            document.querySelectorAll('.ovpn-script-btn').forEach(button => {
-                button.addEventListener('click', () => {
-                    if (scriptText) {
-                        const payload = button.dataset.script || '""';
-                        scriptText.value = JSON.parse(payload);
+            function getHost() {
+                const input = document.getElementById('ovpn-host-override');
+                const val = input ? input.value.trim() : '';
+                return val !== '' ? val : '<IP/Host>';
+            }
+
+            function rebuildScript() {
+                if (!currentData.multi) return;
+                const host = getHost();
+
+                // Ganti semua kemunculan connect-to="..." di multi
+                const multiEl = document.getElementById('ovpn-script-multi');
+                if (multiEl) {
+                    multiEl.value = currentData.multi.replace(
+                        /connect-to="[^"]*"/g,
+                        'connect-to="' + host + '"'
+                    );
+                }
+
+                // Ganti semua kemunculan connect-to="..." di single
+                const singleEl = document.getElementById('ovpn-script-single');
+                if (singleEl) {
+                    singleEl.value = currentData.single.replace(
+                        /connect-to="[^"]*"/g,
+                        'connect-to="' + host + '"'
+                    );
+                }
+
+                // Update status badge
+                const statusEl = document.getElementById('ovpn-host-status');
+                if (statusEl) {
+                    const inputVal = document.getElementById('ovpn-host-override').value.trim();
+                    if (inputVal !== '') {
+                        statusEl.textContent = '✓ Digunakan';
+                        statusEl.style.color = '#28a745';
+                    } else {
+                        statusEl.textContent = 'Belum diisi';
+                        statusEl.style.color = '#dc3545';
                     }
+                }
+            }
+
+            function switchTab(tab) {
+                activeTab = tab;
+                document.getElementById('tab-multi').style.display = tab === 'multi' ? '' : 'none';
+                document.getElementById('tab-single').style.display = tab === 'single' ? '' : 'none';
+                document.querySelectorAll('#ovpn-script-tabs .nav-link').forEach(function (el) {
+                    el.classList.toggle('active', el.dataset.tab === tab);
+                });
+            }
+
+            document.querySelectorAll('#ovpn-script-tabs .nav-link').forEach(function (el) {
+                el.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    switchTab(el.dataset.tab);
                 });
             });
 
-            if (! copyButton || ! scriptText) {
-                return;
+            document.querySelectorAll('.ovpn-script-btn').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    const raw = button.dataset.script || '{}';
+                    currentData = JSON.parse(raw);
+
+                    const nameEl = document.getElementById('ovpn-script-client-name');
+                    if (nameEl) nameEl.textContent = 'Client: ' + (currentData.name || '');
+
+                    // Isi dulu dari data asli, lalu terapkan host override
+                    const multiEl = document.getElementById('ovpn-script-multi');
+                    const singleEl = document.getElementById('ovpn-script-single');
+                    if (multiEl) multiEl.value = currentData.multi || '';
+                    if (singleEl) singleEl.value = currentData.single || '';
+
+                    rebuildScript();
+                    switchTab('multi');
+                });
+            });
+
+            // Live update saat user mengetik IP
+            const hostInput = document.getElementById('ovpn-host-override');
+            if (hostInput) {
+                hostInput.addEventListener('input', rebuildScript);
             }
 
-            copyButton.addEventListener('click', () => {
-                scriptText.focus();
-                scriptText.select();
+            function copyText(elementId, button) {
+                const el = document.getElementById(elementId);
+                if (!el) return;
+                el.focus();
+                el.select();
+                const text = el.value;
+                const originalText = button.innerHTML;
                 if (navigator.clipboard && window.isSecureContext) {
-                    navigator.clipboard.writeText(scriptText.value);
+                    navigator.clipboard.writeText(text).then(function () {
+                        button.innerHTML = '<i class="fas fa-check mr-1"></i>Tersalin!';
+                        button.classList.replace('btn-success', 'btn-secondary');
+                        setTimeout(function () {
+                            button.innerHTML = originalText;
+                            button.classList.replace('btn-secondary', 'btn-success');
+                        }, 2000);
+                    });
                 } else {
                     document.execCommand('copy');
+                    button.innerHTML = '<i class="fas fa-check mr-1"></i>Tersalin!';
+                    setTimeout(function () { button.innerHTML = originalText; }, 2000);
                 }
-            });
+            }
+
+            const copyMultiBtn = document.getElementById('copy-ovpn-multi');
+            const copySingleBtn = document.getElementById('copy-ovpn-single');
+            if (copyMultiBtn) copyMultiBtn.addEventListener('click', function () { copyText('ovpn-script-multi', copyMultiBtn); });
+            if (copySingleBtn) copySingleBtn.addEventListener('click', function () { copyText('ovpn-script-single', copySingleBtn); });
         })();
     </script>
 @endsection
