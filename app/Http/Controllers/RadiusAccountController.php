@@ -6,6 +6,7 @@ use App\Http\Requests\StoreRadiusAccountRequest;
 use App\Http\Requests\UpdateRadiusAccountRequest;
 use App\Models\MikrotikConnection;
 use App\Models\RadiusAccount;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
@@ -99,9 +100,13 @@ class RadiusAccountController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(RadiusAccount $radiusAccount): RedirectResponse
+    public function destroy(RadiusAccount $radiusAccount): JsonResponse|RedirectResponse
     {
         $radiusAccount->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Akun RADIUS dihapus.']);
+        }
 
         return redirect()
             ->route('radius-accounts.index')

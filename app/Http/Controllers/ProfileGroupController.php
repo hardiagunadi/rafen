@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateProfileGroupRequest;
 use App\Models\MikrotikConnection;
 use App\Models\ProfileGroup;
 use App\Services\ProfileGroupExporter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -84,24 +85,30 @@ class ProfileGroupController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(ProfileGroup $profileGroup): RedirectResponse
+    public function destroy(ProfileGroup $profileGroup): JsonResponse|RedirectResponse
     {
         $profileGroup->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Profil group dihapus.']);
+        }
 
         return redirect()->route('profile-groups.index')->with('status', 'Profil group dihapus.');
     }
 
-    public function bulkDestroy(Request $request): RedirectResponse
+    public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
             ProfileGroup::query()->whereIn('id', $ids)->delete();
         }
 
-        return redirect()->route('profile-groups.index')->with('status', 'Profil group terpilih dihapus.');
-    }
+                if ($request->wantsJson()) {
+            return response()->json(['status' => 'Profil group terpilih dihapus.']);
+        }
 
-    public function export(ProfileGroup $profileGroup, ProfileGroupExporter $exporter): RedirectResponse
+        return redirect()->route('profile-groups.index')->with('status', 'Profil group terpilih dihapus.');
+    }blic function export(ProfileGroup $profileGroup, ProfileGroupExporter $exporter): RedirectResponse
     {
         $connections = $this->resolveExportConnections($profileGroup);
         if ($connections->isEmpty()) {

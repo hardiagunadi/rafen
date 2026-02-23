@@ -31,11 +31,9 @@
                         <td>{{ $user->last_login_at?->format('Y-m-d H:i:s') ?? '-' }}</td>
                         <td class="text-right">
                             <a href="{{ route('users.edit', $user) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-                            <form action="{{ route('users.destroy', $user) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus pengguna ini?');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                data-ajax-delete="{{ route('users.destroy', $user) }}"
+                                data-confirm="Hapus pengguna ini?">Delete</button>
                         </td>
                     </tr>
                 @empty

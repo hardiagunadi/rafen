@@ -85,13 +85,11 @@
                                     <a href="{{ route('mikrotik-connections.edit', $connection) }}" class="btn btn-sm btn-info text-white mb-1">
                                         <i class="fas fa-pen"></i>
                                     </a>
-                                    <form action="{{ route('mikrotik-connections.destroy', $connection) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus koneksi ini?');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-warning text-white mb-1">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
+                                    <button type="button" class="btn btn-sm btn-warning text-white mb-1"
+                                        data-ajax-delete="{{ route('mikrotik-connections.destroy', $connection) }}"
+                                        data-confirm="Hapus koneksi ini?">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </td>
                             </tr>
                         @empty

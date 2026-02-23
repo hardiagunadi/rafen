@@ -36,13 +36,11 @@
                             <a href="{{ route('radius-accounts.edit', $account) }}" class="btn btn-sm btn-outline-primary">
                                 <i class="fas fa-edit"></i>
                             </a>
-                            <form action="{{ route('radius-accounts.destroy', $account) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus akun ini?');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                data-ajax-delete="{{ route('radius-accounts.destroy', $account) }}"
+                                data-confirm="Hapus akun ini?">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </td>
                     </tr>
                 @empty

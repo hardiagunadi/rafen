@@ -107,11 +107,15 @@ class MikrotikConnectionController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(MikrotikConnection $mikrotikConnection): RedirectResponse
+    public function destroy(MikrotikConnection $mikrotikConnection): JsonResponse|RedirectResponse
     {
         $this->authorizeAccess($mikrotikConnection);
 
         $mikrotikConnection->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Koneksi Mikrotik dihapus.']);
+        }
 
         return $this->syncAndRedirect('Koneksi Mikrotik dihapus.');
     }

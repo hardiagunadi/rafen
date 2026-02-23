@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -40,7 +41,7 @@ class InvoiceController extends Controller
         return view('invoices.show', compact('invoice', 'bankAccounts', 'settings'));
     }
 
-    public function pay(Invoice $invoice): RedirectResponse
+    public function pay(Invoice $invoice): JsonResponse|RedirectResponse
     {
         $invoice->update(['status' => 'paid']);
         if ($invoice->pppUser) {
@@ -50,16 +51,26 @@ class InvoiceController extends Controller
             ]);
         }
 
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Invoice dibayar.']);
+        }
+
         return redirect()->back()->with('status', 'Invoice dibayar.');
     }
 
-    public function renew(Invoice $invoice): RedirectResponse
+    public function renew(Invoice $invoice): JsonResponse|RedirectResponse
     {
         if ($invoice->status === 'paid') {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'Invoice sudah dibayar.'], 422);
+            }
             return redirect()->back()->with('status', 'Invoice sudah dibayar.');
         }
 
         if (! $invoice->created_at->equalTo($invoice->updated_at)) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'Layanan sudah diperpanjang untuk periode ini.'], 422);
+            }
             return redirect()->back()->with('status', 'Layanan sudah diperpanjang untuk periode ini.');
         }
 
@@ -76,16 +87,24 @@ class InvoiceController extends Controller
             ]);
         }
 
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Layanan diperpanjang, status bayar tetap BELUM BAYAR.']);
+        }
+
         return redirect()->back()->with('status', 'Layanan diperpanjang, status bayar tetap BELUM BAYAR.');
     }
 
-    public function destroy(Invoice $invoice): RedirectResponse
+    public function destroy(Invoice $invoice): JsonResponse|RedirectResponse
     {
         $pppUser = $invoice->pppUser;
         $invoice->delete();
 
         if ($pppUser && $pppUser->status_bayar !== 'sudah_bayar') {
             $pppUser->update(['status_bayar' => 'belum_bayar']);
+        }
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Invoice dihapus.']);
         }
 
         return redirect()->back()->with('status', 'Invoice dihapus.');

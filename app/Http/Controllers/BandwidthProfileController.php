@@ -6,6 +6,7 @@ use App\Http\Requests\StoreBandwidthProfileRequest;
 use App\Http\Requests\UpdateBandwidthProfileRequest;
 use App\Models\BandwidthProfile;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -74,18 +75,26 @@ class BandwidthProfileController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(BandwidthProfile $bandwidthProfile): RedirectResponse
+    public function destroy(BandwidthProfile $bandwidthProfile): JsonResponse|RedirectResponse
     {
         $bandwidthProfile->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Bandwidth profile dihapus.']);
+        }
 
         return redirect()->route('bandwidth-profiles.index')->with('status', 'Bandwidth profile dihapus.');
     }
 
-    public function bulkDestroy(Request $request): RedirectResponse
+    public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
             BandwidthProfile::query()->whereIn('id', $ids)->delete();
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['status' => 'Bandwidth profile terpilih dihapus.']);
         }
 
         return redirect()->route('bandwidth-profiles.index')->with('status', 'Bandwidth profile terpilih dihapus.');

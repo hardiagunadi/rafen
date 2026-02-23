@@ -577,6 +577,122 @@
         });
     });
 </script>
+<script>
+// ── Global AJAX helpers ────────────────────────────────────────────────────
+window.AppAjax = (function () {
+    function getCsrf() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.content : '';
+    }
+
+    function showToast(message, type) {
+        var container = document.getElementById('app-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'app-toast-container';
+            container.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;min-width:260px;';
+            document.body.appendChild(container);
+        }
+        var colors = { success: '#28a745', danger: '#dc3545', warning: '#ffc107', info: '#17a2b8' };
+        var toast = document.createElement('div');
+        toast.style.cssText = 'background:' + (colors[type] || '#333') + ';color:#fff;padding:12px 18px;border-radius:6px;margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.25);font-size:14px;';
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function () { toast.style.opacity = '0'; toast.style.transition = 'opacity .4s'; setTimeout(function () { toast.remove(); }, 400); }, 4000);
+    }
+
+    function request(method, url, body) {
+        var opts = {
+            method: method,
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': getCsrf() },
+        };
+        if (body instanceof URLSearchParams) {
+            opts.body = body;
+        } else if (body) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(body);
+        }
+        return fetch(url, opts).then(function (res) {
+            return res.json().then(function (data) {
+                if (!res.ok) return Promise.reject(data);
+                return data;
+            });
+        });
+    }
+
+    function formRequest(method, url, formData) {
+        var params = new URLSearchParams();
+        formData.forEach(function (val, key) { params.append(key, val); });
+        if (method !== 'POST') params.append('_method', method);
+        return request('POST', url, params);
+    }
+
+    // Delegated delete handler — call once after DOM ready
+    function initDeleteButtons() {
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-ajax-delete]');
+            if (!btn) return;
+            var msg = btn.dataset.confirm || 'Hapus data ini?';
+            if (!confirm(msg)) return;
+
+            var url = btn.dataset.ajaxDelete;
+            var row = btn.closest('tr');
+            btn.disabled = true;
+
+            request('DELETE', url).then(function (data) {
+                showToast(data.message || data.status || 'Data berhasil dihapus.', 'success');
+                if (row) {
+                    row.style.transition = 'opacity .3s';
+                    row.style.opacity = '0';
+                    setTimeout(function () { row.remove(); }, 300);
+                }
+            }).catch(function (err) {
+                btn.disabled = false;
+                showToast((err && (err.error || err.message)) || 'Gagal menghapus data.', 'danger');
+            });
+        });
+    }
+
+    function initPostButtons() {
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-ajax-post]');
+            if (!btn) return;
+            var msg = btn.dataset.confirm;
+            if (msg && !confirm(msg)) return;
+
+            var url = btn.dataset.ajaxPost;
+            btn.disabled = true;
+            var origText = btn.innerHTML;
+            if (btn.dataset.loadingText) btn.innerHTML = btn.dataset.loadingText;
+
+            request('POST', url).then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                showToast(data.message || data.status || 'Berhasil.', 'success');
+                if (btn.dataset.reloadRow) {
+                    var row = btn.closest('tr');
+                    if (row && data.row_html) row.outerHTML = data.row_html;
+                }
+            }).catch(function (err) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+                showToast((err && (err.error || err.message)) || 'Gagal.', 'danger');
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initDeleteButtons();
+        initPostButtons();
+    });
+    // Juga jalankan ulang saat Turbo navigasi
+    document.addEventListener('turbo:load', function () {
+        // Event delegation sudah terpasang, tidak perlu re-bind
+    });
+
+    return { request: request, formRequest: formRequest, showToast: showToast };
+})();
+</script>
 @stack('scripts')
 </body>
 </html>

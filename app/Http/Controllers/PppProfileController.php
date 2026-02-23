@@ -8,6 +8,7 @@ use App\Models\BandwidthProfile;
 use App\Models\PppProfile;
 use App\Models\ProfileGroup;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
@@ -79,18 +80,26 @@ class PppProfileController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(PppProfile $pppProfile): RedirectResponse
+    public function destroy(PppProfile $pppProfile): JsonResponse|RedirectResponse
     {
         $pppProfile->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Profil PPP dihapus.']);
+        }
 
         return redirect()->route('ppp-profiles.index')->with('status', 'Profil PPP dihapus.');
     }
 
-    public function bulkDestroy(Request $request): RedirectResponse
+    public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
             PppProfile::query()->whereIn('id', $ids)->delete();
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['status' => 'Profil PPP terpilih dihapus.']);
         }
 
         return redirect()->route('ppp-profiles.index')->with('status', 'Profil PPP terpilih dihapus.');

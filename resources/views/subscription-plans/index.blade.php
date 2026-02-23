@@ -47,22 +47,20 @@
                     </td>
                     <td class="text-right">
                         <div class="btn-group btn-group-sm">
-                            <form action="{{ route('super-admin.subscription-plans.toggle-active', $plan) }}" method="POST" class="d-inline">
-                                @csrf
-                                <button type="submit" class="btn btn-{{ $plan->is_active ? 'warning' : 'success' }}">
-                                    <i class="fas fa-{{ $plan->is_active ? 'pause' : 'play' }}"></i>
-                                </button>
-                            </form>
+                            <button type="button"
+                                class="btn btn-{{ $plan->is_active ? 'warning' : 'success' }}"
+                                data-ajax-post="{{ route('super-admin.subscription-plans.toggle-active', $plan) }}"
+                                data-loading-text='<i class="fas fa-spinner fa-spin"></i>'>
+                                <i class="fas fa-{{ $plan->is_active ? 'pause' : 'play' }}"></i>
+                            </button>
                             <a href="{{ route('super-admin.subscription-plans.edit', $plan) }}" class="btn btn-info">
                                 <i class="fas fa-edit"></i>
                             </a>
-                            <form action="{{ route('super-admin.subscription-plans.destroy', $plan) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus paket ini?')">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-danger">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </form>
+                            <button type="button" class="btn btn-danger"
+                                data-ajax-delete="{{ route('super-admin.subscription-plans.destroy', $plan) }}"
+                                data-confirm="Hapus paket ini?">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                     </td>
                 </tr>

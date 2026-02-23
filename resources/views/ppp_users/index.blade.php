@@ -149,11 +149,10 @@
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
                                     @if($invoice)
-                                        <form action="{{ route('invoices.renew', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Perpanjang layanan tanpa pembayaran?');">
-                                            @csrf
-                                            @method('PATCH')
-                                            <button type="submit" class="btn btn-primary" title="Renew (BELUM BAYAR)" @disabled(! $canRenew)><i class="fas fa-bolt"></i></button>
-                                        </form>
+                                        <button type="button" class="btn btn-primary" title="Renew (BELUM BAYAR)"
+                                            data-ajax-post="{{ route('invoices.renew', $invoice) }}"
+                                            data-confirm="Perpanjang layanan tanpa pembayaran?"
+                                            @disabled(! $canRenew)><i class="fas fa-bolt"></i></button>
                                         <a href="{{ route('invoices.index') }}#invoice-{{ $invoice->id }}" class="btn btn-success @if(! $invoice) disabled @endif" title="Print Invoice"><i class="fas fa-print"></i></a>
                                     @else
                                         <button type="button" class="btn btn-light" disabled title="Renew (BELUM BAYAR)"><i class="fas fa-bolt"></i></button>
@@ -163,20 +162,17 @@
                             </td>
                             <td class="text-right">
                                 @if($invoice)
-                                    <form action="{{ route('invoices.pay', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Bayar dan perpanjang layanan sekarang?');">
-                                        @csrf
-                                        @method('PATCH')
-                                        <button type="submit" class="btn btn-sm btn-success" title="Bayar" @disabled(! $canPay)>
-                                            <i class="fas fa-check"></i>
-                                        </button>
-                                    </form>
-                                    <form action="{{ route('invoices.destroy', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus pembayaran?');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-danger" title="Hapus Pembayaran">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
+                                    <button type="button" class="btn btn-sm btn-success" title="Bayar"
+                                        data-ajax-post="{{ route('invoices.pay', $invoice) }}"
+                                        data-confirm="Bayar dan perpanjang layanan sekarang?"
+                                        @disabled(! $canPay)>
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-danger" title="Hapus Pembayaran"
+                                        data-ajax-delete="{{ route('invoices.destroy', $invoice) }}"
+                                        data-confirm="Hapus pembayaran?">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 @else
                                     <button type="button" class="btn btn-sm btn-light" disabled title="Bayar"><i class="fas fa-check"></i></button>
                                     <button type="button" class="btn btn-sm btn-light" disabled title="Hapus Pembayaran"><i class="fas fa-trash"></i></button>
@@ -184,13 +180,11 @@
                                 <a href="{{ route('ppp-users.edit', $user) }}" class="btn btn-sm btn-warning text-white" title="Edit">
                                     <i class="fas fa-pen"></i>
                                 </a>
-                                <form action="{{ route('ppp-users.destroy', $user) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus user ini?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-danger" title="Delete">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </form>
+                                <button type="button" class="btn btn-sm btn-danger" title="Delete"
+                                    data-ajax-delete="{{ route('ppp-users.destroy', $user) }}"
+                                    data-confirm="Hapus user ini?">
+                                    <i class="fas fa-trash"></i>
+                                </button>
                             </td>
                         </tr>
                     @empty

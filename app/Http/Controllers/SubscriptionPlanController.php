@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Http\JsonResponse;
 namespace App\Http\Controllers;
 
 use App\Models\SubscriptionPlan;
@@ -75,22 +76,33 @@ class SubscriptionPlanController extends Controller
             ->with('success', 'Paket langganan berhasil diperbarui.');
     }
 
-    public function destroy(SubscriptionPlan $subscriptionPlan)
+    public function destroy(SubscriptionPlan $subscriptionPlan): JsonResponse|\Illuminate\Http\RedirectResponse
     {
         // Check if there are active subscriptions
         if ($subscriptionPlan->subscriptions()->active()->exists()) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'Tidak dapat menghapus paket yang masih memiliki langganan aktif.'], 422);
+            }
             return back()->with('error', 'Tidak dapat menghapus paket yang masih memiliki langganan aktif.');
         }
 
         $subscriptionPlan->delete();
 
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Paket langganan berhasil dihapus.']);
+        }
+
         return redirect()->route('subscription-plans.index')
             ->with('success', 'Paket langganan berhasil dihapus.');
     }
 
-    public function toggleActive(SubscriptionPlan $subscriptionPlan)
+    public function toggleActive(SubscriptionPlan $subscriptionPlan): JsonResponse|\Illuminate\Http\RedirectResponse
     {
         $subscriptionPlan->update(['is_active' => !$subscriptionPlan->is_active]);
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Status paket langganan berhasil diubah.']);
+        }
 
         return back()->with('success', 'Status paket langganan berhasil diubah.');
     }

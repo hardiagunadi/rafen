@@ -8,16 +8,7 @@
             <h4 class="mb-0">Informasi Koneksi OpenVPN</h4>
         </div>
         <div class="card-body">
-            @if (session('status'))
-                <div class="alert alert-success">
-                    {{ session('status') }}
-                </div>
-            @endif
-            @if (session('error'))
-                <div class="alert alert-danger">
-                    {{ session('error') }}
-                </div>
-            @endif
+            <div id="ovpn-alert" style="display:none;" class="alert mb-3"></div>
             <div class="row">
                 <div class="col-md-6">
                     <div class="mb-2">
@@ -67,7 +58,7 @@
         <div class="card-header">
             <h4 class="mb-0">Tambah Client OpenVPN</h4>
         </div>
-        <form action="{{ route('settings.ovpn.clients.store') }}" method="POST">
+        <form id="ovpn-store-form" action="{{ route('settings.ovpn.clients.store') }}" method="POST">
             @csrf
             <div class="card-body">
                 <div class="form-row">
@@ -120,9 +111,9 @@
                     </div>
                 </div>
             </div>
-            <div class="card-footer d-flex justify-content-between">
+            <div class="card-footer d-flex justify-content-between align-items-center">
                 <span class="text-muted">IP VPN akan di-assign otomatis jika kosong.</span>
-                <button type="submit" class="btn btn-primary">Simpan</button>
+                <button type="submit" class="btn btn-primary" id="ovpn-store-btn">Simpan</button>
             </div>
         </form>
     </div>
@@ -147,7 +138,7 @@
                         <th class="text-right">Aksi</th>
                     </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="ovpn-clients-tbody">
                     @forelse($clients as $client)
                         @php
                             $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
@@ -273,70 +264,67 @@
                                 'proto'    => $ovpnProto,
                             ];
                         @endphp
-                        <tr>
-                            <td>{{ $client->mikrotikConnection?->name ?? '-' }}</td>
-                            <td>{{ $client->name }}</td>
-                            <td>{{ $client->common_name }}</td>
-                            <td>{{ $client->vpn_ip ?? '-' }}</td>
-                            <td>{{ $client->username ?? '-' }}</td>
-                            <td>{{ $client->password ?? '-' }}</td>
-                            <td>{{ $client->is_active ? 'Aktif' : 'Nonaktif' }}</td>
-                            <td>{{ $client->last_synced_at?->format('Y-m-d H:i:s') ?? '-' }}</td>
+                        <tr id="ovpn-row-{{ $client->id }}"
+                            data-client-id="{{ $client->id }}"
+                            data-destroy-url="{{ route('settings.ovpn.clients.destroy', $client) }}"
+                            data-sync-url="{{ route('settings.ovpn.clients.sync', $client) }}"
+                            data-update-url="{{ route('settings.ovpn.clients.update', $client) }}">
+                            <td class="ovpn-col-router">{{ $client->mikrotikConnection?->name ?? '-' }}</td>
+                            <td class="ovpn-col-name">{{ $client->name }}</td>
+                            <td class="ovpn-col-cn">{{ $client->common_name }}</td>
+                            <td class="ovpn-col-ip">{{ $client->vpn_ip ?? '-' }}</td>
+                            <td class="ovpn-col-user">{{ $client->username ?? '-' }}</td>
+                            <td class="ovpn-col-pass">{{ $client->password ?? '-' }}</td>
+                            <td class="ovpn-col-status">{{ $client->is_active ? 'Aktif' : 'Nonaktif' }}</td>
+                            <td class="ovpn-col-sync">{{ $client->last_synced_at?->format('Y-m-d H:i:s') ?? '-' }}</td>
                             <td class="text-right">
-                                <form action="{{ route('settings.ovpn.clients.sync', $client) }}" method="POST" class="d-inline">
-                                    @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-success">Sync CCD</button>
-                                </form>
+                                <button type="button" class="btn btn-sm btn-outline-success ovpn-sync-btn">Sync CCD</button>
                                 <button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#ovpn-edit-{{ $client->id }}">
                                     Edit
                                 </button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ovpn-script-btn" data-toggle="modal" data-target="#ovpn-script-modal" data-script='@json($scriptData)'>
                                     Script Mikrotik
                                 </button>
-                                <form action="{{ route('settings.ovpn.clients.destroy', $client) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus client ini?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                                </form>
+                                <button type="button" class="btn btn-sm btn-outline-danger ovpn-delete-btn">Delete</button>
                             </td>
                         </tr>
                         <tr class="collapse" id="ovpn-edit-{{ $client->id }}">
                             <td colspan="9">
-                                <form action="{{ route('settings.ovpn.clients.update', $client) }}" method="POST">
+                                <form class="ovpn-update-form">
                                     @csrf
-                                    @method('PATCH')
                                     <div class="form-row">
                                         <div class="form-group col-md-4">
                                             <label>Nama</label>
-                                            <input type="text" name="name" value="{{ old('name', $client->name) }}" class="form-control" required>
+                                            <input type="text" name="name" value="{{ $client->name }}" class="form-control" required>
                                         </div>
                                         <div class="form-group col-md-4">
                                             <label>Common Name</label>
-                                            <input type="text" name="common_name" value="{{ old('common_name', $client->common_name) }}" class="form-control" required>
+                                            <input type="text" name="common_name" value="{{ $client->common_name }}" class="form-control" required>
                                         </div>
                                         <div class="form-group col-md-4">
                                             <label>IP VPN</label>
-                                            <input type="text" name="vpn_ip" value="{{ old('vpn_ip', $client->vpn_ip) }}" class="form-control">
+                                            <input type="text" name="vpn_ip" value="{{ $client->vpn_ip }}" class="form-control">
                                         </div>
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group col-md-4">
                                             <label>Username</label>
-                                            <input type="text" name="username" value="{{ old('username', $client->username) }}" class="form-control" required>
+                                            <input type="text" name="username" value="{{ $client->username }}" class="form-control" required>
                                         </div>
                                         <div class="form-group col-md-4">
                                             <label>Password</label>
-                                            <input type="text" name="password" value="{{ old('password', $client->password) }}" class="form-control" required>
+                                            <input type="text" name="password" value="{{ $client->password }}" class="form-control" required>
                                         </div>
                                         <div class="form-group col-md-4">
                                             <label>Status</label>
                                             <select name="is_active" class="form-control">
-                                                <option value="1" @selected(old('is_active', $client->is_active ? '1' : '0') == '1')>Aktif</option>
-                                                <option value="0" @selected(old('is_active', $client->is_active ? '1' : '0') == '0')>Nonaktif</option>
+                                                <option value="1" @selected($client->is_active)>Aktif</option>
+                                                <option value="0" @selected(!$client->is_active)>Nonaktif</option>
                                             </select>
                                         </div>
                                     </div>
                                     <button type="submit" class="btn btn-primary btn-sm">Simpan Perubahan</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" data-toggle="collapse" data-target="#ovpn-edit-{{ $client->id }}">Batal</button>
                                 </form>
                             </td>
                         </tr>
@@ -441,6 +429,264 @@
 
     <script>
         (function () {
+            // ── Helpers ──────────────────────────────────────────────────────
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').content
+                : '{{ csrf_token() }}';
+
+            function showAlert(message, type) {
+                const el = document.getElementById('ovpn-alert');
+                if (!el) return;
+                el.className = 'alert alert-' + type + ' mb-3';
+                el.textContent = message;
+                el.style.display = '';
+                clearTimeout(el._timer);
+                el._timer = setTimeout(function () { el.style.display = 'none'; }, 5000);
+            }
+
+            function ajaxJson(method, url, body) {
+                return fetch(url, {
+                    method: method,
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: body ? JSON.stringify(body) : undefined,
+                }).then(function (res) {
+                    return res.json().then(function (data) {
+                        if (!res.ok) {
+                            return Promise.reject(data);
+                        }
+                        return data;
+                    });
+                });
+            }
+
+            function ajaxForm(method, url, formData) {
+                // Kirim sebagai form-encoded supaya Request::validated() bekerja
+                const params = new URLSearchParams();
+                formData.forEach(function (value, key) { params.append(key, value); });
+                params.append('_method', method);
+                return fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: params,
+                }).then(function (res) {
+                    return res.json().then(function (data) {
+                        if (!res.ok) {
+                            return Promise.reject(data);
+                        }
+                        return data;
+                    });
+                });
+            }
+
+            function setRowBusy(row, busy) {
+                row.querySelectorAll('button').forEach(function (btn) {
+                    btn.disabled = busy;
+                });
+            }
+
+            // ── Update satu baris tabel dari payload client ───────────────────
+            function updateRow(row, client) {
+                row.querySelector('.ovpn-col-router').textContent = client.mikrotik_connection || '-';
+                row.querySelector('.ovpn-col-name').textContent   = client.name;
+                row.querySelector('.ovpn-col-cn').textContent     = client.common_name;
+                row.querySelector('.ovpn-col-ip').textContent     = client.vpn_ip || '-';
+                row.querySelector('.ovpn-col-user').textContent   = client.username || '-';
+                row.querySelector('.ovpn-col-pass').textContent   = client.password || '-';
+                row.querySelector('.ovpn-col-status').textContent = client.is_active ? 'Aktif' : 'Nonaktif';
+                row.querySelector('.ovpn-col-sync').textContent   = client.last_synced_at || '-';
+
+                // Update URL di data attributes
+                row.dataset.destroyUrl = client.destroy_url;
+                row.dataset.syncUrl    = client.sync_url;
+                row.dataset.updateUrl  = client.update_url;
+
+                // Update nilai input di edit form
+                var editRow = document.getElementById('ovpn-edit-' + client.id);
+                if (editRow) {
+                    var f = editRow.querySelector('form');
+                    if (f) {
+                        f.querySelector('[name="name"]').value        = client.name;
+                        f.querySelector('[name="common_name"]').value = client.common_name;
+                        f.querySelector('[name="vpn_ip"]').value      = client.vpn_ip || '';
+                        f.querySelector('[name="username"]').value    = client.username || '';
+                        f.querySelector('[name="password"]').value    = client.password || '';
+                        f.querySelector('[name="is_active"]').value   = client.is_active ? '1' : '0';
+                    }
+                }
+            }
+
+            // ── Delete ────────────────────────────────────────────────────────
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('.ovpn-delete-btn');
+                if (!btn) return;
+
+                if (!confirm('Hapus client ini?')) return;
+
+                var row = btn.closest('tr[data-client-id]');
+                if (!row) return;
+
+                setRowBusy(row, true);
+
+                ajaxJson('DELETE', row.dataset.destroyUrl).then(function (data) {
+                    var editRow = document.getElementById('ovpn-edit-' + row.dataset.clientId);
+                    if (editRow) editRow.remove();
+                    row.remove();
+                    showAlert(data.status || 'Client dihapus.', 'success');
+
+                    // Tampilkan baris "belum ada" jika tabel kosong
+                    var tbody = document.querySelector('#ovpn-clients-tbody');
+                    if (tbody && tbody.querySelectorAll('tr[data-client-id]').length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" class="text-center p-4">Belum ada client OpenVPN.</td></tr>';
+                    }
+                }).catch(function (err) {
+                    setRowBusy(row, false);
+                    showAlert((err && err.error) || 'Gagal menghapus client.', 'danger');
+                });
+            });
+
+            // ── Sync CCD ──────────────────────────────────────────────────────
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('.ovpn-sync-btn');
+                if (!btn) return;
+
+                var row = btn.closest('tr[data-client-id]');
+                if (!row) return;
+
+                setRowBusy(row, true);
+                btn.textContent = 'Syncing…';
+
+                ajaxJson('POST', row.dataset.syncUrl).then(function (data) {
+                    row.querySelector('.ovpn-col-sync').textContent = data.last_synced_at || '-';
+                    btn.textContent = 'Sync CCD';
+                    setRowBusy(row, false);
+                    showAlert(data.status || 'Sinkronisasi berhasil.', 'success');
+                }).catch(function (err) {
+                    btn.textContent = 'Sync CCD';
+                    setRowBusy(row, false);
+                    showAlert((err && err.error) || 'Sinkronisasi gagal.', 'danger');
+                });
+            });
+
+            // ── Update (edit form) ────────────────────────────────────────────
+            document.addEventListener('submit', function (e) {
+                var form = e.target.closest('.ovpn-update-form');
+                if (!form) return;
+                e.preventDefault();
+
+                var row = form.closest('tr').previousElementSibling;
+                // Cari baris data (bukan baris edit)
+                while (row && !row.dataset.clientId) {
+                    row = row.previousElementSibling;
+                }
+                if (!row) return;
+
+                var submitBtn = form.querySelector('[type="submit"]');
+                if (submitBtn) submitBtn.disabled = true;
+
+                ajaxForm('PATCH', row.dataset.updateUrl, new FormData(form)).then(function (data) {
+                    if (submitBtn) submitBtn.disabled = false;
+                    updateRow(row, data.client);
+                    // Tutup collapse edit row
+                    var editRow = form.closest('tr');
+                    if (editRow && $(editRow).hasClass('show')) {
+                        $(editRow).collapse('hide');
+                    }
+                    showAlert(data.status || data.warning || 'Client diperbarui.', data.warning ? 'warning' : 'success');
+                }).catch(function (err) {
+                    if (submitBtn) submitBtn.disabled = false;
+                    var msg = (err && (err.error || err.message)) || 'Gagal menyimpan perubahan.';
+                    if (err && err.errors) {
+                        msg = Object.values(err.errors).flat().join(' ');
+                    }
+                    showAlert(msg, 'danger');
+                });
+            });
+
+            // ── Store (tambah form) ───────────────────────────────────────────
+            var storeForm = document.getElementById('ovpn-store-form');
+            if (storeForm) {
+                storeForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+
+                    var submitBtn = document.getElementById('ovpn-store-btn');
+                    if (submitBtn) submitBtn.disabled = true;
+
+                    ajaxForm('POST', storeForm.action, new FormData(storeForm)).then(function (data) {
+                        if (submitBtn) submitBtn.disabled = false;
+                        storeForm.reset();
+                        showAlert(data.status || data.warning || 'Client berhasil dibuat.', data.warning ? 'warning' : 'success');
+                        addClientRow(data.client);
+                    }).catch(function (err) {
+                        if (submitBtn) submitBtn.disabled = false;
+                        var msg = (err && (err.error || err.message)) || 'Gagal menyimpan client.';
+                        if (err && err.errors) {
+                            msg = Object.values(err.errors).flat().join(' ');
+                        }
+                        showAlert(msg, 'danger');
+                    });
+                });
+            }
+
+            function addClientRow(client) {
+                var tbody = document.getElementById('ovpn-clients-tbody');
+                if (!tbody) return;
+
+                // Hapus baris "belum ada" jika ada
+                var emptyRow = tbody.querySelector('td[colspan]');
+                if (emptyRow) emptyRow.closest('tr').remove();
+
+                var html = '<tr id="ovpn-row-' + client.id + '"'
+                    + ' data-client-id="' + client.id + '"'
+                    + ' data-destroy-url="' + escHtml(client.destroy_url) + '"'
+                    + ' data-sync-url="'    + escHtml(client.sync_url)    + '"'
+                    + ' data-update-url="'  + escHtml(client.update_url)  + '">'
+                    + '<td class="ovpn-col-router">' + escHtml(client.mikrotik_connection || '-') + '</td>'
+                    + '<td class="ovpn-col-name">'   + escHtml(client.name)                       + '</td>'
+                    + '<td class="ovpn-col-cn">'     + escHtml(client.common_name)                + '</td>'
+                    + '<td class="ovpn-col-ip">'     + escHtml(client.vpn_ip || '-')              + '</td>'
+                    + '<td class="ovpn-col-user">'   + escHtml(client.username || '-')            + '</td>'
+                    + '<td class="ovpn-col-pass">'   + escHtml(client.password || '-')            + '</td>'
+                    + '<td class="ovpn-col-status">' + (client.is_active ? 'Aktif' : 'Nonaktif') + '</td>'
+                    + '<td class="ovpn-col-sync">'   + escHtml(client.last_synced_at || '-')      + '</td>'
+                    + '<td class="text-right">'
+                    +   '<button type="button" class="btn btn-sm btn-outline-success ovpn-sync-btn">Sync CCD</button> '
+                    +   '<button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#ovpn-edit-' + client.id + '">Edit</button> '
+                    +   '<button type="button" class="btn btn-sm btn-outline-secondary ovpn-script-btn" data-toggle="modal" data-target="#ovpn-script-modal" data-script="{}">Script Mikrotik</button> '
+                    +   '<button type="button" class="btn btn-sm btn-outline-danger ovpn-delete-btn">Delete</button>'
+                    + '</td>'
+                    + '</tr>'
+                    + '<tr class="collapse" id="ovpn-edit-' + client.id + '">'
+                    + '<td colspan="9">'
+                    + '<form class="ovpn-update-form">'
+                    + '<input type="hidden" name="_token" value="' + escHtml(csrfToken) + '">'
+                    + '<div class="form-row">'
+                    + '<div class="form-group col-md-4"><label>Nama</label><input type="text" name="name" value="' + escHtml(client.name) + '" class="form-control" required></div>'
+                    + '<div class="form-group col-md-4"><label>Common Name</label><input type="text" name="common_name" value="' + escHtml(client.common_name) + '" class="form-control" required></div>'
+                    + '<div class="form-group col-md-4"><label>IP VPN</label><input type="text" name="vpn_ip" value="' + escHtml(client.vpn_ip || '') + '" class="form-control"></div>'
+                    + '</div><div class="form-row">'
+                    + '<div class="form-group col-md-4"><label>Username</label><input type="text" name="username" value="' + escHtml(client.username || '') + '" class="form-control" required></div>'
+                    + '<div class="form-group col-md-4"><label>Password</label><input type="text" name="password" value="' + escHtml(client.password || '') + '" class="form-control" required></div>'
+                    + '<div class="form-group col-md-4"><label>Status</label><select name="is_active" class="form-control"><option value="1"' + (client.is_active ? ' selected' : '') + '>Aktif</option><option value="0"' + (!client.is_active ? ' selected' : '') + '>Nonaktif</option></select></div>'
+                    + '</div>'
+                    + '<button type="submit" class="btn btn-primary btn-sm">Simpan Perubahan</button> '
+                    + '<button type="button" class="btn btn-secondary btn-sm" data-toggle="collapse" data-target="#ovpn-edit-' + client.id + '">Batal</button>'
+                    + '</form></td></tr>';
+
+                tbody.insertAdjacentHTML('beforeend', html);
+            }
+
+            function escHtml(str) {
+                return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            }
+
+            // ── Script Mikrotik modal ─────────────────────────────────────────
             let currentData = {};
             let activeTab = 'multi';
             let activeRos = 'v6';
@@ -514,18 +760,18 @@
                 });
             });
 
-            document.querySelectorAll('.ovpn-script-btn').forEach(function (button) {
-                button.addEventListener('click', function () {
-                    const raw = button.dataset.script || '{}';
-                    currentData = JSON.parse(raw);
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('.ovpn-script-btn');
+                if (!btn) return;
+                const raw = btn.dataset.script || '{}';
+                currentData = JSON.parse(raw);
 
-                    const nameEl = document.getElementById('ovpn-script-client-name');
-                    if (nameEl) nameEl.textContent = 'Client: ' + (currentData.name || '');
+                const nameEl = document.getElementById('ovpn-script-client-name');
+                if (nameEl) nameEl.textContent = 'Client: ' + (currentData.name || '');
 
-                    switchRos('v6');
-                    switchTab('multi');
-                    rebuildScript();
-                });
+                switchRos('v6');
+                switchTab('multi');
+                rebuildScript();
             });
 
             const hostInput = document.getElementById('ovpn-host-override');

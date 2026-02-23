@@ -7,7 +7,9 @@ use App\Http\Requests\UpdateOvpnClientRequest;
 use App\Models\MikrotikConnection;
 use App\Models\OvpnClient;
 use App\Services\OvpnClientSynchronizer;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
@@ -90,7 +92,7 @@ class OvpnSettingsController extends Controller
         return $ip;
     }
 
-    public function store(StoreOvpnClientRequest $request, OvpnClientSynchronizer $synchronizer): RedirectResponse
+    public function store(StoreOvpnClientRequest $request, OvpnClientSynchronizer $synchronizer): JsonResponse|RedirectResponse
     {
         $data = $request->validated();
         $data['is_active'] = $request->boolean('is_active', true);
@@ -100,21 +102,41 @@ class OvpnSettingsController extends Controller
         $data['vpn_ip'] = $data['vpn_ip'] ?? $this->allocateVpnIp();
 
         if (! $data['vpn_ip']) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'IP VPN pool sudah habis atau belum diatur.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
             return redirect()
                 ->route('settings.ovpn')
                 ->with('error', 'IP VPN pool sudah habis atau belum diatur.');
         }
 
         $client = OvpnClient::create($data);
+        $client->load('mikrotikConnection');
 
         try {
             $synchronizer->sync($client);
             $synchronizer->syncAuthUsers(OvpnClient::query()->get());
             $client->update(['last_synced_at' => now()]);
+            $client->refresh();
         } catch (Throwable $exception) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'warning' => 'Client tersimpan, tetapi sync CCD gagal: '.$exception->getMessage(),
+                    'client' => $this->clientPayload($client),
+                ]);
+            }
+
             return redirect()
                 ->route('settings.ovpn')
                 ->with('error', 'Client tersimpan, tetapi sync CCD gagal: '.$exception->getMessage());
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'status' => 'Client OpenVPN berhasil dibuat.',
+                'client' => $this->clientPayload($client),
+            ]);
         }
 
         return redirect()
@@ -122,13 +144,14 @@ class OvpnSettingsController extends Controller
             ->with('status', 'Client OpenVPN berhasil dibuat.');
     }
 
-    public function update(UpdateOvpnClientRequest $request, OvpnClient $ovpnClient, OvpnClientSynchronizer $synchronizer): RedirectResponse
+    public function update(UpdateOvpnClientRequest $request, OvpnClient $ovpnClient, OvpnClientSynchronizer $synchronizer): JsonResponse|RedirectResponse
     {
         $data = $request->validated();
         $data['is_active'] = $request->boolean('is_active', $ovpnClient->is_active);
 
         $previousCommonName = $ovpnClient->common_name;
         $ovpnClient->update($data);
+        $ovpnClient->load('mikrotikConnection');
 
         try {
             if ($previousCommonName && $previousCommonName !== $ovpnClient->common_name) {
@@ -137,10 +160,25 @@ class OvpnSettingsController extends Controller
             $synchronizer->sync($ovpnClient);
             $synchronizer->syncAuthUsers(OvpnClient::query()->get());
             $ovpnClient->update(['last_synced_at' => now()]);
+            $ovpnClient->refresh();
         } catch (Throwable $exception) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'warning' => 'Client diperbarui, tetapi sync CCD gagal: '.$exception->getMessage(),
+                    'client' => $this->clientPayload($ovpnClient),
+                ]);
+            }
+
             return redirect()
                 ->route('settings.ovpn')
                 ->with('error', 'Client diperbarui, tetapi sync CCD gagal: '.$exception->getMessage());
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'status' => 'Client OpenVPN diperbarui.',
+                'client' => $this->clientPayload($ovpnClient),
+            ]);
         }
 
         return redirect()
@@ -148,7 +186,7 @@ class OvpnSettingsController extends Controller
             ->with('status', 'Client OpenVPN diperbarui.');
     }
 
-    public function destroy(OvpnClient $ovpnClient, OvpnClientSynchronizer $synchronizer): RedirectResponse
+    public function destroy(OvpnClient $ovpnClient, OvpnClientSynchronizer $synchronizer): JsonResponse|RedirectResponse
     {
         if ($ovpnClient->common_name) {
             $synchronizer->remove($ovpnClient->common_name);
@@ -157,25 +195,59 @@ class OvpnSettingsController extends Controller
         $ovpnClient->delete();
         $synchronizer->syncAuthUsers(OvpnClient::query()->get());
 
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Client OpenVPN dihapus.']);
+        }
+
         return redirect()
             ->route('settings.ovpn')
             ->with('status', 'Client OpenVPN dihapus.');
     }
 
-    public function sync(OvpnClient $ovpnClient, OvpnClientSynchronizer $synchronizer): RedirectResponse
+    public function sync(OvpnClient $ovpnClient, OvpnClientSynchronizer $synchronizer): JsonResponse|RedirectResponse
     {
         try {
             $synchronizer->sync($ovpnClient);
             $ovpnClient->update(['last_synced_at' => now()]);
+            $ovpnClient->refresh();
+
+            if (request()->wantsJson()) {
+                return response()->json([
+                    'status' => 'Sinkronisasi CCD berhasil.',
+                    'last_synced_at' => $ovpnClient->last_synced_at?->format('Y-m-d H:i:s'),
+                ]);
+            }
 
             return redirect()
                 ->route('settings.ovpn')
                 ->with('status', 'Sinkronisasi CCD berhasil.');
         } catch (Throwable $exception) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'Sinkronisasi CCD gagal: '.$exception->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
+
             return redirect()
                 ->route('settings.ovpn')
                 ->with('error', 'Sinkronisasi CCD gagal: '.$exception->getMessage());
         }
+    }
+
+    private function clientPayload(OvpnClient $client): array
+    {
+        return [
+            'id'                   => $client->id,
+            'name'                 => $client->name,
+            'common_name'          => $client->common_name,
+            'vpn_ip'               => $client->vpn_ip,
+            'username'             => $client->username,
+            'password'             => $client->password,
+            'is_active'            => $client->is_active,
+            'last_synced_at'       => $client->last_synced_at?->format('Y-m-d H:i:s'),
+            'mikrotik_connection'  => $client->mikrotikConnection?->name,
+            'update_url'           => route('settings.ovpn.clients.update', $client),
+            'destroy_url'          => route('settings.ovpn.clients.destroy', $client),
+            'sync_url'             => route('settings.ovpn.clients.sync', $client),
+        ];
     }
 
     private function resolveCommonName(?string $commonName, string $fallback): string

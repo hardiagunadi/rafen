@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
@@ -55,9 +56,13 @@ class UserManagementController extends Controller
         return redirect()->route('users.index')->with('status', 'Pengguna diperbarui.');
     }
 
-    public function destroy(User $user): RedirectResponse
+    public function destroy(User $user): JsonResponse|RedirectResponse
     {
         $user->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Pengguna dihapus.']);
+        }
 
         return redirect()->route('users.index')->with('status', 'Pengguna dihapus.');
     }

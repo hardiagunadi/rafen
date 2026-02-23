@@ -72,11 +72,9 @@
                             </td>
                             <td class="text-right">
                                 <a href="{{ route('profile-groups.edit', $group) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-                                <form action="{{ route('profile-groups.destroy', $group) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus group ini?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                                </form>
+                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                    data-ajax-delete="{{ route('profile-groups.destroy', $group) }}"
+                                    data-confirm="Hapus group ini?">Delete</button>
                             </td>
                         </tr>
                     @empty
@@ -148,7 +146,22 @@
                 return;
             }
             if (confirm('Hapus group terpilih?')) {
-                document.getElementById('bulk-delete-form').submit();
+                const form = document.getElementById('bulk-delete-form');
+                const ids = Array.from(document.querySelectorAll('input[name="ids[]"]:checked')).map(cb => cb.value);
+                const params = new URLSearchParams();
+                params.append('_method', 'DELETE');
+                ids.forEach(id => params.append('ids[]', id));
+                fetch(form.action, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
+                    body: params,
+                }).then(r => r.json()).then(function(data) {
+                    AppAjax.showToast(data.message || data.status || 'Group dihapus.', 'success');
+                    document.querySelectorAll('input[name="ids[]"]:checked').forEach(cb => { const row = cb.closest('tr'); if (row) { row.style.opacity='0'; row.style.transition='opacity .3s'; setTimeout(()=>row.remove(),300); } });
+                    document.getElementById('select-all').checked = false;
+                }).catch(function(err) {
+                    AppAjax.showToast((err && err.error) || 'Gagal menghapus.', 'danger');
+                });
             }
         });
 

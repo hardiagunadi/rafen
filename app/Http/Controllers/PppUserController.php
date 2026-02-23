@@ -10,6 +10,7 @@ use App\Models\PppUser;
 use App\Models\ProfileGroup;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -137,18 +138,26 @@ class PppUserController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(PppUser $pppUser): RedirectResponse
+    public function destroy(PppUser $pppUser): JsonResponse|RedirectResponse
     {
         $pppUser->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'User PPP dihapus.']);
+        }
 
         return redirect()->route('ppp-users.index')->with('status', 'User PPP dihapus.');
     }
 
-    public function bulkDestroy(Request $request): RedirectResponse
+    public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
             PppUser::query()->whereIn('id', $ids)->delete();
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['status' => 'User PPP terpilih dihapus.']);
         }
 
         return redirect()->route('ppp-users.index')->with('status', 'User PPP terpilih dihapus.');

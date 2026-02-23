@@ -8,6 +8,7 @@ use App\Models\BandwidthProfile;
 use App\Models\HotspotProfile;
 use App\Models\ProfileGroup;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -80,18 +81,26 @@ class HotspotProfileController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(HotspotProfile $hotspotProfile): RedirectResponse
+    public function destroy(HotspotProfile $hotspotProfile): JsonResponse|RedirectResponse
     {
         $hotspotProfile->delete();
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Profil Hotspot dihapus.']);
+        }
 
         return redirect()->route('hotspot-profiles.index')->with('status', 'Profil Hotspot dihapus.');
     }
 
-    public function bulkDestroy(Request $request): RedirectResponse
+    public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
             HotspotProfile::query()->whereIn('id', $ids)->delete();
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['status' => 'Profil Hotspot terpilih dihapus.']);
         }
 
         return redirect()->route('hotspot-profiles.index')->with('status', 'Profil Hotspot terpilih dihapus.');
