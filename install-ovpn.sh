@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
+# =============================================================================
+# install-ovpn.sh — Installer & config updater OpenVPN untuk Mikrotik RouterOS
+#
+# Penggunaan:
+#   sudo OVPN_PROTO=tcp bash install-ovpn.sh              # install fresh
+#   sudo OVPN_PROTO=tcp bash install-ovpn.sh --config-only # update config + restart service saja
+#
+# --config-only: hanya tulis ulang server.conf, update CCD & auth, lalu restart
+#   service OpenVPN. TIDAK menyentuh PKI/sertifikat dan tidak install paket.
+#
+# Dokumentasi lengkap: docs/openvpn.md
+# =============================================================================
 set -euo pipefail
 
 OVPN_PORT="${OVPN_PORT:-1194}"
-# Mikrotik RouterOS mendukung TCP dan UDP untuk OVPN client.
-# Gunakan tcp jika mengalami masalah koneksi dengan udp.
+# WAJIB tcp — UDP menyebabkan "poll error" di Mikrotik RouterOS.
 OVPN_PROTO="${OVPN_PROTO:-tcp}"
 OVPN_NETWORK="${OVPN_NETWORK:-10.8.0.0}"
 OVPN_NETMASK="${OVPN_NETMASK:-255.255.255.0}"
