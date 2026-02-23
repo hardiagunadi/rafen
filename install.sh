@@ -10,6 +10,9 @@ DEPLOY_USER="${DEPLOY_USER:-deploy}"
 FORCE_SYSTEMD="${FORCE_SYSTEMD:-0}"
 DEPLOY_DB_PASSWORD="${DEPLOY_DB_PASSWORD:-}"
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-}"
+VHOST_DOMAIN="${VHOST_DOMAIN:-}"
+# VHOST_SUBDOMAIN: opsional, set via env untuk non-interaktif
+# Biarkan unset agar prompt_subdomain bisa mendeteksi apakah sudah di-set via env
 SUDO_CMD=""
 
 require_privileges() {
@@ -781,8 +784,35 @@ prompt_domain() {
         return
     fi
 
-    read -r -p "Masukkan domain vhost (kosongkan jika skip Apache/SSL): " value
+    read -r -p "Masukkan domain utama (contoh: example.com, kosongkan untuk skip Apache/SSL): " value
     VHOST_DOMAIN="$value"
+}
+
+prompt_subdomain() {
+    local value
+    local full_domain
+
+    if [ -z "$VHOST_DOMAIN" ]; then
+        VHOST_SUBDOMAIN=""
+        return
+    fi
+
+    if [ -n "${VHOST_SUBDOMAIN+x}" ]; then
+        # variabel sudah di-set (termasuk string kosong) via env, gunakan langsung
+        return
+    fi
+
+    echo ""
+    echo "Domain utama: ${VHOST_DOMAIN}"
+    read -r -p "Subdomain opsional (contoh: app, panel — kosongkan untuk pakai domain utama): " value
+    VHOST_SUBDOMAIN="$value"
+
+    if [ -n "$value" ]; then
+        full_domain="${value}.${VHOST_DOMAIN}"
+        echo "Aplikasi akan berjalan di: ${full_domain}"
+    else
+        echo "Aplikasi akan berjalan di: ${VHOST_DOMAIN}"
+    fi
 }
 
 prompt_certbot_email() {
@@ -800,13 +830,28 @@ prompt_certbot_email() {
     CERTBOT_EMAIL="$value"
 }
 
+resolve_vhost_servername() {
+    local subdomain="${VHOST_SUBDOMAIN:-}"
+    local domain="${VHOST_DOMAIN:-}"
+
+    if [ -n "$subdomain" ] && [ -n "$domain" ]; then
+        printf '%s' "${subdomain}.${domain}"
+    else
+        printf '%s' "$domain"
+    fi
+}
+
 setup_apache() {
     local domain
+    local servername
 
     domain="$VHOST_DOMAIN"
     if [ -z "$domain" ]; then
+        echo "NOTIFIKASI: Domain tidak diset, lewati konfigurasi Apache vhost."
         return
     fi
+
+    servername="$(resolve_vhost_servername)"
 
     if [ -f /etc/apache2/conf-available/php8.4-fpm.conf ]; then
         ${SUDO_CMD} a2enmod proxy_fcgi setenvif >/dev/null
@@ -817,14 +862,28 @@ setup_apache() {
 
     ${SUDO_CMD} a2enmod rewrite ssl >/dev/null
 
+    # Selalu disable default site agar tidak konflik
+    ${SUDO_CMD} a2dissite 000-default >/dev/null 2>&1 || true
+    echo "INFO: Default site 000-default dinonaktifkan."
+
+    # Jika tidak ada subdomain, rafen.conf menjadi vhost default (catch-all)
+    # dengan menambahkan ServerAlias * sehingga menangkap semua request
+    # yang tidak cocok dengan vhost lain (termasuk akses via IP langsung).
+    local server_alias_line=""
+    if [ -z "${VHOST_SUBDOMAIN:-}" ]; then
+        server_alias_line="    ServerAlias *"
+    fi
+
     cat <<EOF | ${SUDO_CMD} tee /etc/apache2/sites-available/rafen.conf >/dev/null
 <VirtualHost *:80>
-    ServerName ${domain}
+    ServerName ${servername}
+${server_alias_line}
     DocumentRoot ${APP_DIR}/public
 
     <Directory ${APP_DIR}/public>
         AllowOverride All
         Require all granted
+        Options -Indexes +FollowSymLinks
     </Directory>
 
     ErrorLog \${APACHE_LOG_DIR}/rafen_error.log
@@ -835,8 +894,24 @@ EOF
     ${SUDO_CMD} a2ensite rafen.conf >/dev/null
     ${SUDO_CMD} systemctl reload apache2
 
+    if [ -z "${VHOST_SUBDOMAIN:-}" ]; then
+        echo "INFO: VHost rafen aktif sebagai default untuk semua request (${servername} + catch-all)."
+    else
+        echo "INFO: VHost rafen aktif untuk ${servername}."
+    fi
+
+    # Update APP_URL di .env sesuai domain yang dipakai
+    local proto="http"
     if [ -n "$CERTBOT_EMAIL" ]; then
-        ${SUDO_CMD} certbot --apache -d "$domain" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect
+        proto="https"
+    fi
+    set_env APP_URL "${proto}://${servername}"
+    echo "INFO: APP_URL diset ke ${proto}://${servername}"
+
+    if [ -n "$CERTBOT_EMAIL" ]; then
+        ${SUDO_CMD} certbot --apache -d "$servername" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" --redirect \
+            && echo "INFO: SSL berhasil diaktifkan untuk ${servername}." \
+            || echo "NOTIFIKASI: Certbot gagal. Pastikan DNS ${servername} sudah mengarah ke server ini."
     else
         echo "NOTIFIKASI: Email SSL kosong, lewati auto SSL."
     fi
@@ -1005,6 +1080,7 @@ main() {
     setup_env
     prompt_domain
     if [ -n "$VHOST_DOMAIN" ]; then
+        prompt_subdomain
         prompt_certbot_email
     fi
     enable_services
