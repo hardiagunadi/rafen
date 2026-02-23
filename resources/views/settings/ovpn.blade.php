@@ -152,22 +152,19 @@
                         @php
                             $ovpnHost = $ovpn['host'] !== '' ? $ovpn['host'] : '<IP/Host>';
                             $ovpnPort = $ovpn['port'] !== '' ? $ovpn['port'] : '1194';
-                            $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'udp';
+                            $ovpnProto = $ovpn['proto'] !== '' ? $ovpn['proto'] : 'tcp';
                             $ovpnUser = $client->username ?: '<username>';
                             $ovpnPass = $client->password ?: '<password>';
                             $ovpnName = 'ovpn-'.$client->common_name;
                             $routeDst = $ovpn['route_dst'];
                             $routeComment = 'added by TMDRadius '.$ovpnName;
+                            $protoWarning = ($ovpnProto === 'udp')
+                                ? '# PERINGATAN: Proto UDP dapat menyebabkan "poll error" di Mikrotik.'
+                                : null;
 
-                            // Script multi-baris (untuk Terminal Mikrotik)
-                            $scriptMultiLines = [
-                                '# ============================================',
-                                '# OVPN Client: '.$client->name,
-                                '# IP VPN     : '.($client->vpn_ip ?? '-'),
-                                '# Interface  : '.$ovpnName,
-                                '# ============================================',
-                                '',
-                                '# --- Hapus interface lama (jika ada) ---',
+                            // ROS v6: hanya support TCP, cipher terbatas
+                            $protoV6 = 'tcp'; // ROS v6 hanya support TCP untuk ovpn-client
+                            $cleanupLines = [
                                 '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
                                 '/interface sstp-client remove [find name="'.$ovpnName.'"]',
                                 '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
@@ -175,8 +172,81 @@
                                 '/routing table remove [find name="'.$ovpnName.'"]',
                                 '/routing rule remove [find comment="'.$routeComment.'"]',
                                 '/ip route remove [find comment="'.$routeComment.'"]',
+                            ];
+
+                            // Helper: buat blok routing
+                            $routingMultiLines = [];
+                            $routingSingleLines = [];
+                            if ($routeDst !== '') {
+                                $routingMultiLines = [
+                                    '',
+                                    '# --- Tambah routing ke '.$routeDst.' ---',
+                                    '/routing table add name="'.$ovpnName.'" fib',
+                                    '/routing rule add \\',
+                                    '    dst-address="'.$routeDst.'" \\',
+                                    '    action=lookup-only-in-table \\',
+                                    '    table="'.$ovpnName.'" \\',
+                                    '    comment="'.$routeComment.'"',
+                                    '/ip route add \\',
+                                    '    disabled=no \\',
+                                    '    gateway="'.$ovpnName.'" \\',
+                                    '    dst-address="'.$routeDst.'" \\',
+                                    '    routing-table="'.$ovpnName.'" \\',
+                                    '    distance=2 \\',
+                                    '    comment="'.$routeComment.'"',
+                                ];
+                                $routingSingleLines = [
+                                    '/routing table add name="'.$ovpnName.'" fib',
+                                    '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"',
+                                    '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" distance=2 comment="'.$routeComment.'"',
+                                ];
+                            }
+
+                            // === Script ROS v6 (hanya TCP, tanpa protocol= di beberapa field) ===
+                            $v6MultiLines = array_merge([
+                                '# ============================================',
+                                '# OVPN Client : '.$client->name,
+                                '# RouterOS    : v6 (TCP only)',
+                                '# IP VPN      : '.($client->vpn_ip ?? '-'),
+                                '# Interface   : '.$ovpnName,
+                                '# ============================================',
                                 '',
-                                '# --- Buat interface OVPN client ---',
+                                '# --- Hapus interface lama (jika ada) ---',
+                            ], $cleanupLines, [
+                                '',
+                                '# --- Buat interface OVPN client (ROS v6) ---',
+                                '# ROS v6: protocol selalu TCP, tidak perlu menentukan protocol=',
+                                '/interface ovpn-client add \\',
+                                '    disabled=no \\',
+                                '    connect-to="'.$ovpnHost.'" \\',
+                                '    name="'.$ovpnName.'" \\',
+                                '    user="'.$ovpnUser.'" \\',
+                                '    password="'.$ovpnPass.'" \\',
+                                '    port='.$ovpnPort.' \\',
+                                '    mode=ip \\',
+                                '    auth=sha1 \\',
+                                '    cipher=aes256-cbc \\',
+                                '    comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
+                            ], $routingMultiLines);
+
+                            $v6SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes256-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
+                            $v6SingleLines = array_merge($cleanupLines, [$v6SingleAdd], $routingSingleLines);
+
+                            // === Script ROS v7 (support TCP & UDP, syntax tambah protocol=) ===
+                            $v7MultiLines = array_merge([
+                                '# ============================================',
+                                '# OVPN Client : '.$client->name,
+                                '# RouterOS    : v7 (TCP/UDP)',
+                                '# IP VPN      : '.($client->vpn_ip ?? '-'),
+                                '# Interface   : '.$ovpnName,
+                                '# Proto       : '.strtoupper($ovpnProto),
+                                '# ============================================',
+                                ...($protoWarning ? [$protoWarning] : []),
+                                '',
+                                '# --- Hapus interface lama (jika ada) ---',
+                            ], $cleanupLines, [
+                                '',
+                                '# --- Buat interface OVPN client (ROS v7) ---',
                                 '/interface ovpn-client add \\',
                                 '    disabled=no \\',
                                 '    connect-to="'.$ovpnHost.'" \\',
@@ -189,48 +259,18 @@
                                 '    auth=sha1 \\',
                                 '    cipher=aes256-cbc \\',
                                 '    comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
-                            ];
-                            if ($routeDst !== '') {
-                                $scriptMultiLines[] = '';
-                                $scriptMultiLines[] = '# --- Tambah routing ke '.$routeDst.' ---';
-                                $scriptMultiLines[] = '/routing table add name="'.$ovpnName.'" fib';
-                                $scriptMultiLines[] = '/routing rule add \\';
-                                $scriptMultiLines[] = '    dst-address="'.$routeDst.'" \\';
-                                $scriptMultiLines[] = '    action=lookup-only-in-table \\';
-                                $scriptMultiLines[] = '    table="'.$ovpnName.'" \\';
-                                $scriptMultiLines[] = '    comment="'.$routeComment.'"';
-                                $scriptMultiLines[] = '/ip route add \\';
-                                $scriptMultiLines[] = '    disabled=no \\';
-                                $scriptMultiLines[] = '    gateway="'.$ovpnName.'" \\';
-                                $scriptMultiLines[] = '    dst-address="'.$routeDst.'" \\';
-                                $scriptMultiLines[] = '    routing-table="'.$ovpnName.'" \\';
-                                $scriptMultiLines[] = '    distance=2 \\';
-                                $scriptMultiLines[] = '    comment="'.$routeComment.'"';
-                            }
-                            $scriptMultiPayload = implode("\n", $scriptMultiLines);
+                            ], $routingMultiLines);
 
-                            // Script satu baris (untuk copy-paste cepat di terminal/scheduler)
-                            $scriptSingleLines = [
-                                '/interface ovpn-client remove [find name="'.$ovpnName.'"]',
-                                '/interface sstp-client remove [find name="'.$ovpnName.'"]',
-                                '/interface l2tp-client remove [find name="'.$ovpnName.'"]',
-                                '/interface pptp-client remove [find name="'.$ovpnName.'"]',
-                                '/routing table remove [find name="'.$ovpnName.'"]',
-                                '/routing rule remove [find comment="'.$routeComment.'"]',
-                                '/ip route remove [find comment="'.$routeComment.'"]',
-                                '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes256-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"',
-                            ];
-                            if ($routeDst !== '') {
-                                $scriptSingleLines[] = '/routing table add name="'.$ovpnName.'" fib';
-                                $scriptSingleLines[] = '/routing rule add dst-address="'.$routeDst.'" action=lookup-only-in-table table="'.$ovpnName.'" comment="'.$routeComment.'"';
-                                $scriptSingleLines[] = '/ip route add disabled=no gateway="'.$ovpnName.'" dst-address="'.$routeDst.'" routing-table="'.$ovpnName.'" distance=2 comment="'.$routeComment.'"';
-                            }
-                            $scriptSinglePayload = implode(';', $scriptSingleLines).';';
+                            $v7SingleAdd = '/interface ovpn-client add disabled=no connect-to="'.$ovpnHost.'" name="'.$ovpnName.'" user="'.$ovpnUser.'" password="'.$ovpnPass.'" protocol='.$ovpnProto.' port='.$ovpnPort.' mode=ip auth=sha1 cipher=aes256-cbc comment="IPADDR : '.($client->vpn_ip ?? '-').'"';
+                            $v7SingleLines = array_merge($cleanupLines, [$v7SingleAdd], $routingSingleLines);
 
                             $scriptData = [
-                                'multi' => $scriptMultiPayload,
-                                'single' => $scriptSinglePayload,
-                                'name' => $client->name,
+                                'v6multi'  => implode("\n", $v6MultiLines),
+                                'v6single' => implode(';', $v6SingleLines).';',
+                                'v7multi'  => implode("\n", $v7MultiLines),
+                                'v7single' => implode(';', $v7SingleLines).';',
+                                'name'     => $client->name,
+                                'proto'    => $ovpnProto,
                             ];
                         @endphp
                         <tr>
@@ -340,17 +380,29 @@
                         <small class="text-muted">Ubah IP/Host di sini — script akan diperbarui otomatis.</small>
                     </div>
 
+                    {{-- Pilihan versi ROS --}}
+                    <div class="d-flex align-items-center mb-3" style="gap:8px;">
+                        <span class="font-weight-bold" style="white-space:nowrap;">RouterOS:</span>
+                        <div class="btn-group btn-group-sm" id="ovpn-ros-version">
+                            <button type="button" class="btn btn-primary active" data-ros="v6">ROS v6 (TCP)</button>
+                            <button type="button" class="btn btn-outline-primary" data-ros="v7">ROS v7 (TCP/UDP)</button>
+                        </div>
+                        <small class="text-muted ml-2" id="ovpn-ros-hint">
+                            ROS v6: hanya mendukung TCP — pastikan server OpenVPN di-set <code>proto tcp-server</code>
+                        </small>
+                    </div>
+
                     <ul class="nav nav-tabs mb-3" id="ovpn-script-tabs">
                         <li class="nav-item">
                             <a class="nav-link active" href="#" data-tab="multi">
-                                <i class="fas fa-list-ul mr-1"></i>Script Per Baris
-                                <span class="badge badge-success ml-1" style="font-size:10px;">Mudah dibaca</span>
+                                <i class="fas fa-list-ul mr-1"></i>Per Baris
+                                <span class="badge badge-success ml-1" style="font-size:10px;">Terminal WinBox/SSH</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="#" data-tab="single">
-                                <i class="fas fa-terminal mr-1"></i>Script Satu Baris
-                                <span class="badge badge-secondary ml-1" style="font-size:10px;">Untuk scheduler</span>
+                                <i class="fas fa-terminal mr-1"></i>Satu Baris
+                                <span class="badge badge-secondary ml-1" style="font-size:10px;">Scheduler/Script</span>
                             </a>
                         </li>
                     </ul>
@@ -391,7 +443,12 @@
         (function () {
             let currentData = {};
             let activeTab = 'multi';
-            const defaultHost = @json($ovpn['host']);
+            let activeRos = 'v6';
+
+            const rosHints = {
+                v6: 'ROS v6: hanya mendukung TCP — pastikan server OpenVPN di-set <code>proto tcp-server</code>',
+                v7: 'ROS v7: mendukung TCP &amp; UDP — sesuaikan dengan proto server OpenVPN Anda',
+            };
 
             function getHost() {
                 const input = document.getElementById('ovpn-host-override');
@@ -399,50 +456,56 @@
                 return val !== '' ? val : '<IP/Host>';
             }
 
-            function rebuildScript() {
-                if (!currentData.multi) return;
+            function applyHostToScript(script) {
                 const host = getHost();
+                return script.replace(/connect-to="[^"]*"/g, 'connect-to="' + host + '"');
+            }
 
-                // Ganti semua kemunculan connect-to="..." di multi
+            function rebuildScript() {
+                if (!currentData.v6multi) return;
+
                 const multiEl = document.getElementById('ovpn-script-multi');
-                if (multiEl) {
-                    multiEl.value = currentData.multi.replace(
-                        /connect-to="[^"]*"/g,
-                        'connect-to="' + host + '"'
-                    );
-                }
-
-                // Ganti semua kemunculan connect-to="..." di single
                 const singleEl = document.getElementById('ovpn-script-single');
-                if (singleEl) {
-                    singleEl.value = currentData.single.replace(
-                        /connect-to="[^"]*"/g,
-                        'connect-to="' + host + '"'
-                    );
-                }
 
-                // Update status badge
+                const multiKey  = activeRos + 'multi';
+                const singleKey = activeRos + 'single';
+
+                if (multiEl)  multiEl.value  = applyHostToScript(currentData[multiKey]  || '');
+                if (singleEl) singleEl.value = applyHostToScript(currentData[singleKey] || '');
+
                 const statusEl = document.getElementById('ovpn-host-status');
                 if (statusEl) {
                     const inputVal = document.getElementById('ovpn-host-override').value.trim();
-                    if (inputVal !== '') {
-                        statusEl.textContent = '✓ Digunakan';
-                        statusEl.style.color = '#28a745';
-                    } else {
-                        statusEl.textContent = 'Belum diisi';
-                        statusEl.style.color = '#dc3545';
-                    }
+                    statusEl.textContent = inputVal !== '' ? '✓ Digunakan' : 'Belum diisi';
+                    statusEl.style.color  = inputVal !== '' ? '#28a745'    : '#dc3545';
                 }
+            }
+
+            function switchRos(ros) {
+                activeRos = ros;
+                document.querySelectorAll('#ovpn-ros-version [data-ros]').forEach(function (btn) {
+                    const isActive = btn.dataset.ros === ros;
+                    btn.classList.toggle('btn-primary', isActive);
+                    btn.classList.toggle('active', isActive);
+                    btn.classList.toggle('btn-outline-primary', !isActive);
+                });
+                const hintEl = document.getElementById('ovpn-ros-hint');
+                if (hintEl) hintEl.innerHTML = rosHints[ros] || '';
+                rebuildScript();
             }
 
             function switchTab(tab) {
                 activeTab = tab;
-                document.getElementById('tab-multi').style.display = tab === 'multi' ? '' : 'none';
+                document.getElementById('tab-multi').style.display  = tab === 'multi'  ? '' : 'none';
                 document.getElementById('tab-single').style.display = tab === 'single' ? '' : 'none';
                 document.querySelectorAll('#ovpn-script-tabs .nav-link').forEach(function (el) {
                     el.classList.toggle('active', el.dataset.tab === tab);
                 });
             }
+
+            document.querySelectorAll('#ovpn-ros-version [data-ros]').forEach(function (btn) {
+                btn.addEventListener('click', function () { switchRos(btn.dataset.ros); });
+            });
 
             document.querySelectorAll('#ovpn-script-tabs .nav-link').forEach(function (el) {
                 el.addEventListener('click', function (e) {
@@ -459,22 +522,14 @@
                     const nameEl = document.getElementById('ovpn-script-client-name');
                     if (nameEl) nameEl.textContent = 'Client: ' + (currentData.name || '');
 
-                    // Isi dulu dari data asli, lalu terapkan host override
-                    const multiEl = document.getElementById('ovpn-script-multi');
-                    const singleEl = document.getElementById('ovpn-script-single');
-                    if (multiEl) multiEl.value = currentData.multi || '';
-                    if (singleEl) singleEl.value = currentData.single || '';
-
-                    rebuildScript();
+                    switchRos('v6');
                     switchTab('multi');
+                    rebuildScript();
                 });
             });
 
-            // Live update saat user mengetik IP
             const hostInput = document.getElementById('ovpn-host-override');
-            if (hostInput) {
-                hostInput.addEventListener('input', rebuildScript);
-            }
+            if (hostInput) hostInput.addEventListener('input', rebuildScript);
 
             function copyText(elementId, button) {
                 const el = document.getElementById(elementId);
@@ -482,26 +537,26 @@
                 el.focus();
                 el.select();
                 const text = el.value;
-                const originalText = button.innerHTML;
+                const originalHtml = button.innerHTML;
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(text).then(function () {
                         button.innerHTML = '<i class="fas fa-check mr-1"></i>Tersalin!';
                         button.classList.replace('btn-success', 'btn-secondary');
                         setTimeout(function () {
-                            button.innerHTML = originalText;
+                            button.innerHTML = originalHtml;
                             button.classList.replace('btn-secondary', 'btn-success');
                         }, 2000);
                     });
                 } else {
                     document.execCommand('copy');
                     button.innerHTML = '<i class="fas fa-check mr-1"></i>Tersalin!';
-                    setTimeout(function () { button.innerHTML = originalText; }, 2000);
+                    setTimeout(function () { button.innerHTML = originalHtml; }, 2000);
                 }
             }
 
-            const copyMultiBtn = document.getElementById('copy-ovpn-multi');
+            const copyMultiBtn  = document.getElementById('copy-ovpn-multi');
             const copySingleBtn = document.getElementById('copy-ovpn-single');
-            if (copyMultiBtn) copyMultiBtn.addEventListener('click', function () { copyText('ovpn-script-multi', copyMultiBtn); });
+            if (copyMultiBtn)  copyMultiBtn.addEventListener('click',  function () { copyText('ovpn-script-multi',  copyMultiBtn); });
             if (copySingleBtn) copySingleBtn.addEventListener('click', function () { copyText('ovpn-script-single', copySingleBtn); });
         })();
     </script>

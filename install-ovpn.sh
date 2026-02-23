@@ -2,10 +2,11 @@
 set -euo pipefail
 
 OVPN_PORT="${OVPN_PORT:-1194}"
-OVPN_PROTO="${OVPN_PROTO:-udp}"
+# Mikrotik RouterOS mendukung TCP dan UDP untuk OVPN client.
+# Gunakan tcp jika mengalami masalah koneksi dengan udp.
+OVPN_PROTO="${OVPN_PROTO:-tcp}"
 OVPN_NETWORK="${OVPN_NETWORK:-10.8.0.0}"
 OVPN_NETMASK="${OVPN_NETMASK:-255.255.255.0}"
-OVPN_DNS="${OVPN_DNS:-1.1.1.1,8.8.8.8}"
 OVPN_CLIENT_NAME="${OVPN_CLIENT_NAME:-mikrotik}"
 OVPN_INTERFACE="${OVPN_INTERFACE:-}"
 EASYRSA_DIR="/etc/openvpn/easy-rsa"
@@ -77,9 +78,15 @@ install_server_files() {
 }
 
 write_server_config() {
+    # Tentukan proto server: jika tcp maka gunakan tcp-server
+    local proto_server="${OVPN_PROTO}"
+    if [ "$OVPN_PROTO" = "tcp" ]; then
+        proto_server="tcp-server"
+    fi
+
     cat > "$SERVER_DIR/server.conf" <<EOF
 port ${OVPN_PORT}
-proto ${OVPN_PROTO}
+proto ${proto_server}
 dev tun
 user nobody
 group nogroup
@@ -102,8 +109,9 @@ verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/checkpsw.sh via-file
 script-security 2
-push "dhcp-option DNS ${OVPN_DNS//,/ }"
-push "redirect-gateway def1 bypass-dhcp"
+# push "redirect-gateway" dan "dhcp-option DNS" TIDAK digunakan
+# karena tidak kompatibel dengan Mikrotik OVPN client dan
+# menyebabkan "poll error" / disconnect loop pada RouterOS.
 verb 3
 EOF
 }
@@ -177,12 +185,15 @@ write_client_config() {
     if [ "$config_only" -eq 1 ]; then
         return
     fi
+    local public_ip
+    public_ip="$(curl -fsSL --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
+
     mkdir -p "$CLIENT_DIR"
     cat > "$CLIENT_DIR/${OVPN_CLIENT_NAME}.ovpn" <<EOF
 client
 dev tun
 proto ${OVPN_PROTO}
-remote $(curl -fsSL ifconfig.me) ${OVPN_PORT}
+remote ${public_ip} ${OVPN_PORT}
 resolv-retry infinite
 nobind
 persist-key
@@ -190,6 +201,7 @@ persist-tun
 remote-cert-tls server
 cipher AES-256-CBC
 auth SHA1
+auth-user-pass
 verb 3
 
 <ca>
@@ -202,6 +214,7 @@ $(cat "$EASYRSA_DIR/pki/issued/${OVPN_CLIENT_NAME}.crt")
 $(cat "$EASYRSA_DIR/pki/private/${OVPN_CLIENT_NAME}.key")
 </key>
 EOF
+    echo "INFO: Client config: ${CLIENT_DIR}/${OVPN_CLIENT_NAME}.ovpn (remote: ${public_ip}:${OVPN_PORT}/${OVPN_PROTO})"
 }
 
 enable_service() {
