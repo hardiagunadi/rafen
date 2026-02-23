@@ -221,8 +221,30 @@ enable_service() {
     systemctl enable --now openvpn-server@server.service
 }
 
+restart_service() {
+    if systemctl is-active --quiet openvpn-server@server.service; then
+        systemctl restart openvpn-server@server.service
+        echo "INFO: openvpn-server@server.service direstart."
+    elif systemctl is-active --quiet openvpn.service; then
+        systemctl restart openvpn.service
+        echo "INFO: openvpn.service direstart."
+    else
+        echo "WARN: Tidak ada service OpenVPN aktif yang ditemukan. Restart manual diperlukan."
+    fi
+}
+
 main() {
     require_root
+
+    if [ "$config_only" -eq 1 ]; then
+        write_server_config
+        setup_ccd
+        write_auth_files
+        restart_service
+        echo "OpenVPN config-only selesai. server.conf diperbarui dan service direstart."
+        return
+    fi
+
     install_packages
     setup_easy_rsa
     install_server_files
@@ -233,12 +255,7 @@ main() {
     setup_nat
     write_client_config
     enable_service
-
-    if [ "$config_only" -eq 1 ]; then
-        echo "OpenVPN config-only selesai. server.conf diperbarui."
-    else
-        echo "OpenVPN siap. Client file: ${CLIENT_DIR}/${OVPN_CLIENT_NAME}.ovpn"
-    fi
+    echo "OpenVPN siap. Client file: ${CLIENT_DIR}/${OVPN_CLIENT_NAME}.ovpn"
 }
 
 main "$@"
