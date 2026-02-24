@@ -81,14 +81,12 @@ class MikrotikConnectionController extends Controller
     {
         $this->authorizeAccess($mikrotikConnection);
 
-        // Resolve the public IP/host for RADIUS script generation:
-        // prefer WG_HOST (explicitly set), then WG_SERVER_IP if it's not a tunnel IP,
-        // then RADIUS_SERVER_IP, finally fall back to auto-detect via ipify.
+        // Resolve the PUBLIC IP/host of the FreeRADIUS server for script generation.
+        // WG_HOST is the canonical public IP/domain of this server — always use it first.
+        // Never use WG_SERVER_IP or RADIUS_SERVER_IP as they are tunnel/internal IPs.
         $radiusHost = (string) config('wg.host');
         if ($radiusHost === '') {
-            $radiusHost = (string) config('radius.server_ip', '');
-        }
-        if ($radiusHost === '' || $radiusHost === '127.0.0.1') {
+            // Auto-detect public IP via ipify
             $output = @shell_exec('curl -s --max-time 3 https://api.ipify.org 2>/dev/null');
             if ($output !== null) {
                 $candidate = trim($output);
