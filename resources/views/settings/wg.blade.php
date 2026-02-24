@@ -189,8 +189,8 @@
 
                             $radiusScript = implode("\n", [
                                 '# ============================================================',
-                                '# RADIUS Setup untuk : ' . $peerName,
-                                '# Server RADIUS      : ' . $serverIp . ' (via tunnel WireGuard)',
+                                '# RADIUS via WireGuard untuk : ' . $peerName,
+                                '# Server RADIUS      : ' . $serverIp . ' (IP tunnel WireGuard)',
                                 '# PENTING: Jalankan script WireGuard terlebih dahulu!',
                                 '# ============================================================',
                                 '',
@@ -215,16 +215,56 @@
                                 '/ppp/aaa print',
                             ]);
 
+                            // Script RADIUS Direct: tanpa WireGuard, pakai IP publik server
+                            $radiusDirectScript = implode("\n", [
+                                '# ============================================================',
+                                '# RADIUS Direct IP untuk : ' . $peerName,
+                                '# Mode       : Tanpa WireGuard (koneksi langsung via internet)',
+                                '# Server IP  : ' . $wgHost . ' (IP publik server)',
+                                '# NAS IP     : IP publik MikroTik (dideteksi otomatis oleh FreeRADIUS)',
+                                '# ============================================================',
+                                '',
+                                '# --- CATATAN PENTING ---',
+                                '# 1. FreeRADIUS harus bisa diakses dari internet (port 1812/UDP terbuka)',
+                                '# 2. IP publik MikroTik harus terdaftar sebagai client di FreeRADIUS',
+                                '#    (lakukan sync di halaman Pengaturan > FreeRADIUS)',
+                                '# 3. Pastikan MikrotikConnection sudah diisi radius_secret yang sama',
+                                '',
+                                '# --- Tambahkan RADIUS server (IP publik server) ---',
+                                '# (Hapus entry lama jika ada: /radius remove [find address="' . $wgHost . '"])',
+                                '/radius add \\',
+                                '    address=' . $wgHost . ' \\',
+                                '    secret="' . $radiusSecret . '" \\',
+                                '    service=hotspot,ppp \\',
+                                '    timeout=3000ms \\',
+                                '    comment="RAFEN RADIUS Direct"',
+                                '',
+                                '# --- Aktifkan RADIUS untuk Hotspot ---',
+                                '/ip/hotspot/profile set [find] use-radius=yes',
+                                '',
+                                '# --- Aktifkan RADIUS untuk PPPoE ---',
+                                '/ppp/aaa set use-radius=yes',
+                                '',
+                                '# --- Verifikasi konfigurasi ---',
+                                '/radius print',
+                                '/ip/hotspot/profile print',
+                                '/ppp/aaa print',
+                                '',
+                                '# --- Pastikan firewall MikroTik mengizinkan outbound ke server ---',
+                                '# /ip/firewall/filter add chain=output dst-address=' . $wgHost . ' protocol=udp dst-port=1812-1813 action=accept comment="RAFEN RADIUS outbound"',
+                            ]);
+
                             $scriptData = [
-                                'wgScript'     => $wgScript,
-                                'radiusScript' => $radiusScript,
-                                'name'         => $peerName,
-                                'host'         => $wgHost,
-                                'listenPort'   => $listenPort,
-                                'serverPubKey' => $serverPubKey,
-                                'serverIp'     => $serverIp,
-                                'clientIp'     => $clientIp,
-                                'clientPriv'   => $clientPriv,
+                                'wgScript'          => $wgScript,
+                                'radiusScript'      => $radiusScript,
+                                'radiusDirectScript'=> $radiusDirectScript,
+                                'name'              => $peerName,
+                                'host'              => $wgHost,
+                                'listenPort'        => $listenPort,
+                                'serverPubKey'      => $serverPubKey,
+                                'serverIp'          => $serverIp,
+                                'clientIp'          => $clientIp,
+                                'clientPriv'        => $clientPriv,
                             ];
                         @endphp
                         <tr id="wg-row-{{ $peer->id }}"
@@ -337,8 +377,14 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="#" data-wg-tab="radius">
-                                <i class="fas fa-satellite-dish mr-1"></i>RADIUS Setup
+                                <i class="fas fa-satellite-dish mr-1"></i>RADIUS via WireGuard
                                 <span class="badge badge-info ml-1" style="font-size:9px;">Hotspot + PPPoE</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-wg-tab="direct">
+                                <i class="fas fa-globe mr-1"></i>Direct IP
+                                <span class="badge badge-warning ml-1" style="font-size:9px;">Tanpa WireGuard</span>
                             </a>
                         </li>
                     </ul>
@@ -379,6 +425,32 @@
                             <i class="fas fa-exclamation-triangle mr-1"></i>
                             Pastikan tunnel WireGuard sudah aktif dan IP server
                             (<strong id="wg-info-server-ip"></strong>) terjangkau dari MikroTik sebelum menjalankan script ini.
+                        </div>
+                    </div>
+
+                    {{-- Direct IP panel --}}
+                    <div id="wg-panel-direct" style="display:none;">
+                        <div class="alert alert-warning mb-3 py-2">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                            <strong>Mode Tanpa WireGuard:</strong> MikroTik terhubung langsung ke server via IP publik.
+                            FreeRADIUS harus dapat diakses dari internet (port <strong>1812/UDP</strong> terbuka),
+                            dan IP publik MikroTik harus didaftarkan sebagai client di FreeRADIUS.
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-muted">
+                                Konfigurasi RADIUS langsung ke IP publik server — <strong>tanpa tunnel WireGuard</strong>.
+                            </small>
+                            <button type="button" class="btn btn-sm btn-success" id="wg-copy-direct">
+                                <i class="fas fa-copy mr-1"></i>Copy Script
+                            </button>
+                        </div>
+                        <textarea class="form-control" rows="22" id="wg-script-direct" readonly
+                                  style="font-family:'Courier New',monospace;font-size:12.5px;background:#1e1e2e;color:#cdd6f4;border-radius:6px;resize:vertical;"></textarea>
+                        <div class="alert alert-info mt-2 mb-0 py-2">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Setelah script dijalankan, daftarkan IP publik MikroTik Anda sebagai
+                            <strong>NAS client</strong> di halaman <a href="{{ route('settings.freeradius') }}" class="alert-link">Pengaturan FreeRADIUS</a>
+                            agar FreeRADIUS menerima request dari router tersebut.
                         </div>
                     </div>
                 </div>
@@ -633,6 +705,12 @@
             const radiusEl = document.getElementById('wg-script-radius');
             if (radiusEl) radiusEl.value = currentScript.radiusScript || '';
 
+            // Rebuild Direct IP script: replace server address line live
+            let directText = currentScript.radiusDirectScript || '';
+            directText = directText.replace(/address=\S+/g, 'address=' + host);
+            const directEl = document.getElementById('wg-script-direct');
+            if (directEl) directEl.value = directText;
+
             const portEl = document.getElementById('wg-info-port');
             if (portEl) portEl.textContent = currentScript.listenPort || '51820';
 
@@ -651,6 +729,7 @@
             activeTab = tab;
             document.getElementById('wg-panel-wg').style.display     = tab === 'wg'     ? '' : 'none';
             document.getElementById('wg-panel-radius').style.display = tab === 'radius' ? '' : 'none';
+            document.getElementById('wg-panel-direct').style.display = tab === 'direct' ? '' : 'none';
             document.querySelectorAll('#wg-script-tabs .nav-link').forEach(function (el) {
                 el.classList.toggle('active', el.dataset.wgTab === tab);
             });
@@ -695,6 +774,9 @@
 
         const copyRadiusBtn = document.getElementById('wg-copy-radius');
         if (copyRadiusBtn) copyRadiusBtn.addEventListener('click', function () { copyTextarea('wg-script-radius', this); });
+
+        const copyDirectBtn = document.getElementById('wg-copy-direct');
+        if (copyDirectBtn) copyDirectBtn.addEventListener('click', function () { copyTextarea('wg-script-direct', this); });
     })();
     </script>
 @endsection
