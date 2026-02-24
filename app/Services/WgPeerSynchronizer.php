@@ -41,7 +41,14 @@ class WgPeerSynchronizer
 
         $serverPrivateKey = (string) config('wg.server_private_key');
         if ($serverPrivateKey === '') {
-            throw new RuntimeException('Server private key WireGuard belum diatur (WG_SERVER_PRIVATE_KEY).');
+            // Fallback: read from key file written by install-wg.sh
+            $keyFile = '/etc/wireguard/server_private.key';
+            if (is_readable($keyFile)) {
+                $serverPrivateKey = trim((string) @file_get_contents($keyFile));
+            }
+        }
+        if ($serverPrivateKey === '') {
+            throw new RuntimeException('Server private key WireGuard belum diatur. Set WG_SERVER_PRIVATE_KEY di .env atau jalankan install-wg.sh.');
         }
 
         $payload = $this->buildConfig(

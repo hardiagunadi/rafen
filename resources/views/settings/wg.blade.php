@@ -38,11 +38,24 @@
                         <strong>Server Public Key:</strong>
                         @if ($wg['server_public_key'] !== '')
                             <code style="font-size:11px; word-break:break-all;">{{ $wg['server_public_key'] }}</code>
+                            @if ($keyAutoDetected)
+                                <span class="badge badge-warning ml-1" title="Key dibaca dari file, belum disimpan di .env">Auto-detect</span>
+                            @endif
                         @else
                             <span class="text-danger">-</span>
-                            <small class="text-muted ml-1">(jalankan install-wg.sh lalu set WG_SERVER_PUBLIC_KEY di .env)</small>
+                            <small class="text-muted ml-1">(WireGuard belum terinstall — jalankan install-wg.sh)</small>
                         @endif
                     </div>
+                    @if ($keyAutoDetected)
+                        <div class="alert alert-warning py-2 mb-0">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                            Server keypair dibaca dari <code>/etc/wireguard/server_private.key</code>.
+                            Tambahkan ke <code>.env</code> untuk menetapkan secara permanen:
+                            <div class="mt-1">
+                                <code>WG_SERVER_PUBLIC_KEY={{ $wg['server_public_key'] }}</code>
+                            </div>
+                        </div>
+                    @endif
                 </div>
             </div>
             @if ($wg['host'] === '' && $detectedIp !== null)

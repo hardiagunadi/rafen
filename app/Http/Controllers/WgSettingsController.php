@@ -23,20 +23,32 @@ class WgSettingsController extends Controller
         $configuredHost = (string) config('wg.host');
         $detectedIp     = $configuredHost !== '' ? null : $this->detectPublicIp();
 
+        $serverPublicKey  = (string) config('wg.server_public_key');
+        $serverPrivateKey = (string) config('wg.server_private_key');
+
+        // If .env keys are missing, try to read from the key files on disk
+        if ($serverPublicKey === '' || $serverPrivateKey === '') {
+            [$serverPrivateKey, $serverPublicKey] = $this->resolveServerKeypair(
+                $serverPrivateKey,
+                $serverPublicKey,
+            );
+        }
+
         return view('settings.wg', [
             'wg' => [
                 'host'              => $configuredHost,
                 'server_ip'         => (string) config('wg.server_ip'),
                 'server_address'    => (string) config('wg.server_address'),
-                'server_public_key' => (string) config('wg.server_public_key'),
+                'server_public_key' => $serverPublicKey,
                 'listen_port'       => (string) config('wg.listen_port'),
                 'interface'         => (string) config('wg.interface'),
                 'pool_start'        => (string) config('wg.pool_start'),
                 'pool_end'          => (string) config('wg.pool_end'),
             ],
-            'detectedIp' => $detectedIp,
-            'peers'      => $peers,
-            'routers'    => $routers,
+            'detectedIp'      => $detectedIp,
+            'peers'           => $peers,
+            'routers'         => $routers,
+            'keyAutoDetected' => $serverPublicKey !== '' && (string) config('wg.server_public_key') === '',
         ]);
     }
 
@@ -171,6 +183,59 @@ class WgSettingsController extends Controller
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Try to resolve the server keypair from disk files, then auto-generate if needed.
+     * Returns [privateKey, publicKey].
+     *
+     * @return array{string, string}
+     */
+    private function resolveServerKeypair(string $privFromEnv, string $pubFromEnv): array
+    {
+        $keyDir  = '/etc/wireguard';
+        $privFile = $keyDir . '/server_private.key';
+        $pubFile  = $keyDir . '/server_public.key';
+
+        $priv = $privFromEnv;
+        $pub  = $pubFromEnv;
+
+        // Try reading from disk files (written by install-wg.sh)
+        if ($priv === '' && is_readable($privFile)) {
+            $priv = trim((string) @file_get_contents($privFile));
+        }
+        if ($pub === '' && is_readable($pubFile)) {
+            $pub = trim((string) @file_get_contents($pubFile));
+        }
+
+        // If private key found on disk but public key is missing, derive it
+        if ($priv !== '' && $pub === '') {
+            $derived = trim((string) shell_exec('echo ' . escapeshellarg($priv) . ' | wg pubkey 2>/dev/null'));
+            if ($derived !== '') {
+                $pub = $derived;
+                // Persist public key file so we don't have to derive again
+                @file_put_contents($pubFile, $pub);
+            }
+        }
+
+        // Last resort: auto-generate a new server keypair and write to disk
+        if ($priv === '') {
+            $priv = trim((string) shell_exec('wg genkey 2>/dev/null'));
+            if ($priv !== '') {
+                $pub = trim((string) shell_exec('echo ' . escapeshellarg($priv) . ' | wg pubkey 2>/dev/null'));
+
+                if (is_dir($keyDir) && is_writable($keyDir)) {
+                    @file_put_contents($privFile, $priv);
+                    @chmod($privFile, 0600);
+                    if ($pub !== '') {
+                        @file_put_contents($pubFile, $pub);
+                        @chmod($pubFile, 0644);
+                    }
+                }
+            }
+        }
+
+        return [$priv, $pub];
+    }
 
     private function peerPayload(WgPeer $peer): array
     {
