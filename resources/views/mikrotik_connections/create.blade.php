@@ -63,20 +63,33 @@
 
                 <div class="form-row">
                     <div class="form-group col-md-4">
-                        <label>Port API</label>
-                        <input type="number" name="api_port" value="{{ old('api_port', 8728) }}" class="form-control @error('api_port') is-invalid @enderror">
+                        <label>Port API
+                            <span class="badge badge-warning ml-1" style="font-size:10px;" title="Port default 8728 mudah dipindai. Gunakan port custom di MikroTik untuk keamanan.">⚠ Keamanan</span>
+                        </label>
+                        <input type="number" name="api_port" value="{{ old('api_port', 8728) }}" class="form-control @error('api_port') is-invalid @enderror" placeholder="Contoh: 29412">
                         @error('api_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <small class="text-muted">Default MikroTik: 8728. Disarankan ganti ke port random &gt;1024.</small>
                     </div>
                     <div class="form-group col-md-4">
-                        <label>Port API SSL</label>
-                        <input type="number" name="api_ssl_port" value="{{ old('api_ssl_port', 8729) }}" class="form-control @error('api_ssl_port') is-invalid @enderror">
+                        <label>Port API SSL
+                            <span class="badge badge-warning ml-1" style="font-size:10px;" title="Port default 8729 mudah dipindai. Gunakan port custom di MikroTik untuk keamanan.">⚠ Keamanan</span>
+                        </label>
+                        <input type="number" name="api_ssl_port" value="{{ old('api_ssl_port', 8729) }}" class="form-control @error('api_ssl_port') is-invalid @enderror" placeholder="Contoh: 29413">
                         @error('api_ssl_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <small class="text-muted">Default MikroTik: 8729. Disarankan ganti ke port random &gt;1024.</small>
                     </div>
                     <div class="form-group col-md-4">
                         <label>Timeout (detik)</label>
                         <input type="number" name="api_timeout" value="{{ old('api_timeout', 10) }}" class="form-control @error('api_timeout') is-invalid @enderror">
                         @error('api_timeout')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
+                </div>
+                <div class="alert alert-warning py-2" id="api-port-warning" style="display:none;">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    <strong>Port API masih menggunakan nilai default MikroTik (8728/8729).</strong>
+                    Port default mudah dipindai dan menjadi target serangan brute-force.
+                    Ubah port API di MikroTik: <code>/ip service set api port=&lt;PORT_BARU&gt;</code>
+                    dan <code>/ip service set api-ssl port=&lt;PORT_BARU&gt;</code>, lalu sesuaikan di sini.
                 </div>
                 <div class="form-row">
                     <div class="form-group col-md-4">
@@ -204,6 +217,20 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', generateCredentials);
+        document.addEventListener('DOMContentLoaded', function () {
+            generateCredentials();
+            checkApiPortWarning();
+        });
+
+        function checkApiPortWarning() {
+            const apiPort = parseInt(document.querySelector('input[name="api_port"]').value, 10);
+            const apiSslPort = parseInt(document.querySelector('input[name="api_ssl_port"]').value, 10);
+            const warning = document.getElementById('api-port-warning');
+            if (!warning) return;
+            warning.style.display = (apiPort === 8728 || apiSslPort === 8729) ? '' : 'none';
+        }
+
+        document.querySelector('input[name="api_port"]').addEventListener('input', checkApiPortWarning);
+        document.querySelector('input[name="api_ssl_port"]').addEventListener('input', checkApiPortWarning);
     </script>
 @endsection
