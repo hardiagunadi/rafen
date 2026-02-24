@@ -294,9 +294,9 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('settings.ovpn') }}" class="nav-link">
+                                <a href="{{ route('settings.wg') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>OpenVPN</p>
+                                    <p>WireGuard</p>
                                 </a>
                             </li>
                         </ul>

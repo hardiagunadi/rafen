@@ -6,9 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class OvpnClient extends Model
+class WgPeer extends Model
 {
-    /** @use HasFactory<\Database\Factories\OvpnClientFactory> */
     use HasFactory;
 
     /**
@@ -17,9 +16,9 @@ class OvpnClient extends Model
     protected $fillable = [
         'mikrotik_connection_id',
         'name',
-        'common_name',
-        'username',
-        'password',
+        'public_key',
+        'private_key',
+        'preshared_key',
         'vpn_ip',
         'is_active',
         'last_synced_at',
@@ -31,7 +30,7 @@ class OvpnClient extends Model
     protected function casts(): array
     {
         return [
-            'is_active' => 'boolean',
+            'is_active'      => 'boolean',
             'last_synced_at' => 'datetime',
         ];
     }

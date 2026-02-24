@@ -493,53 +493,51 @@ EOF
     fi
 }
 
-setup_ovpn_ccd() {
-    local ccd_path
-    local ccd_dir
-    local ccd_owner
-    local ccd_group
-    local auth_users_path
-    local auth_dir
+setup_wireguard() {
+    local wg_config_path
+    local wg_config_dir
+    local wg_iface
 
-    ccd_path="$(read_env OVPN_CCD_PATH)"
-    if [ -z "$ccd_path" ]; then
-        ccd_path="/etc/openvpn/ccd"
+    wg_config_path="$(read_env WG_CONFIG_PATH)"
+    if [ -z "$wg_config_path" ]; then
+        wg_config_path="/etc/wireguard/wg0.conf"
     fi
 
-    ccd_dir="$ccd_path"
-    ccd_owner="$APP_USER"
-    ccd_group="$APP_GROUP"
+    wg_config_dir="$(dirname "$wg_config_path")"
+    wg_iface="$(read_env WG_INTERFACE)"
+    wg_iface="${wg_iface:-wg0}"
 
-    if [ -d /etc/openvpn ] && [ -n "$SUDO_CMD" ]; then
-        ${SUDO_CMD} chmod g+rx /etc/openvpn || true
+    if [ ! -d "$wg_config_dir" ]; then
+        echo "NOTIFIKASI: $wg_config_dir belum ada. Jalankan install-wg.sh untuk menginstall WireGuard."
+        return
     fi
 
-    ${SUDO_CMD} install -d -m 0775 "$ccd_dir"
-    ${SUDO_CMD} chown "$ccd_owner":"$ccd_group" "$ccd_dir"
+    # Allow webserver group to access the WireGuard config directory
+    ${SUDO_CMD} chmod g+rx "$wg_config_dir" || true
+
+    if [ -f "$wg_config_path" ]; then
+        ${SUDO_CMD} chown root:"$APP_GROUP" "$wg_config_path" 2>/dev/null || true
+        ${SUDO_CMD} chmod 0640 "$wg_config_path" || true
+    fi
 
     if command_exists setfacl && id "$APP_USER" >/dev/null 2>&1; then
-        ${SUDO_CMD} setfacl -m "u:${APP_USER}:rwx" /etc/openvpn || true
-        ${SUDO_CMD} setfacl -m "u:${APP_USER}:rwx" "$ccd_dir" || true
+        ${SUDO_CMD} setfacl -m "u:${APP_USER}:rwx" "$wg_config_dir" 2>/dev/null || true
+        if [ -f "$wg_config_path" ]; then
+            ${SUDO_CMD} setfacl -m "u:${APP_USER}:rw" "$wg_config_path" 2>/dev/null || true
+        fi
     fi
 
-    auth_users_path="$(read_env OVPN_AUTH_USERS_PATH)"
-    if [ -z "$auth_users_path" ]; then
-        auth_users_path="/etc/openvpn/ovpn-users"
-    fi
-    auth_dir="$(dirname "$auth_users_path")"
-    ${SUDO_CMD} install -d -m 0775 "$auth_dir"
-    ${SUDO_CMD} touch "$auth_users_path"
-    ${SUDO_CMD} chown "$ccd_owner":"$ccd_group" "$auth_users_path"
-    ${SUDO_CMD} chmod 0660 "$auth_users_path"
-
-    ${SUDO_CMD} bash -lc "cat > /etc/openvpn/checkpsw.sh <<'EOF'
-#!/usr/bin/env bash
-PASSFILE=\"${auth_users_path}\"
-USERNAME=\"\$1\"
-PASSWORD=\"\$2\"
-grep -Fxq \"\${USERNAME} \${PASSWORD}\" \"\${PASSFILE}\"
+    # Sudoers for wg syncconf (allows www-data to apply peer changes)
+    local sudoers_file="/etc/sudoers.d/rafen-wireguard"
+    if [ ! -f "$sudoers_file" ]; then
+        ${SUDO_CMD} bash -c "cat > ${sudoers_file} <<EOF
+Defaults:${APP_USER} !requiretty
+${APP_USER} ALL=NOPASSWD:/usr/bin/wg syncconf ${wg_iface} *
+${APP_USER} ALL=NOPASSWD:/usr/bin/wg-quick strip ${wg_iface}
 EOF"
-    ${SUDO_CMD} chmod 0700 /etc/openvpn/checkpsw.sh
+        ${SUDO_CMD} chmod 0440 "$sudoers_file"
+        echo "INFO: Sudoers WireGuard dibuat: $sudoers_file"
+    fi
 }
 
 secure_mysql() {
@@ -1088,7 +1086,7 @@ main() {
     setup_database
     verify_database_access
     setup_freeradius
-    setup_ovpn_ccd
+    setup_wireguard
     setup_apache
     setup_phpmyadmin
     setup_systemd_services
