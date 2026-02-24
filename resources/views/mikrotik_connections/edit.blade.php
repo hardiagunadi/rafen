@@ -260,7 +260,7 @@
         }
 
         function buildScript() {
-            const host = @json(config('radius.server_ip'));
+            const host = @json($radiusHost);
             const apiUser = document.querySelector('input[name="username"]').value;
             const apiPass = document.querySelector('input[name="password"]').value;
             const secret = document.querySelector('input[name="radius_secret"]').value || apiPass;

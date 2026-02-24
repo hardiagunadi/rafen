@@ -81,7 +81,24 @@ class MikrotikConnectionController extends Controller
     {
         $this->authorizeAccess($mikrotikConnection);
 
-        return view('mikrotik_connections.edit', compact('mikrotikConnection'));
+        // Resolve the public IP/host for RADIUS script generation:
+        // prefer WG_HOST (explicitly set), then WG_SERVER_IP if it's not a tunnel IP,
+        // then RADIUS_SERVER_IP, finally fall back to auto-detect via ipify.
+        $radiusHost = (string) config('wg.host');
+        if ($radiusHost === '') {
+            $radiusHost = (string) config('radius.server_ip', '');
+        }
+        if ($radiusHost === '' || $radiusHost === '127.0.0.1') {
+            $output = @shell_exec('curl -s --max-time 3 https://api.ipify.org 2>/dev/null');
+            if ($output !== null) {
+                $candidate = trim($output);
+                if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    $radiusHost = $candidate;
+                }
+            }
+        }
+
+        return view('mikrotik_connections.edit', compact('mikrotikConnection', 'radiusHost'));
     }
 
     /**
