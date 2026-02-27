@@ -1,14 +1,17 @@
 <?php
 
+use App\Http\Controllers\ActiveSessionController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BandwidthProfileController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FreeRadiusSettingsController;
 use App\Http\Controllers\HotspotProfileController;
+use App\Http\Controllers\HotspotUserController;
 use App\Http\Controllers\IncomeReportController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\MikrotikConnectionController;
+use App\Http\Controllers\VoucherController;
 use App\Http\Controllers\WgSettingsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileGroupController;
@@ -62,6 +65,14 @@ Route::middleware('auth')->group(function () {
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::delete('ppp-users/bulk-destroy', [\App\Http\Controllers\PppUserController::class, 'bulkDestroy'])->name('ppp-users.bulk-destroy');
+    Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');
+    Route::resource('hotspot-users', HotspotUserController::class);
+    Route::delete('vouchers/bulk-destroy', [VoucherController::class, 'bulkDestroy'])->name('vouchers.bulk-destroy');
+    Route::get('vouchers/{batch}/print', [VoucherController::class, 'printBatch'])->name('vouchers.print');
+    Route::resource('vouchers', VoucherController::class);
+    Route::get('sessions/pppoe', [ActiveSessionController::class, 'pppoe'])->name('sessions.pppoe');
+    Route::get('sessions/hotspot', [ActiveSessionController::class, 'hotspot'])->name('sessions.hotspot');
+    Route::post('sessions/refresh-router/{connection}', [ActiveSessionController::class, 'refreshRouter'])->name('sessions.refresh-router');
 
     // Subscription routes for tenants
     Route::prefix('subscription')->name('subscription.')->group(function () {

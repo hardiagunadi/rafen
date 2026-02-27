@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class MikrotikConnection extends Model
 {
@@ -33,6 +34,7 @@ class MikrotikConnection extends Model
         'last_ping_latency_ms',
         'last_ping_at',
         'failed_ping_count',
+        'ping_unstable',
         'last_port_open',
         'last_ping_message',
         'auth_port',
@@ -55,6 +57,7 @@ class MikrotikConnection extends Model
             'is_online' => 'boolean',
             'last_ping_at' => 'datetime',
             'failed_ping_count' => 'integer',
+            'ping_unstable' => 'boolean',
             'last_port_open' => 'boolean',
             'auth_port' => 'integer',
             'acct_port' => 'integer',
@@ -64,6 +67,11 @@ class MikrotikConnection extends Model
     public function radiusAccounts(): HasMany
     {
         return $this->hasMany(RadiusAccount::class);
+    }
+
+    public function wgPeer(): HasOne
+    {
+        return $this->hasOne(WgPeer::class);
     }
 
     public function owner(): BelongsTo

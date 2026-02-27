@@ -108,7 +108,9 @@ class ProfileGroupController extends Controller
         }
 
         return redirect()->route('profile-groups.index')->with('status', 'Profil group terpilih dihapus.');
-    }blic function export(ProfileGroup $profileGroup, ProfileGroupExporter $exporter): RedirectResponse
+    }
+
+    public function export(ProfileGroup $profileGroup, ProfileGroupExporter $exporter): RedirectResponse
     {
         $connections = $this->resolveExportConnections($profileGroup);
         if ($connections->isEmpty()) {

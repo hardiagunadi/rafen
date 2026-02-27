@@ -24,6 +24,7 @@ class RadiusClientsSynchronizer
         $connections = MikrotikConnection::query()
             ->where('is_active', true)
             ->whereNotNull('radius_secret')
+            ->with('wgPeer')
             ->get();
 
         $payload = $this->buildClientsPayload($connections);
@@ -67,8 +68,17 @@ class RadiusClientsSynchronizer
             $shortName = Str::slug($connection->name, '_') ?: 'mikrotik_'.$connection->id;
             $secret = addslashes($connection->radius_secret);
 
+            $wgPeer = $connection->wgPeer;
+            $nasIp = ($wgPeer?->is_active && $wgPeer->vpn_ip)
+                ? $wgPeer->vpn_ip
+                : $connection->host;
+            $nasNote = ($wgPeer?->is_active && $wgPeer->vpn_ip)
+                ? '# NAS IP via WireGuard tunnel'
+                : '# NAS IP: direct';
+
+            $lines[] = $nasNote;
             $lines[] = "client {$shortName} {";
-            $lines[] = "    ipaddr = {$connection->host}";
+            $lines[] = "    ipaddr = {$nasIp}";
             $lines[] = "    secret = \"{$secret}\"";
             $lines[] = "    shortname = {$shortName}";
             $lines[] = '}';
