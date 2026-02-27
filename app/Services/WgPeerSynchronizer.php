@@ -63,8 +63,10 @@ class WgPeerSynchronizer
         // Atomic write: write to temp file then rename
         $tmpPath = $confPath . '.tmp.' . getmypid();
         $this->filesystem->put($tmpPath, $payload);
-        chmod($tmpPath, 0600);
+        chmod($tmpPath, 0660);
         rename($tmpPath, $confPath);
+        // Re-apply group ownership after rename (rename does not inherit permissions)
+        @chgrp($confPath, 'www-data');
 
         // Apply changes without restarting the interface (no dropped connections)
         // wg syncconf requires stripped config (no PostUp/PostDown) — pipe via bash

@@ -76,16 +76,19 @@ generate_server_keys() {
 
     if [ -f "$privkey_file" ] && [ -s "$privkey_file" ]; then
         info "Server keys sudah ada di ${privkey_file}, melewati generate."
+        # Pastikan permission key benar meski sudah ada
+        chown root:"$WG_CONF_GROUP" "$privkey_file" 2>/dev/null || true
+        chmod 0640 "$privkey_file"
         return
     fi
 
     info "Generate server keypair WireGuard..."
     mkdir -p "$WG_KEY_DIR"
-    chmod 700 "$WG_KEY_DIR"
 
     umask 077
     wg genkey | tee "$privkey_file" | wg pubkey > "$pubkey_file"
-    chmod 0600 "$privkey_file"
+    chown root:"$WG_CONF_GROUP" "$privkey_file" 2>/dev/null || true
+    chmod 0640 "$privkey_file"
     chmod 0644 "$pubkey_file"
 
     info "Server keypair berhasil digenerate:"
@@ -158,50 +161,47 @@ setup_permissions() {
 
     info "Mengatur permission direktori WireGuard..."
 
-    # Allow www-data group to access the dir (needed to write wg0.conf)
+    # Direktori: root:www-data 770 — www-data perlu bisa buat/tulis file di sini
     if getent group "$WG_CONF_GROUP" >/dev/null 2>&1; then
         chown root:"$WG_CONF_GROUP" "$conf_dir" 2>/dev/null || true
         chmod 0770 "$conf_dir"
     fi
 
+    # wg0.conf: root:www-data 660 — www-data perlu baca & TULIS
     if [ -f "$WG_CONFIG_PATH" ]; then
         if getent group "$WG_CONF_GROUP" >/dev/null 2>&1; then
             chown root:"$WG_CONF_GROUP" "$WG_CONFIG_PATH" 2>/dev/null || true
-            chmod 0640 "$WG_CONFIG_PATH"
+            chmod 0660 "$WG_CONFIG_PATH"
         fi
     fi
 
-    # ACL (preferred — more granular)
-    if command_exists setfacl; then
-        setfacl -m "u:${WG_CONF_OWNER}:rwx" "$conf_dir" 2>/dev/null || true
-        if [ -f "$WG_CONFIG_PATH" ]; then
-            setfacl -m "u:${WG_CONF_OWNER}:rw" "$WG_CONFIG_PATH" 2>/dev/null || true
-        fi
-        info "ACL setfacl berhasil."
-    else
-        warn "setfacl tidak tersedia. Install acl: apt install acl"
-    fi
-
-    # Sudoers for wg syncconf (www-data bisa jalankan tanpa password)
+    # Sudoers — selalu tulis ulang untuk memastikan isinya benar
     local sudoers_file="/etc/sudoers.d/rafen-wireguard"
-    if [ ! -f "$sudoers_file" ]; then
-        info "Membuat sudoers untuk wg syncconf..."
-        cat <<EOF | tee "$sudoers_file" >/dev/null
+    info "Menulis sudoers untuk wg syncconf..."
+    cat <<EOF > "$sudoers_file"
 # RAFEN WireGuard — allow www-data to apply peer changes without restart
 Defaults:${WG_CONF_OWNER} !requiretty
 ${WG_CONF_OWNER} ALL=NOPASSWD:/usr/bin/wg syncconf ${WG_INTERFACE} *
 ${WG_CONF_OWNER} ALL=NOPASSWD:/usr/bin/wg-quick strip ${WG_INTERFACE}
 EOF
-        chmod 0440 "$sudoers_file"
-        # Validate sudoers file
-        if command_exists visudo && visudo -c -f "$sudoers_file" >/dev/null 2>&1; then
-            info "Sudoers valid: $sudoers_file"
-        else
-            warn "Sudoers mungkin tidak valid — periksa $sudoers_file"
-        fi
+    chmod 0440 "$sudoers_file"
+    if command_exists visudo && visudo -c -f "$sudoers_file" >/dev/null 2>&1; then
+        info "Sudoers valid: $sudoers_file"
     else
-        info "Sudoers sudah ada: $sudoers_file"
+        warn "Sudoers mungkin tidak valid — periksa $sudoers_file"
     fi
+
+    # Systemd drop-in — pastikan permission wg0.conf bertahan setelah restart service
+    local dropin_dir="/etc/systemd/system/wg-quick@${WG_INTERFACE}.service.d"
+    local dropin_file="${dropin_dir}/rafen-permissions.conf"
+    info "Membuat systemd drop-in untuk mempertahankan permission setelah restart..."
+    mkdir -p "$dropin_dir"
+    cat <<EOF > "$dropin_file"
+# RAFEN — pastikan wg0.conf dapat ditulis oleh www-data setelah service restart
+[Service]
+ExecStartPost=/bin/bash -c 'chown root:${WG_CONF_GROUP} ${WG_CONFIG_PATH} && chmod 660 ${WG_CONFIG_PATH}'
+EOF
+    systemctl daemon-reload 2>/dev/null && info "systemctl daemon-reload OK" || warn "daemon-reload gagal"
 }
 
 # ── Phase 5: IP forwarding ─────────────────────────────────────────────────
