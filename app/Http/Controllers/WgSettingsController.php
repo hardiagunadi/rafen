@@ -6,10 +6,12 @@ use App\Http\Requests\StoreWgPeerRequest;
 use App\Http\Requests\UpdateWgPeerRequest;
 use App\Models\MikrotikConnection;
 use App\Models\WgPeer;
+use App\Services\RadiusClientsSynchronizer;
 use App\Services\WgPeerSynchronizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
@@ -182,6 +184,61 @@ class WgSettingsController extends Controller
         }
     }
 
+    public function createNas(WgPeer $wgPeer, RadiusClientsSynchronizer $radiusSynchronizer): JsonResponse|RedirectResponse
+    {
+        if ($wgPeer->mikrotik_connection_id !== null) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'Peer ini sudah terhubung ke router NAS.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+            return redirect()->route('settings.wg')->with('error', 'Peer ini sudah terhubung ke router NAS.');
+        }
+
+        if (! $wgPeer->vpn_ip) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'Peer belum memiliki IP VPN.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+            return redirect()->route('settings.wg')->with('error', 'Peer belum memiliki IP VPN.');
+        }
+
+        $secret = Str::random(24);
+
+        $nas = MikrotikConnection::create([
+            'owner_id'      => auth()->id(),
+            'name'          => $wgPeer->name,
+            'host'          => $wgPeer->vpn_ip,
+            'api_port'      => 8728,
+            'api_ssl_port'  => 8729,
+            'use_ssl'       => false,
+            'username'      => 'admin',
+            'password'      => $secret,
+            'radius_secret' => $secret,
+            'ros_version'   => '7',
+            'api_timeout'   => 10,
+            'is_active'     => true,
+        ]);
+
+        $wgPeer->update(['mikrotik_connection_id' => $nas->id]);
+        $wgPeer->load('mikrotikConnection');
+
+        try {
+            $radiusSynchronizer->sync();
+        } catch (Throwable) {
+            // Non-fatal — NAS sudah dibuat, sync RADIUS bisa dijalankan manual
+        }
+
+        if (request()->wantsJson()) {
+            return response()->json([
+                'status' => 'NAS berhasil dibuat dengan IP VPN ' . $wgPeer->vpn_ip . '.',
+                'peer'   => $this->peerPayload($wgPeer),
+                'nas_id' => $nas->id,
+                'edit_url' => route('mikrotik-connections.edit', $nas),
+            ]);
+        }
+
+        return redirect()->route('mikrotik-connections.edit', $nas)
+            ->with('status', 'NAS berhasil dibuat dengan IP VPN ' . $wgPeer->vpn_ip . '. Lengkapi konfigurasi router di sini.');
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────────
 
     /**
@@ -252,6 +309,7 @@ class WgSettingsController extends Controller
             'update_url'          => route('settings.wg.peers.update', $peer),
             'destroy_url'         => route('settings.wg.peers.destroy', $peer),
             'sync_url'            => route('settings.wg.peers.sync', $peer),
+            'create_nas_url'      => route('settings.wg.peers.create-nas', $peer),
         ];
     }
 

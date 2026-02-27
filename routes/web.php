@@ -61,6 +61,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('settings/wg/peers/{wgPeer}', [WgSettingsController::class, 'update'])->name('settings.wg.peers.update');
     Route::delete('settings/wg/peers/{wgPeer}', [WgSettingsController::class, 'destroy'])->name('settings.wg.peers.destroy');
     Route::post('settings/wg/peers/{wgPeer}/sync', [WgSettingsController::class, 'sync'])->name('settings.wg.peers.sync');
+    Route::post('settings/wg/peers/{wgPeer}/create-nas', [WgSettingsController::class, 'createNas'])->name('settings.wg.peers.create-nas');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);

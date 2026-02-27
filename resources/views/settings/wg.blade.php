@@ -294,7 +294,9 @@
                             data-peer-id="{{ $peer->id }}"
                             data-destroy-url="{{ route('settings.wg.peers.destroy', $peer) }}"
                             data-sync-url="{{ route('settings.wg.peers.sync', $peer) }}"
-                            data-update-url="{{ route('settings.wg.peers.update', $peer) }}">
+                            data-update-url="{{ route('settings.wg.peers.update', $peer) }}"
+                            data-create-nas-url="{{ route('settings.wg.peers.create-nas', $peer) }}"
+                            data-has-nas="{{ $peer->mikrotik_connection_id ? '1' : '0' }}">
                             <td class="wg-col-router">
                                 {{ $peer->mikrotikConnection?->name ?? '-' }}
                                 @if($peer->is_active && $peer->vpn_ip && $peer->mikrotikConnection?->radius_secret)
@@ -315,6 +317,10 @@
                                 <button type="button" class="btn btn-sm btn-outline-secondary wg-script-btn"
                                         data-toggle="modal" data-target="#wg-script-modal"
                                         data-script='@json($scriptData)'>Script MikroTik</button>
+                                @if(! $peer->mikrotik_connection_id && $peer->vpn_ip)
+                                    <button type="button" class="btn btn-sm btn-outline-info wg-create-nas-btn"
+                                            title="Buat entri router NAS baru dengan host = {{ $peer->vpn_ip }}">Buat NAS</button>
+                                @endif
                                 <button type="button" class="btn btn-sm btn-outline-danger wg-delete-btn">Hapus</button>
                             </td>
                         </tr>
@@ -617,6 +623,37 @@
             });
         });
 
+        // ── Buat NAS ──────────────────────────────────────────────────────────
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.wg-create-nas-btn');
+            if (!btn) return;
+
+            const row = btn.closest('tr[data-peer-id]');
+            if (!row) return;
+
+            const vpnIp = row.querySelector('.wg-col-ip') ? row.querySelector('.wg-col-ip').textContent.trim() : '';
+            if (!confirm('Buat router NAS baru dengan host = ' + vpnIp + '?\n\nAnda akan diarahkan ke halaman edit router untuk melengkapi konfigurasi.')) return;
+
+            setRowBusy(row, true);
+            btn.textContent = 'Membuat…';
+
+            ajaxJson('POST', row.dataset.createNasUrl).then(function (data) {
+                showAlert(data.status || 'NAS berhasil dibuat.', 'success');
+                // Redirect ke halaman edit NAS
+                if (data.edit_url) {
+                    window.location.href = data.edit_url;
+                } else {
+                    btn.remove();
+                    row.querySelector('.wg-col-router').textContent = data.peer.mikrotik_connection || '-';
+                    setRowBusy(row, false);
+                }
+            }).catch(function (err) {
+                btn.textContent = 'Buat NAS';
+                setRowBusy(row, false);
+                showAlert((err && err.error) || 'Gagal membuat NAS.', 'danger');
+            });
+        });
+
         // ── Update (edit form) ────────────────────────────────────────────────
         document.addEventListener('submit', function (e) {
             const form = e.target.closest('.wg-update-form');
@@ -676,11 +713,17 @@
 
             const pubKeyShort = peer.public_key ? peer.public_key.substring(0, 20) + '…' : '-';
 
+            const createNasBtn = (!peer.mikrotik_connection && peer.vpn_ip)
+                ? '<button type="button" class="btn btn-sm btn-outline-info wg-create-nas-btn" title="Buat entri router NAS baru dengan host = ' + peer.vpn_ip + '">Buat NAS</button> '
+                : '';
+
             tbody.insertAdjacentHTML('beforeend',
                 '<tr id="wg-row-' + peer.id + '" data-peer-id="' + peer.id + '"' +
                 ' data-destroy-url="' + peer.destroy_url + '"' +
                 ' data-sync-url="' + peer.sync_url + '"' +
-                ' data-update-url="' + peer.update_url + '">' +
+                ' data-update-url="' + peer.update_url + '"' +
+                ' data-create-nas-url="' + peer.create_nas_url + '"' +
+                ' data-has-nas="' + (peer.mikrotik_connection ? '1' : '0') + '">' +
                 '<td class="wg-col-router">' + (peer.mikrotik_connection || '-') + '</td>' +
                 '<td class="wg-col-name">' + peer.name + '</td>' +
                 '<td class="wg-col-ip">' + (peer.vpn_ip || '-') + '</td>' +
@@ -690,6 +733,7 @@
                 '<td class="text-right text-nowrap">' +
                 '<button type="button" class="btn btn-sm btn-outline-success wg-sync-btn">Sync</button> ' +
                 '<button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#wg-edit-' + peer.id + '">Edit</button> ' +
+                createNasBtn +
                 '<button type="button" class="btn btn-sm btn-outline-danger wg-delete-btn">Hapus</button>' +
                 '</td>' +
                 '</tr>' +
