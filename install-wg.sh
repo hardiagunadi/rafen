@@ -146,7 +146,8 @@ PostDown = iptables -t nat -D POSTROUTING -s ${WG_NETWORK} -o ${iface} -j MASQUE
 # ============================================================
 EOF
 
-    chmod 0600 "$WG_CONFIG_PATH"
+    chown root:"$WG_CONF_GROUP" "$WG_CONFIG_PATH" 2>/dev/null || true
+    chmod 0660 "$WG_CONFIG_PATH"
     info "wg0.conf berhasil ditulis."
 }
 
@@ -160,7 +161,7 @@ setup_permissions() {
     # Allow www-data group to access the dir (needed to write wg0.conf)
     if getent group "$WG_CONF_GROUP" >/dev/null 2>&1; then
         chown root:"$WG_CONF_GROUP" "$conf_dir" 2>/dev/null || true
-        chmod 0750 "$conf_dir"
+        chmod 0770 "$conf_dir"
     fi
 
     if [ -f "$WG_CONFIG_PATH" ]; then
@@ -227,7 +228,7 @@ enable_service() {
 restart_service() {
     if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}.service"; then
         info "Interface aktif — menggunakan wg syncconf (tanpa memutus koneksi)..."
-        wg syncconf "${WG_INTERFACE}" <(wg-quick strip "${WG_INTERFACE}") 2>/dev/null \
+        bash -c "wg syncconf ${WG_INTERFACE} <(wg-quick strip ${WG_INTERFACE})" 2>/dev/null \
             && info "wg syncconf berhasil." \
             || {
                 warn "wg syncconf gagal, mencoba restart..."
