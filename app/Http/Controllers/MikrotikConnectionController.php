@@ -96,6 +96,8 @@ class MikrotikConnectionController extends Controller
             }
         }
 
+        $mikrotikConnection->load('wgPeer');
+
         return view('mikrotik_connections.edit', compact('mikrotikConnection', 'radiusHost'));
     }
 

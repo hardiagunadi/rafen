@@ -1,7 +1,8 @@
 <?php
 
-use Illuminate\Http\JsonResponse;
 namespace App\Http\Controllers;
+
+use Illuminate\Http\JsonResponse;
 
 use App\Models\SubscriptionPlan;
 use Illuminate\Http\Request;

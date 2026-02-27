@@ -67,34 +67,44 @@
             @endif
             <div class="alert alert-info mb-0 mt-3">
                 <i class="fas fa-shield-alt mr-1"></i>
-                WireGuard menggunakan autentikasi berbasis <strong>public key</strong>. Setiap router MikroTik mendapat satu peer
-                dengan keypair unik dan IP tunnel statis. FreeRADIUS diakses MikroTik <strong>melalui tunnel WireGuard</strong>
-                (tidak perlu IP publik untuk RADIUS). Membutuhkan <strong>RouterOS v7.1+</strong>.
+                WireGuard berfungsi sebagai <strong>tunnel privat</strong> agar server RAFEN dapat terhubung ke MikroTik.
+                Setelah tunnel aktif, RADIUS NAS otomatis menggunakan <strong>IP tunnel</strong> (bukan IP publik router).
+                Membutuhkan <strong>RouterOS v7.1+</strong>.
             </div>
         </div>
     </div>
 
-    <div class="card mb-4">
+    <div class="card mb-4" id="tambah-peer">
         <div class="card-header">
             <h4 class="mb-0">Tambah WireGuard Peer</h4>
         </div>
         <form id="wg-store-form" action="{{ route('settings.wg.peers.store') }}" method="POST">
             @csrf
             <div class="card-body">
+                @php $preselectedRouterId = request()->query('router_id'); $preselectedRouterName = request()->query('router_name'); @endphp
+                @if($preselectedRouterId && $preselectedRouterName)
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Membuat tunnel WireGuard untuk router <strong>{{ $preselectedRouterName }}</strong>.
+                        Setelah disimpan, copy script ke MikroTik, lalu kembali ke halaman edit router untuk sync RADIUS.
+                    </div>
+                @endif
                 <div class="form-row">
                     <div class="form-group col-md-4">
-                        <label>Router (NAS)</label>
+                        <label>Router MikroTik</label>
+                        <small class="text-muted d-block mb-1">Pilih router yang akan dihubungkan via tunnel ini</small>
                         <select name="mikrotik_connection_id" class="form-control @error('mikrotik_connection_id') is-invalid @enderror">
                             <option value="">Tanpa Router (tunnel saja)</option>
                             @foreach($routers as $router)
-                                <option value="{{ $router->id }}" @selected(old('mikrotik_connection_id') == $router->id)>{{ $router->name }}</option>
+                                <option value="{{ $router->id }}"
+                                    @selected(old('mikrotik_connection_id', $preselectedRouterId) == $router->id)>{{ $router->name }}</option>
                             @endforeach
                         </select>
                         @error('mikrotik_connection_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="form-group col-md-4">
                         <label>Nama Peer</label>
-                        <input type="text" name="name" value="{{ old('name') }}" class="form-control @error('name') is-invalid @enderror" required placeholder="Contoh: Router Kediri">
+                        <input type="text" name="name" value="{{ old('name', $preselectedRouterName) }}" class="form-control @error('name') is-invalid @enderror" required placeholder="Contoh: Router Kediri">
                         @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="form-group col-md-4">
@@ -285,7 +295,12 @@
                             data-destroy-url="{{ route('settings.wg.peers.destroy', $peer) }}"
                             data-sync-url="{{ route('settings.wg.peers.sync', $peer) }}"
                             data-update-url="{{ route('settings.wg.peers.update', $peer) }}">
-                            <td class="wg-col-router">{{ $peer->mikrotikConnection?->name ?? '-' }}</td>
+                            <td class="wg-col-router">
+                                {{ $peer->mikrotikConnection?->name ?? '-' }}
+                                @if($peer->is_active && $peer->vpn_ip && $peer->mikrotikConnection?->radius_secret)
+                                    <br><span class="badge badge-info" style="font-size:10px;" title="RADIUS NAS menggunakan IP tunnel {{ $peer->vpn_ip }}">NAS: {{ $peer->vpn_ip }}</span>
+                                @endif
+                            </td>
                             <td class="wg-col-name">{{ $peer->name }}</td>
                             <td class="wg-col-ip">{{ $peer->vpn_ip ?? '-' }}</td>
                             <td class="wg-col-pubkey">

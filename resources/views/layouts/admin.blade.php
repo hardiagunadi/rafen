@@ -225,6 +225,29 @@
                             </li>
                         </ul>
                     </li>
+                    <li class="nav-item has-treeview">
+                        <a href="#" class="nav-link">
+                            <i class="nav-icon fas fa-signal"></i>
+                            <p>
+                                Session User
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.pppoe') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>PPPoE</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.hotspot') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Hotspot</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
                     <li class="nav-item">
                         <a href="{{ route('mikrotik-connections.index') }}" class="nav-link">
                             <i class="nav-icon fas fa-server"></i>
@@ -241,7 +264,7 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="{{ route('radius-accounts.index') }}" class="nav-link">
+                                <a href="{{ route('hotspot-users.index') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>User Hotspot</p>
                                 </a>
@@ -250,6 +273,12 @@
                                 <a href="{{ route('ppp-users.index') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>User PPP</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('vouchers.index') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Voucher</p>
                                 </a>
                             </li>
                             <li class="nav-item">

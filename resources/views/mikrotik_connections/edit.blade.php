@@ -167,6 +167,119 @@
             </div>
         </form>
     </div>
+
+    {{-- ── WireGuard Tunnel Card ─────────────────────────────────────────── --}}
+    @php
+        $connIsOnline   = $mikrotikConnection->is_online ?? null;
+        $connUnstable   = (bool) ($mikrotikConnection->ping_unstable ?? false);
+        $wgCardClass    = 'card-warning';
+        if ($mikrotikConnection->wgPeer) {
+            $wgCardClass = ($connIsOnline && ! $connUnstable) ? 'card-success'
+                         : ($connUnstable ? 'card-orange' : 'card-secondary');
+        }
+    @endphp
+    <div class="card card-outline mt-3 {{ $wgCardClass }}">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-network-wired mr-1"></i> WireGuard Tunnel</h5>
+            @if($mikrotikConnection->wgPeer)
+                @if($connIsOnline === null)
+                    <span class="badge badge-secondary">Belum Dicek</span>
+                @elseif($connUnstable)
+                    <span class="badge badge-warning">Tidak Stabil</span>
+                @elseif($connIsOnline)
+                    <span class="badge badge-success">Terhubung</span>
+                @else
+                    <span class="badge badge-danger">Tidak Terhubung</span>
+                @endif
+            @else
+                <span class="badge badge-warning">Belum dikonfigurasi</span>
+            @endif
+        </div>
+        <div class="card-body">
+            @if($mikrotikConnection->wgPeer)
+                @php $wgPeer = $mikrotikConnection->wgPeer; @endphp
+                @if($connIsOnline === null)
+                    <div class="alert alert-secondary py-2">
+                        <i class="fas fa-clock mr-1"></i>
+                        Tunnel WireGuard terdaftar. Status koneksi belum pernah dicek — tunggu ping checker berjalan.
+                    </div>
+                @elseif($connIsOnline && ! $connUnstable)
+                    <div class="alert alert-success py-2">
+                        <i class="fas fa-check-circle mr-1"></i>
+                        Tunnel <strong>terhubung</strong>. Ping reply konsisten.
+                        RADIUS NAS menggunakan IP tunnel <strong>{{ $wgPeer->vpn_ip ?? '-' }}</strong>.
+                    </div>
+                @elseif($connUnstable)
+                    <div class="alert alert-warning py-2">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        Tunnel <strong>tidak stabil</strong> — ping putus-nyambung.
+                        Periksa konfigurasi WireGuard di MikroTik.
+                        RADIUS NAS tetap menggunakan IP tunnel <strong>{{ $wgPeer->vpn_ip ?? '-' }}</strong>.
+                    </div>
+                @else
+                    <div class="alert alert-danger py-2">
+                        <i class="fas fa-times-circle mr-1"></i>
+                        Tunnel <strong>tidak terhubung</strong> (RTO). Ping gagal melewati threshold.
+                        Periksa konfigurasi WireGuard di MikroTik dan pastikan endpoint server dapat dijangkau.
+                    </div>
+                @endif
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-2"><strong>Nama Peer:</strong> {{ $wgPeer->name }}</div>
+                        <div class="mb-2">
+                            <strong>IP Tunnel (NAS IP):</strong>
+                            <code>{{ $wgPeer->vpn_ip ?? '-' }}</code>
+                            <span class="badge badge-info ml-1">RADIUS NAS</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Status Peer:</strong>
+                            {{ $wgPeer->is_active ? 'Aktif' : 'Nonaktif' }}
+                        </div>
+                        <div class="mb-2">
+                            <strong>Sync Terakhir:</strong>
+                            {{ $wgPeer->last_synced_at ? $wgPeer->last_synced_at->format('d/m/Y H:i') : '-' }}
+                        </div>
+                        @if($mikrotikConnection->last_ping_message)
+                            <div class="mb-2">
+                                <strong>Detail Ping:</strong>
+                                <span class="text-muted">{{ $mikrotikConnection->last_ping_message }}</span>
+                            </div>
+                        @endif
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-2">
+                            <strong>Public Key:</strong><br>
+                            <code style="font-size:11px; word-break:break-all;">{{ $wgPeer->public_key }}</code>
+                        </div>
+                    </div>
+                </div>
+                <a href="{{ route('settings.wg') }}" class="btn btn-sm btn-outline-primary mt-2">
+                    <i class="fas fa-cog mr-1"></i> Kelola di Pengaturan WireGuard
+                </a>
+            @else
+                <div class="alert alert-warning py-2">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    <strong>Tunnel WireGuard belum dikonfigurasi.</strong>
+                    WireGuard diperlukan agar server RAFEN dapat terhubung ke MikroTik melalui jaringan privat.
+                    Setelah tunnel aktif dan ping reply, RADIUS NAS akan otomatis menggunakan IP tunnel.
+                </div>
+                <p class="text-muted mb-3">
+                    Langkah-langkah:
+                    <ol>
+                        <li>Buat WireGuard peer untuk router ini di halaman Pengaturan WireGuard</li>
+                        <li>Copy script WireGuard ke terminal MikroTik</li>
+                        <li>Verifikasi tunnel aktif (ping reply dari server ke MikroTik)</li>
+                        <li>Sync RADIUS dari <a href="{{ route('settings.freeradius') }}">Pengaturan FreeRADIUS</a> — NAS IP akan otomatis menjadi IP tunnel</li>
+                    </ol>
+                </p>
+                <a href="{{ route('settings.wg') }}?router_id={{ $mikrotikConnection->id }}&router_name={{ urlencode($mikrotikConnection->name) }}"
+                   class="btn btn-warning">
+                    <i class="fas fa-plus mr-1"></i> Buat Tunnel WireGuard untuk Router Ini
+                </a>
+            @endif
+        </div>
+    </div>
+
     <div class="modal fade" id="scriptGeneratorModal" tabindex="-1" aria-labelledby="scriptGeneratorModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">

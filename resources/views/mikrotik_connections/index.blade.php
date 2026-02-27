@@ -16,9 +16,10 @@
             <div class="mb-3">
                 <strong>INFO :</strong>
                 <ul class="mb-0">
-                    <li>Sistem akan mengecek status ping ke router setiap 5 menit</li>
-                    <li>Tabel Router akan di refresh otomatis setiap 1 menit</li>
-                    <li>Status online mensyaratkan ping sukses <strong>dan</strong> port API (SSL/non-SSL) terbuka.</li>
+                    <li>Sistem mengecek ping ke router setiap 5 menit, tabel refresh otomatis setiap 1 menit.</li>
+                    <li><span class="badge badge-success">Terhubung</span> — ping reply konsisten &amp; port API terbuka.</li>
+                    <li><span class="badge badge-warning">Tidak Stabil</span> — ping putus-nyambung (ada kegagalan tapi belum melewati threshold).</li>
+                    <li><span class="badge badge-danger">Tidak Terhubung</span> — RTO, ping gagal melewati threshold.</li>
                 </ul>
             </div>
             <div class="table-responsive">
@@ -51,14 +52,16 @@
                                     </button>
                                 </td>
                                 <td>
-                                    @if ($isStale)
-                                        <span class="badge badge-danger">offline</span>
-                                    @elseif ($connection->is_online === null)
-                                        <span class="badge badge-warning">belum dicek</span>
+                                    @if ($connection->is_online === null)
+                                        <span class="badge badge-secondary">Belum Dicek</span>
+                                    @elseif ($isStale)
+                                        <span class="badge badge-danger" title="Data ping sudah kedaluwarsa">Tidak Terhubung</span>
+                                    @elseif ($connection->ping_unstable)
+                                        <span class="badge badge-warning" title="Ping tidak konsisten — putus-nyambung">Tidak Stabil</span>
                                     @elseif ($connection->is_online)
-                                        <span class="badge badge-success">online</span>
+                                        <span class="badge badge-success" title="Ping reply konsisten">Terhubung</span>
                                     @else
-                                        <span class="badge badge-danger">offline</span>
+                                        <span class="badge badge-danger" title="RTO — tidak ada ping reply melewati threshold">Tidak Terhubung</span>
                                     @endif
                                 </td>
                                 <td>
