@@ -46,30 +46,39 @@ fi
 
 # 4. Sudoers — www-data bisa jalankan wg syncconf tanpa password
 sudoers_file="/etc/sudoers.d/rafen-wireguard"
-if [ ! -f "$sudoers_file" ]; then
-    info "Membuat sudoers $sudoers_file..."
-    cat <<EOF > "$sudoers_file"
+info "Menulis/memperbarui sudoers $sudoers_file..."
+cat <<EOF > "$sudoers_file"
 # RAFEN WireGuard — allow www-data to apply peer changes without restart
 Defaults:${WG_CONF_OWNER} !requiretty
 ${WG_CONF_OWNER} ALL=NOPASSWD:/usr/bin/wg syncconf ${WG_INTERFACE} *
 ${WG_CONF_OWNER} ALL=NOPASSWD:/usr/bin/wg-quick strip ${WG_INTERFACE}
 EOF
-    chmod 0440 "$sudoers_file"
-    if visudo -c -f "$sudoers_file" >/dev/null 2>&1; then
-        info "Sudoers valid: $sudoers_file"
-    else
-        warn "Sudoers mungkin tidak valid — periksa $sudoers_file"
-    fi
+chmod 0440 "$sudoers_file"
+if visudo -c -f "$sudoers_file" >/dev/null 2>&1; then
+    info "Sudoers valid: $sudoers_file"
 else
-    info "Sudoers sudah ada: $sudoers_file"
+    warn "Sudoers mungkin tidak valid — periksa $sudoers_file"
 fi
 
-# 5. Verifikasi hasil
+# 5. Systemd drop-in — pertahankan permission wg0.conf setelah restart WireGuard
+#    (wg-quick saat restart bisa menimpa permission dengan root:root 600)
+dropin_dir="/etc/systemd/system/wg-quick@${WG_INTERFACE}.service.d"
+dropin_file="${dropin_dir}/rafen-permissions.conf"
+info "Membuat systemd drop-in untuk mempertahankan permission setelah restart..."
+mkdir -p "$dropin_dir"
+cat <<EOF > "$dropin_file"
+# RAFEN — pastikan wg0.conf dapat ditulis oleh www-data setelah service restart
+[Service]
+ExecStartPost=/bin/bash -c 'chown root:${WG_CONF_GROUP} ${WG_CONFIG_PATH} && chmod 660 ${WG_CONFIG_PATH}'
+EOF
+systemctl daemon-reload 2>/dev/null && info "systemctl daemon-reload OK" || warn "daemon-reload gagal"
+
+# 6. Verifikasi hasil
 echo ""
 info "Verifikasi permission:"
 ls -la "$WG_KEY_DIR"
 
-# 6. Sync peer dari RAFEN database
+# 7. Sync peer dari RAFEN database
 echo ""
 info "Menjalankan sync peer dari RAFEN database..."
 APP_DIR="${APP_DIR:-/var/www/rafen}"
@@ -83,7 +92,7 @@ else
     warn "Artisan tidak ditemukan di $APP_DIR. Set APP_DIR=/path/to/rafen lalu jalankan ulang."
 fi
 
-# 7. Tampilkan status wg0
+# 8. Tampilkan status wg0
 echo ""
 info "Status WireGuard:"
 wg show "$WG_INTERFACE" 2>/dev/null || warn "wg show gagal — pastikan wg0 sudah up"
@@ -92,4 +101,5 @@ echo ""
 info "Selesai. Jika peer belum muncul di 'wg show', cek:"
 info "  1. Peer sudah ditambahkan di web RAFEN (is_active = true)"
 info "  2. PHP dapat menjalankan 'sudo wg syncconf' (cek sudoers di atas)"
-info "  3. Log Laravel: storage/logs/laravel.log"
+info "  3. Systemd drop-in: $dropin_file"
+info "  4. Log Laravel: storage/logs/laravel.log"
