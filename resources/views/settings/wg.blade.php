@@ -113,16 +113,29 @@
                         @error('vpn_ip')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
-                <div class="form-row">
+                {{-- Info auto-generate keypair --}}
+                <div class="alert alert-info py-2 mb-2 d-flex align-items-center justify-content-between">
+                    <span>
+                        <i class="fas fa-magic mr-1"></i>
+                        Keypair akan di-<strong>generate otomatis</strong>. Script MikroTik sudah include
+                        <code>private-key</code> — jalankan script, handshake langsung terjadi.
+                    </span>
+                    <a href="#" id="toggle-manual-keypair" class="ml-3 text-nowrap">
+                        <small>Gunakan keypair sendiri</small>
+                    </a>
+                </div>
+
+                {{-- Manual keypair fields — tersembunyi by default --}}
+                <div id="manual-keypair-fields" class="form-row" style="display:none">
                     <div class="form-group col-md-6">
-                        <label>Public Key <small class="text-muted">(opsional — auto-generate jika kosong)</small></label>
+                        <label>Public Key</label>
                         <input type="text" name="public_key" value="{{ old('public_key') }}"
                                class="form-control @error('public_key') is-invalid @enderror"
                                placeholder="base64 public key WireGuard" style="font-family:monospace;font-size:12px;">
                         @error('public_key')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="form-group col-md-6">
-                        <label>Private Key <small class="text-muted">(opsional — auto-generate jika kosong)</small></label>
+                        <label>Private Key</label>
                         <input type="text" name="private_key" value="{{ old('private_key') }}"
                                class="form-control @error('private_key') is-invalid @enderror"
                                placeholder="base64 private key WireGuard" style="font-family:monospace;font-size:12px;">
@@ -986,6 +999,19 @@
 
         const copyDirectBtn = document.getElementById('wg-copy-direct');
         if (copyDirectBtn) copyDirectBtn.addEventListener('click', function () { copyTextarea('wg-script-direct', this); });
+
+        // Toggle manual keypair fields di form create
+        document.getElementById('toggle-manual-keypair')?.addEventListener('click', function (e) {
+            e.preventDefault();
+            const fields = document.getElementById('manual-keypair-fields');
+            const isHidden = fields.style.display === 'none';
+            fields.style.display = isHidden ? '' : 'none';
+            this.querySelector('small').textContent = isHidden ? 'Gunakan auto-generate' : 'Gunakan keypair sendiri';
+            if (!isHidden) {
+                fields.querySelectorAll('input[name="public_key"], input[name="private_key"]')
+                      .forEach(function (i) { i.value = ''; });
+            }
+        });
     })();
     </script>
 @endsection
