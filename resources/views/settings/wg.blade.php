@@ -639,9 +639,12 @@
 
             ajaxJson('POST', row.dataset.createNasUrl).then(function (data) {
                 showAlert(data.status || 'NAS berhasil dibuat.', 'success');
-                // Redirect ke halaman edit NAS
                 if (data.edit_url) {
-                    window.location.href = data.edit_url;
+                    if (typeof Turbo !== 'undefined') {
+                        Turbo.visit(data.edit_url);
+                    } else {
+                        window.location.href = data.edit_url;
+                    }
                 } else {
                     btn.remove();
                     row.querySelector('.wg-col-router').textContent = data.peer.mikrotik_connection || '-';
