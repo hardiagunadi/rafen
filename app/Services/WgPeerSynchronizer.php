@@ -67,8 +67,9 @@ class WgPeerSynchronizer
         rename($tmpPath, $confPath);
 
         // Apply changes without restarting the interface (no dropped connections)
+        // wg syncconf requires stripped config (no PostUp/PostDown) — pipe via bash
         $interface = (string) config('wg.interface', 'wg0');
-        $command   = "wg syncconf {$interface} <(wg-quick strip {$interface})";
+        $command   = "bash -c 'wg syncconf " . escapeshellarg($interface) . " <(wg-quick strip " . escapeshellarg($interface) . ")'";
 
         $process = Process::fromShellCommandline($command);
         $process->run();
