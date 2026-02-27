@@ -498,6 +498,14 @@
             ? document.querySelector('meta[name="csrf-token"]').content
             : '{{ csrf_token() }}';
 
+        // Server WireGuard config — used by addPeerRow() to build script data client-side
+        const wgServerConfig = {
+            host:         @json($wg['host'] !== '' ? $wg['host'] : ($detectedIp ?? '')),
+            serverPubKey: @json($wg['server_public_key'] !== '' ? $wg['server_public_key'] : ''),
+            serverIp:     @json($wg['server_ip'] !== '' ? $wg['server_ip'] : '10.0.0.1'),
+            listenPort:   @json($wg['listen_port'] !== '' ? $wg['listen_port'] : '51820'),
+        };
+
         // ── Helpers ───────────────────────────────────────────────────────────
         function showAlert(message, type) {
             const el = document.getElementById('wg-alert');
@@ -708,6 +716,128 @@
             });
         }
 
+        function buildScriptData(peer) {
+            const host       = wgServerConfig.host || '<IP/Host>';
+            const pubKey     = wgServerConfig.serverPubKey || '<SERVER_PUBLIC_KEY>';
+            const serverIp   = wgServerConfig.serverIp || '10.0.0.1';
+            const listenPort = wgServerConfig.listenPort || '51820';
+            const clientIp   = peer.vpn_ip || '<CLIENT_IP>';
+            const clientPriv = peer.private_key || '<CLIENT_PRIVATE_KEY>';
+            const peerName   = peer.name || '';
+
+            const wgScript = [
+                '# ============================================================',
+                '# WireGuard Peer  : ' + peerName,
+                '# RouterOS        : v7.1+',
+                '# IP Tunnel       : ' + clientIp + '/24',
+                '# Server Public Key: ' + pubKey,
+                '# ============================================================',
+                '',
+                '# --- Bersihkan konfigurasi WireGuard lama (jika ada) ---',
+                '/interface/wireguard/peers remove [find interface=wg-vpn]',
+                '/interface/wireguard remove [find name=wg-vpn]',
+                '/ip/address remove [find interface=wg-vpn]',
+                '',
+                '# --- Buat interface WireGuard ---',
+                '/interface/wireguard add name=wg-vpn private-key="' + clientPriv + '" listen-port=13231 comment="RAFEN VPN"',
+                '',
+                '# --- Tambahkan peer (server) ---',
+                '/interface/wireguard/peers add \\',
+                '    interface=wg-vpn \\',
+                '    public-key="' + pubKey + '" \\',
+                '    endpoint-address=' + host + ' \\',
+                '    endpoint-port=' + listenPort + ' \\',
+                '    allowed-address=0.0.0.0/0 \\',
+                '    persistent-keepalive=25',
+                '',
+                '# --- Assign IP address pada interface tunnel ---',
+                '/ip/address add address=' + clientIp + '/24 interface=wg-vpn',
+                '',
+                '# --- Verifikasi koneksi ---',
+                '/interface/wireguard/peers print',
+                '/ip/address print where interface=wg-vpn',
+            ].join('\n');
+
+            const radiusScript = [
+                '# ============================================================',
+                '# RADIUS via WireGuard untuk : ' + peerName,
+                '# Server RADIUS      : ' + serverIp + ' (IP tunnel WireGuard)',
+                '# PENTING: Jalankan script WireGuard terlebih dahulu!',
+                '# ============================================================',
+                '',
+                '# --- Tambahkan RADIUS server ---',
+                '# (Hapus entry lama jika ada: /radius remove [find address="' + serverIp + '"])',
+                '/radius add \\',
+                '    address=' + serverIp + ' \\',
+                '    secret="<RADIUS_SECRET>" \\',
+                '    service=hotspot,ppp \\',
+                '    timeout=3000ms \\',
+                '    comment="RAFEN RADIUS via WireGuard"',
+                '',
+                '# --- Aktifkan RADIUS untuk Hotspot ---',
+                '/ip/hotspot/profile set [find] use-radius=yes',
+                '',
+                '# --- Aktifkan RADIUS untuk PPPoE ---',
+                '/ppp/aaa set use-radius=yes',
+                '',
+                '# --- Verifikasi konfigurasi ---',
+                '/radius print',
+                '/ip/hotspot/profile print',
+                '/ppp/aaa print',
+            ].join('\n');
+
+            const radiusDirectScript = [
+                '# ============================================================',
+                '# RADIUS Direct IP untuk : ' + peerName,
+                '# Mode       : Tanpa WireGuard (koneksi langsung via internet)',
+                '# Server IP  : ' + host + ' (IP publik server)',
+                '# NAS IP     : IP publik MikroTik (dideteksi otomatis oleh FreeRADIUS)',
+                '# ============================================================',
+                '',
+                '# --- CATATAN PENTING ---',
+                '# 1. FreeRADIUS harus bisa diakses dari internet (port 1812/UDP terbuka)',
+                '# 2. IP publik MikroTik harus terdaftar sebagai client di FreeRADIUS',
+                '#    (lakukan sync di halaman Pengaturan > FreeRADIUS)',
+                '# 3. Pastikan MikrotikConnection sudah diisi radius_secret yang sama',
+                '',
+                '# --- Tambahkan RADIUS server (IP publik server) ---',
+                '# (Hapus entry lama jika ada: /radius remove [find address="' + host + '"])',
+                '/radius add \\',
+                '    address=' + host + ' \\',
+                '    secret="<RADIUS_SECRET>" \\',
+                '    service=hotspot,ppp \\',
+                '    timeout=3000ms \\',
+                '    comment="RAFEN RADIUS Direct"',
+                '',
+                '# --- Aktifkan RADIUS untuk Hotspot ---',
+                '/ip/hotspot/profile set [find] use-radius=yes',
+                '',
+                '# --- Aktifkan RADIUS untuk PPPoE ---',
+                '/ppp/aaa set use-radius=yes',
+                '',
+                '# --- Verifikasi konfigurasi ---',
+                '/radius print',
+                '/ip/hotspot/profile print',
+                '/ppp/aaa print',
+                '',
+                '# --- Pastikan firewall MikroTik mengizinkan outbound ke server ---',
+                '# /ip/firewall/filter add chain=output dst-address=' + host + ' protocol=udp dst-port=1812-1813 action=accept comment="RAFEN RADIUS outbound"',
+            ].join('\n');
+
+            return {
+                wgScript:          wgScript,
+                radiusScript:      radiusScript,
+                radiusDirectScript: radiusDirectScript,
+                name:              peerName,
+                host:              host,
+                listenPort:        listenPort,
+                serverPubKey:      pubKey,
+                serverIp:          serverIp,
+                clientIp:          clientIp,
+                clientPriv:        clientPriv,
+            };
+        }
+
         function addPeerRow(peer) {
             const tbody = document.getElementById('wg-peers-tbody');
             if (!tbody) return;
@@ -715,6 +845,9 @@
             if (emptyRow) emptyRow.remove();
 
             const pubKeyShort = peer.public_key ? peer.public_key.substring(0, 20) + '…' : '-';
+
+            const scriptData = buildScriptData(peer);
+            const scriptAttr = JSON.stringify(scriptData).replace(/'/g, '&#39;');
 
             const createNasBtn = (!peer.mikrotik_connection && peer.vpn_ip)
                 ? '<button type="button" class="btn btn-sm btn-outline-info wg-create-nas-btn" title="Buat entri router NAS baru dengan host = ' + peer.vpn_ip + '">Buat NAS</button> '
@@ -736,6 +869,7 @@
                 '<td class="text-right text-nowrap">' +
                 '<button type="button" class="btn btn-sm btn-outline-success wg-sync-btn">Sync</button> ' +
                 '<button type="button" class="btn btn-sm btn-outline-primary" data-toggle="collapse" data-target="#wg-edit-' + peer.id + '">Edit</button> ' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary wg-script-btn" data-toggle="modal" data-target="#wg-script-modal" data-script=\'' + scriptAttr + '\'>Script MikroTik</button> ' +
                 createNasBtn +
                 '<button type="button" class="btn btn-sm btn-outline-danger wg-delete-btn">Hapus</button>' +
                 '</td>' +
