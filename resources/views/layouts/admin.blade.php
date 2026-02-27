@@ -24,7 +24,7 @@
                 <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
             </li>
             <li class="nav-item d-none d-sm-inline-block">
-                <a href="{{ route('dashboard') }}" class="nav-link">Dashboard</a>
+                <a href="{{ route('dashboard') }}" class="nav-link" data-turbo="false">Dashboard</a>
             </li>
         </ul>
         <ul class="navbar-nav ml-auto">
@@ -46,14 +46,14 @@
     @endauth
 
     <aside class="main-sidebar sidebar-dark-primary elevation-4">
-        <a href="{{ route('dashboard') }}" class="brand-link text-center">
+        <a href="{{ route('dashboard') }}" class="brand-link text-center" data-turbo="false">
             <span class="brand-text font-weight-light">Radius Admin</span>
         </a>
         <div class="sidebar">
             <nav class="mt-2">
                 <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
                     <li class="nav-item">
-                        <a href="{{ route('dashboard') }}" class="nav-link">
+                        <a href="{{ route('dashboard') }}" class="nav-link" data-turbo="false">
                             <i class="nav-icon fas fa-tachometer-alt"></i>
                             <p>Dashboard</p>
                         </a>
