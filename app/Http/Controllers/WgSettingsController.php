@@ -184,6 +184,33 @@ class WgSettingsController extends Controller
         }
     }
 
+    public function keygen(WgPeer $wgPeer, WgPeerSynchronizer $synchronizer): JsonResponse
+    {
+        [$privKey, $pubKey] = $this->generateKeypair();
+
+        $wgPeer->update([
+            'private_key' => $privKey,
+            'public_key'  => $pubKey,
+        ]);
+        $wgPeer->load('mikrotikConnection');
+
+        try {
+            $synchronizer->syncAll(WgPeer::query()->get());
+            $wgPeer->update(['last_synced_at' => now()]);
+            $wgPeer->refresh();
+        } catch (Throwable $exception) {
+            return response()->json([
+                'warning' => 'Keypair diperbarui, tetapi sync wg0.conf gagal: ' . $exception->getMessage(),
+                'peer'    => $this->peerPayload($wgPeer),
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'Keypair baru berhasil di-generate dan disinkronkan.',
+            'peer'   => $this->peerPayload($wgPeer),
+        ]);
+    }
+
     public function createNas(WgPeer $wgPeer, RadiusClientsSynchronizer $radiusSynchronizer): JsonResponse|RedirectResponse
     {
         if ($wgPeer->mikrotik_connection_id !== null) {
@@ -310,6 +337,7 @@ class WgSettingsController extends Controller
             'destroy_url'         => route('settings.wg.peers.destroy', $peer),
             'sync_url'            => route('settings.wg.peers.sync', $peer),
             'create_nas_url'      => route('settings.wg.peers.create-nas', $peer),
+            'keygen_url'          => route('settings.wg.peers.keygen', $peer),
         ];
     }
 

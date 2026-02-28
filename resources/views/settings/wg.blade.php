@@ -309,6 +309,7 @@
                             data-sync-url="{{ route('settings.wg.peers.sync', $peer) }}"
                             data-update-url="{{ route('settings.wg.peers.update', $peer) }}"
                             data-create-nas-url="{{ route('settings.wg.peers.create-nas', $peer) }}"
+                            data-keygen-url="{{ route('settings.wg.peers.keygen', $peer) }}"
                             data-has-nas="{{ $peer->mikrotik_connection_id ? '1' : '0' }}">
                             <td class="wg-col-router">
                                 {{ $peer->mikrotikConnection?->name ?? '-' }}
@@ -371,6 +372,11 @@
                                         </div>
                                     </div>
                                     <button type="submit" class="btn btn-primary btn-sm">Simpan Perubahan</button>
+                                    <button type="button" class="btn btn-warning btn-sm wg-keygen-btn"
+                                            data-keygen-url="{{ route('settings.wg.peers.keygen', $peer) }}"
+                                            title="Generate keypair baru — MikroTik harus diupdate ulang dengan script baru">
+                                        <i class="fas fa-sync-alt mr-1"></i>Generate Ulang Keypair
+                                    </button>
                                     <button type="button" class="btn btn-secondary btn-sm"
                                             data-toggle="collapse" data-target="#wg-edit-{{ $peer->id }}">Batal</button>
                                 </form>
@@ -582,6 +588,7 @@
             row.dataset.destroyUrl = peer.destroy_url;
             row.dataset.syncUrl    = peer.sync_url;
             row.dataset.updateUrl  = peer.update_url;
+            if (peer.keygen_url) row.dataset.keygenUrl = peer.keygen_url;
 
             const editRow = document.getElementById('wg-edit-' + peer.id);
             if (editRow) {
@@ -595,6 +602,38 @@
                 }
             }
         }
+
+        // ── Generate ulang keypair ────────────────────────────────────────────
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.wg-keygen-btn');
+            if (!btn) return;
+
+            const keygenUrl = btn.dataset.keygenUrl;
+            if (!keygenUrl) return;
+
+            if (!confirm('Generate keypair baru untuk peer ini?\n\nSetelah ini, jalankan Script MikroTik yang baru agar handshake kembali berfungsi.')) return;
+
+            const row = btn.closest('tr[data-peer-id]');
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Generating…';
+
+            ajaxJson('POST', keygenUrl).then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                const peer = data.peer;
+                if (peer && row) {
+                    updateRow(row, peer);
+                    showAlert((data.status || data.warning || 'Keypair baru berhasil di-generate.') + ' Jalankan Script MikroTik yang baru.', data.warning ? 'warning' : 'success');
+                } else {
+                    showAlert(data.status || data.warning || 'Keypair berhasil di-generate.', 'success');
+                }
+            }).catch(function (err) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                showAlert((err && err.error) || 'Generate keypair gagal.', 'danger');
+            });
+        });
 
         // ── Hapus peer ────────────────────────────────────────────────────────
         document.addEventListener('click', function (e) {
@@ -872,6 +911,7 @@
                 ' data-sync-url="' + peer.sync_url + '"' +
                 ' data-update-url="' + peer.update_url + '"' +
                 ' data-create-nas-url="' + peer.create_nas_url + '"' +
+                ' data-keygen-url="' + (peer.keygen_url || '') + '"' +
                 ' data-has-nas="' + (peer.mikrotik_connection ? '1' : '0') + '">' +
                 '<td class="wg-col-router">' + (peer.mikrotik_connection || '-') + '</td>' +
                 '<td class="wg-col-name">' + peer.name + '</td>' +
@@ -900,6 +940,7 @@
                 '<div class="form-group col-md-6"><label>Private Key</label><input type="text" name="private_key" value="' + (peer.private_key || '') + '" class="form-control" style="font-family:monospace;font-size:11px;" required></div>' +
                 '</div>' +
                 '<button type="submit" class="btn btn-primary btn-sm">Simpan Perubahan</button> ' +
+                '<button type="button" class="btn btn-warning btn-sm wg-keygen-btn" data-keygen-url="' + (peer.keygen_url || '') + '" title="Generate keypair baru — MikroTik harus diupdate ulang dengan script baru"><i class="fas fa-sync-alt mr-1"></i>Generate Ulang Keypair</button> ' +
                 '<button type="button" class="btn btn-secondary btn-sm" data-toggle="collapse" data-target="#wg-edit-' + peer.id + '">Batal</button>' +
                 '</form></td></tr>'
             );
