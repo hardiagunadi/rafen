@@ -341,9 +341,12 @@
                         <tr class="collapse" id="wg-edit-{{ $peer->id }}">
                             <td colspan="7" class="bg-light">
                                 <form class="wg-update-form p-2"
+                                      method="POST"
+                                      action="{{ route('settings.wg.peers.update', $peer) }}"
                                       data-update-url="{{ route('settings.wg.peers.update', $peer) }}"
                                       data-peer-id="{{ $peer->id }}">
                                     @csrf
+                                    @method('PATCH')
                                     <div class="form-row">
                                         <div class="form-group col-md-4">
                                             <label>Nama</label>
@@ -735,6 +738,11 @@
             const form = e.target.closest('.wg-update-form');
             if (!form) return;
             e.preventDefault();
+            e.stopPropagation();
+
+            // Refresh CSRF token dari meta tag agar tidak stale
+            const tokenInput = form.querySelector('[name="_token"]');
+            if (tokenInput) tokenInput.value = csrfToken;
 
             // Ambil update URL dari form (data-update-url), fallback ke row sebelumnya
             const updateUrl = form.dataset.updateUrl || (function () {
