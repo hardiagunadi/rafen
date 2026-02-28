@@ -8,7 +8,6 @@
             <h4 class="mb-0">Informasi Server WireGuard</h4>
         </div>
         <div class="card-body">
-            <div id="wg-alert" style="display:none;" class="alert mb-3"></div>
             <div class="row">
                 <div class="col-md-6">
                     <div class="mb-2">
@@ -159,6 +158,8 @@
             </div>
         </form>
     </div>
+
+    <div id="wg-alert" style="display:none;" class="alert mb-3"></div>
 
     <div class="card">
         <div class="card-header">
@@ -537,6 +538,7 @@
             el.className = 'alert alert-' + type + ' mb-3';
             el.textContent = message;
             el.style.display = '';
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             clearTimeout(el._timer);
             el._timer = setTimeout(function () { el.style.display = 'none'; }, 6000);
         }
