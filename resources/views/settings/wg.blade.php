@@ -62,10 +62,20 @@
                 </div>
             </div>
             @if ($wg['host'] === '' && $detectedIp !== null)
-                <div class="alert alert-warning mb-0 mt-3 py-2">
-                    <i class="fas fa-exclamation-triangle mr-1"></i>
-                    IP publik <strong>{{ $detectedIp }}</strong> terdeteksi otomatis dari server.
-                    Tambahkan <code>WG_HOST={{ $detectedIp }}</code> di file <code>.env</code> untuk menetapkannya secara permanen.
+                <div class="alert alert-warning mb-0 mt-3 py-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <span>
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        IP publik <strong>{{ $detectedIp }}</strong> terdeteksi otomatis dari server.
+                        Simpan ke <code>.env</code> agar permanen dan script generator berfungsi dengan benar.
+                    </span>
+                    @if(auth()->user()?->isAdmin())
+                        <form method="POST" action="{{ route('settings.wg.save-host') }}" class="mb-0">
+                            @csrf
+                            <button type="submit" class="btn btn-warning btn-sm">
+                                <i class="fas fa-save mr-1"></i> Simpan WG_HOST ke .env
+                            </button>
+                        </form>
+                    @endif
                 </div>
             @endif
             <div class="alert alert-info mb-0 mt-3">

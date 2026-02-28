@@ -325,6 +325,32 @@ class WgSettingsController extends Controller
             ->with('status', 'Server keypair berhasil disimpan ke .env.');
     }
 
+    public function saveHost(): RedirectResponse
+    {
+        abort_unless(auth()->user()?->isAdmin(), 403, 'Akses ditolak. Hanya administrator yang dapat menyimpan WG_HOST.');
+
+        $ip = $this->detectPublicIp();
+
+        if ($ip === null || $ip === '') {
+            return redirect()->route('settings.wg')
+                ->with('error', 'Gagal mendeteksi IP publik server. Isi WG_HOST di .env secara manual.');
+        }
+
+        $envPath = base_path('.env');
+        $env     = file_get_contents($envPath);
+
+        if (preg_match('/^WG_HOST=.*$/m', $env)) {
+            $env = preg_replace('/^WG_HOST=.*$/m', 'WG_HOST=' . $ip, $env);
+        } else {
+            $env .= PHP_EOL . 'WG_HOST=' . $ip;
+        }
+
+        file_put_contents($envPath, $env);
+
+        return redirect()->route('settings.wg')
+            ->with('status', 'WG_HOST berhasil disimpan ke .env: ' . $ip);
+    }
+
     public function installCron(): RedirectResponse
     {
         abort_unless(auth()->user()?->isAdmin(), 403, 'Akses ditolak. Hanya administrator yang dapat memasang cron.');

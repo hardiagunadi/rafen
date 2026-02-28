@@ -65,6 +65,7 @@ Route::middleware('auth')->group(function () {
     Route::post('settings/wg/peers/{wgPeer}/create-nas', [WgSettingsController::class, 'createNas'])->name('settings.wg.peers.create-nas');
     Route::post('settings/wg/peers/{wgPeer}/keygen', [WgSettingsController::class, 'keygen'])->name('settings.wg.peers.keygen');
     Route::post('settings/wg/save-server-keys', [WgSettingsController::class, 'saveServerKeys'])->name('settings.wg.save-server-keys');
+    Route::post('settings/wg/save-host', [WgSettingsController::class, 'saveHost'])->name('settings.wg.save-host');
     Route::get('settings/wg/ping', [WgSettingsController::class, 'ping'])->name('settings.wg.ping');
     Route::post('settings/wg/install-cron', [WgSettingsController::class, 'installCron'])->name('settings.wg.install-cron');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
