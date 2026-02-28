@@ -365,22 +365,23 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="form-row">
-                                        <div class="form-group col-md-6">
-                                            <label>Public Key</label>
-                                            <input type="text" name="public_key" value="{{ $peer->public_key }}"
-                                                   class="form-control" style="font-family:monospace;font-size:11px;" required>
+                                    {{-- Keypair section: readonly display + generate button --}}
+                                    <div class="form-row mb-2">
+                                        <div class="col-md-6">
+                                            <label class="d-block mb-1">Public Key <small class="text-muted">(auto-update saat generate)</small></label>
+                                            <code class="d-block text-truncate wg-edit-pubkey" style="font-size:11px;background:#f8f9fa;padding:6px 8px;border-radius:4px;border:1px solid #dee2e6;">{{ $peer->public_key ?? '-' }}</code>
+                                            <input type="hidden" name="public_key" value="{{ $peer->public_key }}">
                                         </div>
-                                        <div class="form-group col-md-6">
-                                            <label>Private Key</label>
-                                            <input type="text" name="private_key" value="{{ $peer->private_key }}"
-                                                   class="form-control" style="font-family:monospace;font-size:11px;" required>
+                                        <div class="col-md-6">
+                                            <label class="d-block mb-1">Private Key <small class="text-muted">(auto-update saat generate)</small></label>
+                                            <code class="d-block text-truncate wg-edit-privkey" style="font-size:11px;background:#f8f9fa;padding:6px 8px;border-radius:4px;border:1px solid #dee2e6;">{{ $peer->private_key ?? '-' }}</code>
+                                            <input type="hidden" name="private_key" value="{{ $peer->private_key }}">
                                         </div>
                                     </div>
-                                    <button type="submit" class="btn btn-primary btn-sm">Simpan Perubahan</button>
+                                    <button type="submit" class="btn btn-primary btn-sm">Simpan</button>
                                     <button type="button" class="btn btn-warning btn-sm wg-keygen-btn"
                                             data-keygen-url="{{ route('settings.wg.peers.keygen', $peer) }}"
-                                            title="Generate keypair baru — MikroTik harus diupdate ulang dengan script baru">
+                                            title="Generate keypair baru dan langsung tersimpan — copy ulang Script MikroTik setelah ini">
                                         <i class="fas fa-sync-alt mr-1"></i>Generate Ulang Keypair
                                     </button>
                                     <button type="button" class="btn btn-secondary btn-sm"
@@ -612,11 +613,19 @@
                 const f = editRow.querySelector('form');
                 if (f) {
                     if (peer.update_url) f.dataset.updateUrl = peer.update_url;
-                    f.querySelector('[name="name"]').value        = peer.name;
-                    f.querySelector('[name="vpn_ip"]').value      = peer.vpn_ip || '';
-                    f.querySelector('[name="public_key"]').value  = peer.public_key || '';
-                    f.querySelector('[name="private_key"]').value = peer.private_key || '';
-                    f.querySelector('[name="is_active"]').value   = peer.is_active ? '1' : '0';
+                    f.querySelector('[name="name"]').value    = peer.name;
+                    f.querySelector('[name="vpn_ip"]').value  = peer.vpn_ip || '';
+                    f.querySelector('[name="is_active"]').value = peer.is_active ? '1' : '0';
+                    // Update hidden keypair inputs
+                    const pubInput = f.querySelector('input[type="hidden"][name="public_key"]');
+                    const privInput = f.querySelector('input[type="hidden"][name="private_key"]');
+                    if (pubInput) pubInput.value = peer.public_key || '';
+                    if (privInput) privInput.value = peer.private_key || '';
+                    // Update readonly display
+                    const pubCode = f.querySelector('.wg-edit-pubkey');
+                    const privCode = f.querySelector('.wg-edit-privkey');
+                    if (pubCode) pubCode.textContent = peer.public_key || '-';
+                    if (privCode) privCode.textContent = peer.private_key || '-';
                 }
             }
         }
@@ -969,12 +978,16 @@
                 '<div class="form-group col-md-4"><label>IP VPN</label><input type="text" name="vpn_ip" value="' + (peer.vpn_ip || '') + '" class="form-control"></div>' +
                 '<div class="form-group col-md-4"><label>Status</label><select name="is_active" class="form-control"><option value="1"' + (peer.is_active ? ' selected' : '') + '>Aktif</option><option value="0"' + (!peer.is_active ? ' selected' : '') + '>Nonaktif</option></select></div>' +
                 '</div>' +
-                '<div class="form-row">' +
-                '<div class="form-group col-md-6"><label>Public Key</label><input type="text" name="public_key" value="' + (peer.public_key || '') + '" class="form-control" style="font-family:monospace;font-size:11px;" required></div>' +
-                '<div class="form-group col-md-6"><label>Private Key</label><input type="text" name="private_key" value="' + (peer.private_key || '') + '" class="form-control" style="font-family:monospace;font-size:11px;" required></div>' +
+                '<div class="form-row mb-2">' +
+                '<div class="col-md-6"><label class="d-block mb-1">Public Key <small class="text-muted">(auto-update saat generate)</small></label>' +
+                '<code class="d-block text-truncate wg-edit-pubkey" style="font-size:11px;background:#f8f9fa;padding:6px 8px;border-radius:4px;border:1px solid #dee2e6;">' + (peer.public_key || '-') + '</code>' +
+                '<input type="hidden" name="public_key" value="' + (peer.public_key || '') + '"></div>' +
+                '<div class="col-md-6"><label class="d-block mb-1">Private Key <small class="text-muted">(auto-update saat generate)</small></label>' +
+                '<code class="d-block text-truncate wg-edit-privkey" style="font-size:11px;background:#f8f9fa;padding:6px 8px;border-radius:4px;border:1px solid #dee2e6;">' + (peer.private_key || '-') + '</code>' +
+                '<input type="hidden" name="private_key" value="' + (peer.private_key || '') + '"></div>' +
                 '</div>' +
-                '<button type="submit" class="btn btn-primary btn-sm">Simpan Perubahan</button> ' +
-                '<button type="button" class="btn btn-warning btn-sm wg-keygen-btn" data-keygen-url="' + (peer.keygen_url || '') + '" title="Generate keypair baru — MikroTik harus diupdate ulang dengan script baru"><i class="fas fa-sync-alt mr-1"></i>Generate Ulang Keypair</button> ' +
+                '<button type="submit" class="btn btn-primary btn-sm">Simpan</button> ' +
+                '<button type="button" class="btn btn-warning btn-sm wg-keygen-btn" data-keygen-url="' + (peer.keygen_url || '') + '" title="Generate keypair baru dan langsung tersimpan — copy ulang Script MikroTik setelah ini"><i class="fas fa-sync-alt mr-1"></i>Generate Ulang Keypair</button> ' +
                 '<button type="button" class="btn btn-secondary btn-sm" data-toggle="collapse" data-target="#wg-edit-' + peer.id + '">Batal</button>' +
                 '</form></td></tr>'
             );
