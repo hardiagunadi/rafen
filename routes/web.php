@@ -70,7 +70,6 @@ Route::middleware('auth')->group(function () {
     Route::post('settings/wg/save-server-keys', [WgSettingsController::class, 'saveServerKeys'])->name('settings.wg.save-server-keys');
     Route::post('settings/wg/save-host', [WgSettingsController::class, 'saveHost'])->name('settings.wg.save-host');
     Route::get('settings/wg/ping', [WgSettingsController::class, 'ping'])->name('settings.wg.ping');
-    Route::post('settings/wg/install-cron', [WgSettingsController::class, 'installCron'])->name('settings.wg.install-cron');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::get('ppp-users/datatable', [\App\Http\Controllers\PppUserController::class, 'datatable'])->name('ppp-users.datatable');
