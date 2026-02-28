@@ -543,6 +543,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
                 },
                 body: body ? JSON.stringify(body) : undefined,
             }).then(function (res) {
@@ -562,6 +563,7 @@
                 headers: {
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
                 },
                 body: params,
             }).then(function (res) {
