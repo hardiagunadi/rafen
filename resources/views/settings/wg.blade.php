@@ -284,24 +284,27 @@
                                 '# PENTING: Jalankan script WireGuard terlebih dahulu!',
                                 '# ============================================================',
                                 '',
+                                '# --- Hapus RADIUS entry lama jika ada ---',
+                                '/radius remove [find address="' . $serverIp . '"]',
+                                '',
                                 '# --- Tambahkan RADIUS server ---',
-                                '# (Hapus entry lama jika ada: /radius remove [find address="' . $serverIp . '"])',
                                 '/radius add \\',
                                 '    address=' . $serverIp . ' \\',
                                 '    secret="' . $radiusSecret . '" \\',
                                 '    service=hotspot,ppp \\',
+                                '    authentication-port=1812 \\',
+                                '    accounting-port=1813 \\',
                                 '    timeout=3000ms \\',
                                 '    comment="RAFEN RADIUS via WireGuard"',
+                                '',
+                                '# --- Aktifkan RADIUS untuk PPPoE ---',
+                                '/ppp/aaa set use-radius=yes accounting=yes',
                                 '',
                                 '# --- Aktifkan RADIUS untuk Hotspot ---',
                                 '/ip/hotspot/profile set [find] use-radius=yes',
                                 '',
-                                '# --- Aktifkan RADIUS untuk PPPoE ---',
-                                '/ppp/aaa set use-radius=yes',
-                                '',
                                 '# --- Verifikasi konfigurasi ---',
                                 '/radius print',
-                                '/ip/hotspot/profile print',
                                 '/ppp/aaa print',
                             ]);
 
@@ -311,36 +314,32 @@
                                 '# RADIUS Direct IP untuk : ' . $peerName,
                                 '# Mode       : Tanpa WireGuard (koneksi langsung via internet)',
                                 '# Server IP  : ' . $wgHost . ' (IP publik server)',
-                                '# NAS IP     : IP publik MikroTik (dideteksi otomatis oleh FreeRADIUS)',
                                 '# ============================================================',
                                 '',
-                                '# --- CATATAN PENTING ---',
-                                '# 1. FreeRADIUS harus bisa diakses dari internet (port 1812/UDP terbuka)',
-                                '# 2. IP publik MikroTik harus terdaftar sebagai client di FreeRADIUS',
-                                '#    (lakukan sync di halaman Pengaturan > FreeRADIUS)',
-                                '# 3. Pastikan MikrotikConnection sudah diisi radius_secret yang sama',
+                                '# --- Hapus RADIUS entry lama jika ada ---',
+                                '/radius remove [find address="' . $wgHost . '"]',
                                 '',
                                 '# --- Tambahkan RADIUS server (IP publik server) ---',
-                                '# (Hapus entry lama jika ada: /radius remove [find address="' . $wgHost . '"])',
                                 '/radius add \\',
                                 '    address=' . $wgHost . ' \\',
                                 '    secret="' . $radiusSecret . '" \\',
                                 '    service=hotspot,ppp \\',
+                                '    authentication-port=1812 \\',
+                                '    accounting-port=1813 \\',
                                 '    timeout=3000ms \\',
                                 '    comment="RAFEN RADIUS Direct"',
+                                '',
+                                '# --- Aktifkan RADIUS untuk PPPoE ---',
+                                '/ppp/aaa set use-radius=yes accounting=yes',
                                 '',
                                 '# --- Aktifkan RADIUS untuk Hotspot ---',
                                 '/ip/hotspot/profile set [find] use-radius=yes',
                                 '',
-                                '# --- Aktifkan RADIUS untuk PPPoE ---',
-                                '/ppp/aaa set use-radius=yes',
-                                '',
                                 '# --- Verifikasi konfigurasi ---',
                                 '/radius print',
-                                '/ip/hotspot/profile print',
                                 '/ppp/aaa print',
                                 '',
-                                '# --- Pastikan firewall MikroTik mengizinkan outbound ke server ---',
+                                '# --- Buka firewall outbound ke RADIUS server ---',
                                 '# /ip/firewall/filter add chain=output dst-address=' . $wgHost . ' protocol=udp dst-port=1812-1813 action=accept comment="RAFEN RADIUS outbound"',
                             ]);
 
@@ -355,6 +354,7 @@
                                 'serverIp'          => $serverIp,
                                 'clientIp'          => $clientIp,
                                 'clientPriv'        => $clientPriv,
+                                'radiusSecret'      => $radiusSecret,
                             ];
                         @endphp
                         <tr id="wg-row-{{ $peer->id }}"
@@ -905,13 +905,14 @@
         }
 
         function buildScriptData(peer) {
-            const host       = wgServerConfig.host || '<IP/Host>';
-            const pubKey     = wgServerConfig.serverPubKey || '<SERVER_PUBLIC_KEY>';
-            const serverIp   = wgServerConfig.serverIp || '10.0.0.1';
-            const listenPort = wgServerConfig.listenPort || '51820';
-            const clientIp   = peer.vpn_ip || '<CLIENT_IP>';
-            const clientPriv = peer.private_key || '<CLIENT_PRIVATE_KEY>';
-            const peerName   = peer.name || '';
+            const host         = wgServerConfig.host || '<IP/Host>';
+            const pubKey       = wgServerConfig.serverPubKey || '<SERVER_PUBLIC_KEY>';
+            const serverIp     = wgServerConfig.serverIp || '10.0.0.1';
+            const listenPort   = wgServerConfig.listenPort || '51820';
+            const clientIp     = peer.vpn_ip || '<CLIENT_IP>';
+            const clientPriv   = peer.private_key || '<CLIENT_PRIVATE_KEY>';
+            const peerName     = peer.name || '';
+            const radiusSecret = peer.radius_secret || '<RADIUS_SECRET>';
 
             const wgScript = [
                 '# ============================================================',
@@ -953,24 +954,27 @@
                 '# PENTING: Jalankan script WireGuard terlebih dahulu!',
                 '# ============================================================',
                 '',
+                '# --- Hapus RADIUS entry lama jika ada ---',
+                '/radius remove [find address="' + serverIp + '"]',
+                '',
                 '# --- Tambahkan RADIUS server ---',
-                '# (Hapus entry lama jika ada: /radius remove [find address="' + serverIp + '"])',
                 '/radius add \\',
                 '    address=' + serverIp + ' \\',
-                '    secret="<RADIUS_SECRET>" \\',
+                '    secret="' + radiusSecret + '" \\',
                 '    service=hotspot,ppp \\',
+                '    authentication-port=1812 \\',
+                '    accounting-port=1813 \\',
                 '    timeout=3000ms \\',
                 '    comment="RAFEN RADIUS via WireGuard"',
+                '',
+                '# --- Aktifkan RADIUS untuk PPPoE ---',
+                '/ppp/aaa set use-radius=yes accounting=yes',
                 '',
                 '# --- Aktifkan RADIUS untuk Hotspot ---',
                 '/ip/hotspot/profile set [find] use-radius=yes',
                 '',
-                '# --- Aktifkan RADIUS untuk PPPoE ---',
-                '/ppp/aaa set use-radius=yes',
-                '',
                 '# --- Verifikasi konfigurasi ---',
                 '/radius print',
-                '/ip/hotspot/profile print',
                 '/ppp/aaa print',
             ].join('\n');
 
@@ -979,50 +983,47 @@
                 '# RADIUS Direct IP untuk : ' + peerName,
                 '# Mode       : Tanpa WireGuard (koneksi langsung via internet)',
                 '# Server IP  : ' + host + ' (IP publik server)',
-                '# NAS IP     : IP publik MikroTik (dideteksi otomatis oleh FreeRADIUS)',
                 '# ============================================================',
                 '',
-                '# --- CATATAN PENTING ---',
-                '# 1. FreeRADIUS harus bisa diakses dari internet (port 1812/UDP terbuka)',
-                '# 2. IP publik MikroTik harus terdaftar sebagai client di FreeRADIUS',
-                '#    (lakukan sync di halaman Pengaturan > FreeRADIUS)',
-                '# 3. Pastikan MikrotikConnection sudah diisi radius_secret yang sama',
+                '# --- Hapus RADIUS entry lama jika ada ---',
+                '/radius remove [find address="' + host + '"]',
                 '',
                 '# --- Tambahkan RADIUS server (IP publik server) ---',
-                '# (Hapus entry lama jika ada: /radius remove [find address="' + host + '"])',
                 '/radius add \\',
                 '    address=' + host + ' \\',
-                '    secret="<RADIUS_SECRET>" \\',
+                '    secret="' + radiusSecret + '" \\',
                 '    service=hotspot,ppp \\',
+                '    authentication-port=1812 \\',
+                '    accounting-port=1813 \\',
                 '    timeout=3000ms \\',
                 '    comment="RAFEN RADIUS Direct"',
+                '',
+                '# --- Aktifkan RADIUS untuk PPPoE ---',
+                '/ppp/aaa set use-radius=yes accounting=yes',
                 '',
                 '# --- Aktifkan RADIUS untuk Hotspot ---',
                 '/ip/hotspot/profile set [find] use-radius=yes',
                 '',
-                '# --- Aktifkan RADIUS untuk PPPoE ---',
-                '/ppp/aaa set use-radius=yes',
-                '',
                 '# --- Verifikasi konfigurasi ---',
                 '/radius print',
-                '/ip/hotspot/profile print',
                 '/ppp/aaa print',
                 '',
-                '# --- Pastikan firewall MikroTik mengizinkan outbound ke server ---',
+                '# --- Buka firewall outbound ke RADIUS server ---',
                 '# /ip/firewall/filter add chain=output dst-address=' + host + ' protocol=udp dst-port=1812-1813 action=accept comment="RAFEN RADIUS outbound"',
             ].join('\n');
 
             return {
-                wgScript:          wgScript,
-                radiusScript:      radiusScript,
+                wgScript:           wgScript,
+                radiusScript:       radiusScript,
                 radiusDirectScript: radiusDirectScript,
-                name:              peerName,
-                host:              host,
-                listenPort:        listenPort,
-                serverPubKey:      pubKey,
-                serverIp:          serverIp,
-                clientIp:          clientIp,
-                clientPriv:        clientPriv,
+                name:               peerName,
+                host:               host,
+                listenPort:         listenPort,
+                serverPubKey:       pubKey,
+                serverIp:           serverIp,
+                clientIp:           clientIp,
+                clientPriv:         clientPriv,
+                radiusSecret:       radiusSecret,
             };
         }
 
@@ -1108,11 +1109,14 @@
             const radiusEl = document.getElementById('wg-script-radius');
             if (radiusEl) radiusEl.value = currentScript.radiusScript || '';
 
-            // Rebuild Direct IP script: replace server address line live
-            let directText = currentScript.radiusDirectScript || '';
-            directText = directText.replace(/address=\S+/g, 'address=' + host);
+            // Rebuild Direct IP script: rebuild from scratch with new host
+            const directScript = buildScriptData(Object.assign({}, currentScript, {
+                vpn_ip: currentScript.clientIp,
+                private_key: currentScript.clientPriv,
+                radius_secret: currentScript.radiusSecret,
+            }));
             const directEl = document.getElementById('wg-script-direct');
-            if (directEl) directEl.value = directText;
+            if (directEl) directEl.value = directScript.radiusDirectScript || '';
 
             const portEl = document.getElementById('wg-info-port');
             if (portEl) portEl.textContent = currentScript.listenPort || '51820';

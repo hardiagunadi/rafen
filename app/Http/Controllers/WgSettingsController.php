@@ -231,16 +231,17 @@ class WgSettingsController extends Controller
             return redirect()->route('settings.wg')->with('error', 'Peer belum memiliki IP VPN.');
         }
 
-        $secret = Str::random(24);
+        $secret   = Str::random(17);
+        $apiUser  = 'TMD-' . Str::upper(Str::random(6));
 
         $nas = MikrotikConnection::create([
             'owner_id'      => auth()->id(),
             'name'          => $wgPeer->name,
             'host'          => $wgPeer->vpn_ip,
-            'api_port'      => 8728,
-            'api_ssl_port'  => 8729,
+            'api_port'      => 2266,
+            'api_ssl_port'  => 2267,
             'use_ssl'       => false,
-            'username'      => 'admin',
+            'username'      => $apiUser,
             'password'      => $secret,
             'radius_secret' => $secret,
             'ros_version'   => '7',
@@ -448,6 +449,7 @@ class WgSettingsController extends Controller
             'is_active'           => $peer->is_active,
             'last_synced_at'      => $peer->last_synced_at?->format('Y-m-d H:i:s'),
             'mikrotik_connection' => $peer->mikrotikConnection?->name,
+            'radius_secret'       => $peer->mikrotikConnection?->radius_secret ?? '',
             'update_url'          => route('settings.wg.peers.update', $peer),
             'destroy_url'         => route('settings.wg.peers.destroy', $peer),
             'sync_url'            => route('settings.wg.peers.sync', $peer),

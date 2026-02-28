@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# fix-wg-permissions.sh — Perbaiki permission WireGuard untuk RAFEN
+# fix-wg-permissions.sh — Perbaiki semua izin & sudoers untuk RAFEN
 #
-# Jalankan ini di server yang sudah diinstall WireGuard tapi RAFEN tidak bisa
-# sync peer (error "direktori tidak dapat ditulis" atau peer tidak muncul).
+# Jalankan ini di server yang sudah ada instalasi RAFEN + WireGuard +
+# FreeRADIUS tapi mengalami masalah permission (peer tidak sync,
+# clients.conf tidak bisa ditulis, dll).
 #
 # Penggunaan:
 #   sudo bash fix-wg-permissions.sh
@@ -15,91 +16,228 @@ WG_CONFIG_PATH="${WG_CONFIG_PATH:-/etc/wireguard/wg0.conf}"
 WG_CONF_OWNER="${WG_CONF_OWNER:-www-data}"
 WG_CONF_GROUP="${WG_CONF_GROUP:-www-data}"
 WG_KEY_DIR="/etc/wireguard"
+APP_DIR="${APP_DIR:-/var/www/rafen}"
+RADIUS_CLIENTS_DIR="${RADIUS_CLIENTS_DIR:-/etc/freeradius/3.0/clients.d}"
 
 info()  { echo "[INFO ] $*"; }
 warn()  { echo "[WARN ] $*"; }
+ok()    { echo "[OK   ] $*"; }
 error() { echo "[ERROR] $*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || error "Script harus dijalankan sebagai root: sudo bash $0"
 
-# 1. Direktori /etc/wireguard — www-data harus bisa buat temp file di sini
-info "Mengatur permission direktori $WG_KEY_DIR..."
-chown root:"$WG_CONF_GROUP" "$WG_KEY_DIR"
-chmod 0770 "$WG_KEY_DIR"
+echo ""
+echo "========================================================================"
+echo " RAFEN — Fix Permissions & Sudoers"
+echo "========================================================================"
+echo ""
 
-# 2. wg0.conf — www-data harus bisa baca & tulis
+# ── 1. WireGuard directory & files ─────────────────────────────────────────
+info "1. WireGuard — mengatur permission direktori & file..."
+
+if [ -d "$WG_KEY_DIR" ]; then
+    chown root:"$WG_CONF_GROUP" "$WG_KEY_DIR"
+    chmod 0770 "$WG_KEY_DIR"
+    ok "$WG_KEY_DIR → root:${WG_CONF_GROUP} 770"
+else
+    warn "$WG_KEY_DIR tidak ditemukan. Install WireGuard dulu."
+fi
+
 if [ -f "$WG_CONFIG_PATH" ]; then
-    info "Mengatur permission $WG_CONFIG_PATH..."
     chown root:"$WG_CONF_GROUP" "$WG_CONFIG_PATH"
     chmod 0660 "$WG_CONFIG_PATH"
+    ok "$WG_CONFIG_PATH → root:${WG_CONF_GROUP} 660"
 else
     warn "$WG_CONFIG_PATH tidak ditemukan. Jalankan install-wg.sh terlebih dahulu."
 fi
 
-# 3. server_private.key — www-data harus bisa baca (untuk fallback jika WG_SERVER_PRIVATE_KEY kosong)
-local_privkey="${WG_KEY_DIR}/server_private.key"
-if [ -f "$local_privkey" ]; then
-    info "Mengatur permission $local_privkey..."
-    chown root:"$WG_CONF_GROUP" "$local_privkey"
-    chmod 0640 "$local_privkey"
+for keyfile in "${WG_KEY_DIR}/server_private.key" "${WG_KEY_DIR}/server_public.key"; do
+    if [ -f "$keyfile" ]; then
+        chown root:"$WG_CONF_GROUP" "$keyfile"
+        [[ "$keyfile" == *private* ]] && chmod 0640 "$keyfile" || chmod 0644 "$keyfile"
+        ok "$keyfile → permission diatur"
+    fi
+done
+
+# ── 2. FreeRADIUS clients.d — www-data harus bisa tulis ────────────────────
+info "2. FreeRADIUS — mengatur permission clients.d..."
+
+if [ -d "$RADIUS_CLIENTS_DIR" ]; then
+    # Tambahkan www-data ke group freerad jika belum
+    FREERAD_GROUP="freerad"
+    if getent group "$FREERAD_GROUP" >/dev/null 2>&1; then
+        if ! id -nG "$WG_CONF_OWNER" | grep -qw "$FREERAD_GROUP"; then
+            usermod -aG "$FREERAD_GROUP" "$WG_CONF_OWNER"
+            ok "User $WG_CONF_OWNER ditambahkan ke group $FREERAD_GROUP"
+        else
+            ok "User $WG_CONF_OWNER sudah ada di group $FREERAD_GROUP"
+        fi
+        # Set direktori agar group freerad bisa tulis
+        chown freerad:"$FREERAD_GROUP" "$RADIUS_CLIENTS_DIR"
+        chmod 0770 "$RADIUS_CLIENTS_DIR"
+        ok "$RADIUS_CLIENTS_DIR → freerad:${FREERAD_GROUP} 770"
+    else
+        warn "Group freerad tidak ditemukan. Pastikan FreeRADIUS terinstall."
+    fi
+
+    # laravel.conf: milik www-data, readable oleh freerad (via group)
+    LARAVEL_CONF="${RADIUS_CLIENTS_DIR}/laravel.conf"
+    if [ -f "$LARAVEL_CONF" ]; then
+        chown "$WG_CONF_OWNER":"$FREERAD_GROUP" "$LARAVEL_CONF"
+        chmod 0664 "$LARAVEL_CONF"
+        ok "$LARAVEL_CONF → ${WG_CONF_OWNER}:${FREERAD_GROUP} 664"
+    fi
+else
+    warn "$RADIUS_CLIENTS_DIR tidak ditemukan. Install FreeRADIUS dulu."
 fi
 
-# 4. Sudoers — www-data bisa jalankan wg syncconf tanpa password
-sudoers_file="/etc/sudoers.d/rafen-wireguard"
-info "Menulis/memperbarui sudoers $sudoers_file..."
-cat <<EOF > "$sudoers_file"
+# ── 3. FreeRADIUS log — www-data harus bisa baca ───────────────────────────
+info "3. FreeRADIUS log — permission baca..."
+RADIUS_LOG="/var/log/freeradius/radius.log"
+if [ -f "$RADIUS_LOG" ]; then
+    # Tambahkan www-data ke group adm (yang bisa baca log freeradius)
+    if getent group adm >/dev/null 2>&1; then
+        if ! id -nG "$WG_CONF_OWNER" | grep -qw "adm"; then
+            usermod -aG adm "$WG_CONF_OWNER"
+            ok "User $WG_CONF_OWNER ditambahkan ke group adm (akses log)"
+        else
+            ok "User $WG_CONF_OWNER sudah ada di group adm"
+        fi
+    fi
+fi
+
+# ── 4. Laravel storage & bootstrap/cache ───────────────────────────────────
+info "4. Laravel — mengatur permission storage & cache..."
+if [ -d "$APP_DIR" ]; then
+    chown -R "$WG_CONF_OWNER":"$WG_CONF_GROUP" "${APP_DIR}/storage"
+    chmod -R 0775 "${APP_DIR}/storage"
+    chown -R "$WG_CONF_OWNER":"$WG_CONF_GROUP" "${APP_DIR}/bootstrap/cache"
+    chmod -R 0775 "${APP_DIR}/bootstrap/cache"
+    ok "${APP_DIR}/storage dan bootstrap/cache → diatur"
+else
+    warn "APP_DIR=$APP_DIR tidak ditemukan."
+fi
+
+# ── 5. Sudoers WireGuard ────────────────────────────────────────────────────
+info "5. Sudoers — WireGuard sync..."
+SUDOERS_WG="/etc/sudoers.d/rafen-wireguard"
+cat > "$SUDOERS_WG" << SUDOERS_EOF
 # RAFEN WireGuard — allow www-data to apply peer changes without restart
 Defaults:${WG_CONF_OWNER} !requiretty
 ${WG_CONF_OWNER} ALL=NOPASSWD:/usr/bin/wg syncconf ${WG_INTERFACE} *
 ${WG_CONF_OWNER} ALL=NOPASSWD:/usr/bin/wg-quick strip ${WG_INTERFACE}
-EOF
-chmod 0440 "$sudoers_file"
-if visudo -c -f "$sudoers_file" >/dev/null 2>&1; then
-    info "Sudoers valid: $sudoers_file"
+SUDOERS_EOF
+chmod 0440 "$SUDOERS_WG"
+if visudo -c -f "$SUDOERS_WG" >/dev/null 2>&1; then
+    ok "Sudoers WireGuard: $SUDOERS_WG"
 else
-    warn "Sudoers mungkin tidak valid — periksa $sudoers_file"
+    warn "Sudoers WireGuard mungkin tidak valid — periksa $SUDOERS_WG"
 fi
 
-# 5. Systemd drop-in — pertahankan permission wg0.conf setelah restart WireGuard
-#    (wg-quick saat restart bisa menimpa permission dengan root:root 600)
-dropin_dir="/etc/systemd/system/wg-quick@${WG_INTERFACE}.service.d"
-dropin_file="${dropin_dir}/rafen-permissions.conf"
-info "Membuat systemd drop-in untuk mempertahankan permission setelah restart..."
-mkdir -p "$dropin_dir"
-cat <<EOF > "$dropin_file"
-# RAFEN — pastikan wg0.conf dapat ditulis oleh www-data setelah service restart
+# ── 6. Sudoers FreeRADIUS ──────────────────────────────────────────────────
+info "6. Sudoers — FreeRADIUS reload + sync-clients wrapper..."
+
+# Buat wrapper script agar artisan radius:sync-clients bisa dijalankan via sudo
+WRAPPER="/usr/local/bin/rafen-sync-radius-clients"
+cat > "$WRAPPER" << WRAPPER_EOF
+#!/bin/bash
+exec /usr/bin/php ${APP_DIR}/artisan radius:sync-clients "\$@"
+WRAPPER_EOF
+chmod 0755 "$WRAPPER"
+ok "Wrapper dibuat: $WRAPPER"
+
+SUDOERS_FR="/etc/sudoers.d/rafen-freeradius"
+cat > "$SUDOERS_FR" << SUDOERS_EOF
+# RAFEN FreeRADIUS — allow www-data to reload/restart and sync clients
+Defaults:${WG_CONF_OWNER} !requiretty
+${WG_CONF_OWNER} ALL=NOPASSWD:/bin/systemctl reload freeradius,/bin/systemctl restart freeradius
+${WG_CONF_OWNER} ALL=NOPASSWD:${WRAPPER}
+SUDOERS_EOF
+chmod 0440 "$SUDOERS_FR"
+if visudo -c -f "$SUDOERS_FR" >/dev/null 2>&1; then
+    ok "Sudoers FreeRADIUS: $SUDOERS_FR"
+else
+    warn "Sudoers FreeRADIUS mungkin tidak valid — periksa $SUDOERS_FR"
+fi
+
+# ── 7. Systemd drop-in WireGuard ──────────────────────────────────────────
+info "7. Systemd drop-in — pertahankan permission WireGuard setelah restart..."
+DROPIN_DIR="/etc/systemd/system/wg-quick@${WG_INTERFACE}.service.d"
+DROPIN_FILE="${DROPIN_DIR}/rafen-permissions.conf"
+mkdir -p "$DROPIN_DIR"
+cat > "$DROPIN_FILE" << DROPIN_EOF
+# RAFEN — pertahankan permission wg0.conf dan direktori setelah wg-quick restart
 [Service]
-ExecStartPost=/bin/bash -c 'chown root:${WG_CONF_GROUP} ${WG_CONFIG_PATH} && chmod 660 ${WG_CONFIG_PATH}'
-EOF
-systemctl daemon-reload 2>/dev/null && info "systemctl daemon-reload OK" || warn "daemon-reload gagal"
+ExecStartPost=/bin/bash -c 'chown root:${WG_CONF_GROUP} ${WG_CONFIG_PATH} && chmod 660 ${WG_CONFIG_PATH} && chown root:${WG_CONF_GROUP} ${WG_KEY_DIR} && chmod 770 ${WG_KEY_DIR}'
+DROPIN_EOF
+systemctl daemon-reload 2>/dev/null && ok "systemctl daemon-reload OK" || warn "daemon-reload gagal"
 
-# 6. Verifikasi hasil
-echo ""
-info "Verifikasi permission:"
-ls -la "$WG_KEY_DIR"
+# ── 8. Reload grup untuk www-data (activate group changes) ─────────────────
+info "8. Menerapkan perubahan grup..."
+# Grup baru aktif untuk proses baru; nginx/php-fpm perlu restart
+PHP_VER="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo '')"
+if [ -n "$PHP_VER" ] && systemctl list-units --type=service 2>/dev/null | grep -q "php${PHP_VER}-fpm"; then
+    systemctl restart "php${PHP_VER}-fpm" && ok "PHP-FPM restarted (grup baru aktif)" || warn "Gagal restart PHP-FPM"
+fi
+if systemctl list-units --type=service 2>/dev/null | grep -q "nginx.service"; then
+    systemctl reload nginx && ok "Nginx reloaded" || warn "Gagal reload Nginx"
+fi
+if systemctl list-units --type=service 2>/dev/null | grep -q "apache2.service"; then
+    systemctl reload apache2 && ok "Apache reloaded" || warn "Gagal reload Apache"
+fi
 
-# 7. Sync peer dari RAFEN database
-echo ""
-info "Menjalankan sync peer dari RAFEN database..."
-APP_DIR="${APP_DIR:-/var/www/rafen}"
-if [ -f "$APP_DIR/artisan" ]; then
-    php "$APP_DIR/artisan" tinker --execute="
+# ── 9. Sync RADIUS clients.conf dari DB ────────────────────────────────────
+info "9. Sync RADIUS clients.conf dari database..."
+if [ -f "${APP_DIR}/artisan" ]; then
+    sudo -u "$WG_CONF_OWNER" "$WRAPPER" 2>/dev/null \
+        && ok "RADIUS clients.conf berhasil di-sync" \
+        || {
+            # Fallback langsung sebagai root
+            php "${APP_DIR}/artisan" radius:sync-clients 2>&1 \
+                && ok "RADIUS clients.conf sync (via root)" \
+                || warn "Sync RADIUS clients gagal — jalankan manual: php ${APP_DIR}/artisan radius:sync-clients"
+        }
+else
+    warn "Artisan tidak ditemukan di $APP_DIR"
+fi
+
+# ── 10. Sync RADIUS replies dari DB ────────────────────────────────────────
+info "10. Sync radcheck/radreply (PPP + Hotspot + Voucher)..."
+if [ -f "${APP_DIR}/artisan" ]; then
+    php "${APP_DIR}/artisan" radius:sync-replies 2>&1 \
+        && ok "radcheck/radreply berhasil di-sync" \
+        || warn "Sync radcheck/radreply gagal — jalankan manual: php ${APP_DIR}/artisan radius:sync-replies"
+fi
+
+# ── 11. Sync WireGuard peers dari DB ────────────────────────────────────────
+info "11. Sync WireGuard peer dari database..."
+if [ -f "${APP_DIR}/artisan" ]; then
+    php "${APP_DIR}/artisan" tinker --execute="
 \$peers = \App\Models\WgPeer::where('is_active', true)->get();
 app(\App\Services\WgPeerSynchronizer::class)->syncAll(\$peers);
 echo 'OK: '.\$peers->count().' peer(s) synced';
-" 2>&1 || warn "Sync gagal — cek log Laravel"
-else
-    warn "Artisan tidak ditemukan di $APP_DIR. Set APP_DIR=/path/to/rafen lalu jalankan ulang."
+" 2>&1 | tail -1 | grep -v "^$" || warn "Sync peer gagal — cek storage/logs/laravel.log"
 fi
 
-# 8. Tampilkan status wg0
+# ── Ringkasan ────────────────────────────────────────────────────────────────
 echo ""
-info "Status WireGuard:"
-wg show "$WG_INTERFACE" 2>/dev/null || warn "wg show gagal — pastikan wg0 sudah up"
-
+echo "========================================================================"
+info "Verifikasi permission:"
+ls -la "$WG_KEY_DIR"
 echo ""
-info "Selesai. Jika peer belum muncul di 'wg show', cek:"
-info "  1. Peer sudah ditambahkan di web RAFEN (is_active = true)"
-info "  2. PHP dapat menjalankan 'sudo wg syncconf' (cek sudoers di atas)"
-info "  3. Systemd drop-in: $dropin_file"
-info "  4. Log Laravel: storage/logs/laravel.log"
+if [ -d "$RADIUS_CLIENTS_DIR" ]; then
+    ls -la "$RADIUS_CLIENTS_DIR"
+fi
+echo ""
+info "Sudoers aktif:"
+ls -la /etc/sudoers.d/rafen-* 2>/dev/null || true
+echo ""
+if command -v wg >/dev/null 2>&1 && ip link show "$WG_INTERFACE" >/dev/null 2>&1; then
+    info "Status WireGuard:"
+    wg show "$WG_INTERFACE" 2>/dev/null || warn "wg show gagal"
+fi
+echo ""
+echo "========================================================================"
+info "Selesai. Semua permission dan sudoers telah dikonfigurasi."
+info "Jika masih ada masalah, cek: ${APP_DIR}/storage/logs/laravel.log"
+echo "========================================================================"

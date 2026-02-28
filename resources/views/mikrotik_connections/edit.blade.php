@@ -22,9 +22,21 @@
                         </ul>
                     </div>
                 @endif
+                @if($radiusSecretMismatch ?? false)
+                    <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2" id="radius-mismatch-alert">
+                        <span>
+                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                            <strong>Secret RADIUS tidak sinkron!</strong>
+                            Secret di <code>clients.conf</code> belum cocok dengan DB — MikroTik tidak bisa autentikasi ke RADIUS.
+                        </span>
+                        <button type="button" class="btn btn-sm btn-warning" id="sync-radius-clients-btn">
+                            <i class="fas fa-sync mr-1"></i> Sync RADIUS Clients
+                        </button>
+                    </div>
+                @endif
                 <div class="alert alert-info">
-                    <div><strong>Username API:</strong> <span id="generated-username"></span></div>
-                    <div><strong>Password API & Secret Radius:</strong> <span id="generated-secret"></span></div>
+                    <div><strong>Username API:</strong> <span id="generated-username">{{ $mikrotikConnection->username }}</span></div>
+                    <div><strong>Password API & Secret Radius:</strong> <span id="generated-secret">{{ $mikrotikConnection->password }}</span></div>
                 </div>
                 <div class="mb-3">
                     <button type="button" class="btn btn-primary" id="script-generator-btn" data-toggle="modal" data-target="#scriptGeneratorModal"><i class="fas fa-code"></i> SCRIPT GENERATOR</button>
@@ -34,14 +46,14 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label>Authentication Port</label>
-                            <input type="number" name="auth_port" value="{{ old('auth_port', $mikrotikConnection->auth_port) }}" class="form-control @error('auth_port') is-invalid @enderror">
+                            <input type="number" name="auth_port" value="{{ old('auth_port', $mikrotikConnection->auth_port ?? 1812) }}" class="form-control @error('auth_port') is-invalid @enderror" placeholder="1812">
                             @error('auth_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label>Accounting Port</label>
-                            <input type="number" name="acct_port" value="{{ old('acct_port', $mikrotikConnection->acct_port) }}" class="form-control @error('acct_port') is-invalid @enderror">
+                            <input type="number" name="acct_port" value="{{ old('acct_port', $mikrotikConnection->acct_port ?? 1813) }}" class="form-control @error('acct_port') is-invalid @enderror" placeholder="1813">
                             @error('acct_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                     </div>
@@ -384,8 +396,8 @@
             const existingPass = document.querySelector('input[name="password"]').value;
             const existingSecret = document.querySelector('input[name="radius_secret"]').value;
 
-            const user = existingUser || `TMDRadius${randomString(6, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')}`;
-            const pass = existingPass || randomString(10, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*');
+            const user = existingUser || `TMD-${randomString(6, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')}`;
+            const pass = existingPass || randomString(17, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
             const secret = existingSecret || pass;
 
             document.querySelector('input[name="username"]').value = user;
@@ -393,7 +405,7 @@
             document.querySelector('input[name="radius_secret"]').value = secret;
 
             document.getElementById('generated-username').textContent = user;
-            document.getElementById('generated-secret').textContent = secret;
+            document.getElementById('generated-secret').textContent = pass;
         }
 
         function escapeForRouter(value) {
@@ -443,16 +455,6 @@
             document.getElementById('generated-script').value = lines.join('\n');
         }
 
-        document.getElementById('script-generator-btn').addEventListener('click', function () {
-            generateCredentials();
-            buildScript();
-        });
-
-        document.addEventListener('DOMContentLoaded', function () {
-            generateCredentials();
-            checkApiPortWarning();
-        });
-
         function checkApiPortWarning() {
             const apiPort = parseInt(document.querySelector('input[name="api_port"]').value, 10);
             const apiSslPort = parseInt(document.querySelector('input[name="api_ssl_port"]').value, 10);
@@ -461,8 +463,38 @@
             warning.style.display = (apiPort === 8728 || apiSslPort === 8729) ? '' : 'none';
         }
 
-        document.querySelector('input[name="api_port"]').addEventListener('input', checkApiPortWarning);
-        document.querySelector('input[name="api_ssl_port"]').addEventListener('input', checkApiPortWarning);
+        function init() {
+            generateCredentials();
+            buildScript();
+            checkApiPortWarning();
+
+            var scriptBtn = document.getElementById('script-generator-btn');
+            if (scriptBtn) {
+                scriptBtn.addEventListener('click', function () {
+                    generateCredentials();
+                    buildScript();
+                });
+            }
+
+            var modal = document.getElementById('scriptGeneratorModal');
+            if (modal) {
+                modal.addEventListener('show.bs.modal', function () {
+                    generateCredentials();
+                    buildScript();
+                });
+            }
+
+            var apiPortInput = document.querySelector('input[name="api_port"]');
+            var apiSslPortInput = document.querySelector('input[name="api_ssl_port"]');
+            if (apiPortInput) apiPortInput.addEventListener('input', checkApiPortWarning);
+            if (apiSslPortInput) apiSslPortInput.addEventListener('input', checkApiPortWarning);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
 
         document.getElementById('copy-script-btn')?.addEventListener('click', function () {
             const textarea = document.getElementById('generated-script');
@@ -470,6 +502,46 @@
             textarea.setSelectionRange(0, 99999);
             document.execCommand('copy');
         });
+
+        // ── Sync RADIUS Clients ───────────────────────────────────────────────
+        var syncRadiusBtn = document.getElementById('sync-radius-clients-btn');
+        if (syncRadiusBtn) {
+            syncRadiusBtn.addEventListener('click', function () {
+                var btn = this;
+                var origHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Menyinkron…';
+
+                fetch('{{ route('mikrotik-connections.radius-sync-clients') }}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    if (data.error) {
+                        alert('Sync gagal: ' + data.error);
+                    } else {
+                        // Sembunyikan alert mismatch
+                        var alert = document.getElementById('radius-mismatch-alert');
+                        if (alert) alert.style.display = 'none';
+                        btn.innerHTML = '<i class="fas fa-check mr-1"></i>Tersinkron';
+                        btn.classList.remove('btn-warning');
+                        btn.classList.add('btn-success');
+                    }
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert('Gagal menghubungi server.');
+                });
+            });
+        }
 
         // ── Cek Sekarang (ping manual) ────────────────────────────────────────
         const pingNowBtn = document.getElementById('wg-ping-now-btn');

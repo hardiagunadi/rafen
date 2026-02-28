@@ -20,9 +20,39 @@ class ProfileGroupExporter
 
         try {
             $poolName = $this->resolvePoolName($group);
+
+            // For sql mode: create/update IP pool on MikroTik first
+            if ($group->ip_pool_mode === 'sql' && $group->type === 'pppoe') {
+                $this->exportIpPool($client, $group, $poolName);
+            }
+
             $this->exportProfile($client, $group, $poolName);
         } finally {
             $client->disconnect();
+        }
+    }
+
+    private function exportIpPool(MikrotikApiClient $client, ProfileGroup $group, ?string $poolName): void
+    {
+        if (! $poolName) {
+            return;
+        }
+
+        $rangeStart = trim((string) $group->range_start);
+        $rangeEnd   = trim((string) $group->range_end);
+
+        if ($rangeStart === '' || $rangeEnd === '') {
+            return;
+        }
+
+        $ranges = $rangeStart.'-'.$rangeEnd;
+
+        $existingId = $this->findId($client, '/ip/pool/print', ['name' => $poolName]);
+
+        if ($existingId) {
+            $client->command('/ip/pool/set', ['numbers' => $existingId, 'ranges' => $ranges]);
+        } else {
+            $client->command('/ip/pool/add', ['name' => $poolName, 'ranges' => $ranges]);
         }
     }
 
@@ -35,7 +65,7 @@ class ProfileGroupExporter
 
         $isPppProfile = $group->type === 'pppoe';
         [$basePath, $attributes] = $isPppProfile
-            ? ['/ppp/profile', $this->pppProfileAttributes($group)]
+            ? ['/ppp/profile', $this->pppProfileAttributes($group, $poolName)]
             : ['/ip/hotspot/user/profile', $this->hotspotProfileAttributes($group, $poolName)];
 
         $existingId = $this->findId($client, $basePath.'/print', ['name' => $profileName]);
@@ -52,12 +82,24 @@ class ProfileGroupExporter
         $client->command($basePath.'/add', $payload);
     }
 
-    private function pppProfileAttributes(ProfileGroup $group): array
+    private function pppProfileAttributes(ProfileGroup $group, ?string $poolName): array
     {
+        $localAddress = trim((string) $group->ip_address);
+        if ($localAddress === '') {
+            throw new RuntimeException('IP lokal belum diisi pada profil group "'.$group->name.'".');
+        }
+
         $attributes = [
-            'local-address' => $this->resolveLocalAddress($group),
-            'comment' => 'added by TMDRadius',
+            'local-address' => $localAddress,
+            'comment'       => 'added by TMDRadius',
         ];
+
+        // remote-address: sql mode → use pool (RADIUS sends Framed-IP-Address,
+        //   but pool must exist on MikroTik as the PPP profile still needs one)
+        // group_only → use named pool on MikroTik
+        if ($group->ip_pool_mode === 'sql' || $group->ip_pool_mode === 'group_only') {
+            $attributes['remote-address'] = $poolName ?? '';
+        }
 
         $dns = trim((string) $group->dns_servers);
         if ($dns !== '') {
@@ -75,7 +117,7 @@ class ProfileGroupExporter
     private function hotspotProfileAttributes(ProfileGroup $group, ?string $poolName): array
     {
         $attributes = [
-            'address-pool' => $this->resolvePoolAssignment($group, $poolName),
+            'address-pool' => $poolName ?? 'none',
         ];
 
         $dns = trim((string) $group->dns_servers);
@@ -100,22 +142,6 @@ class ProfileGroupExporter
         }
 
         return $poolName !== '' ? $poolName : null;
-    }
-
-    private function resolvePoolAssignment(ProfileGroup $group, ?string $poolName): string
-    {
-        return 'none';
-    }
-
-    private function resolveLocalAddress(ProfileGroup $group): string
-    {
-        $localAddress = trim((string) $group->ip_address);
-
-        if ($localAddress === '') {
-            throw new RuntimeException('IP lokal belum diisi.');
-        }
-
-        return $localAddress;
     }
 
     /**

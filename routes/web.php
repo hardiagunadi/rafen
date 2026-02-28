@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/income', IncomeReportController::class)->name('reports.income');
     Route::post('mikrotik-connections/test', [MikrotikConnectionController::class, 'test'])->name('mikrotik-connections.test');
     Route::post('mikrotik-connections/{mikrotikConnection}/ping', [MikrotikConnectionController::class, 'pingNow'])->name('mikrotik-connections.ping-now');
+    Route::post('mikrotik-connections/radius-sync-clients', [MikrotikConnectionController::class, 'syncRadiusClients'])->name('mikrotik-connections.radius-sync-clients');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
     Route::resource('mikrotik-connections', MikrotikConnectionController::class);
     Route::resource('radius-accounts', RadiusAccountController::class);

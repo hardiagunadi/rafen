@@ -51,7 +51,7 @@
                 <div class="form-row">
                     <div class="form-group col-md-6">
                         <label>Modul IP Pool</label>
-                        <select name="ip_pool_mode" class="form-control @error('ip_pool_mode') is-invalid @enderror">
+                        <select name="ip_pool_mode" id="ip_pool_mode" class="form-control @error('ip_pool_mode') is-invalid @enderror">
                             <option value="group_only" @selected(old('ip_pool_mode') === 'group_only')>Group Only (Mikrotik)</option>
                             <option value="sql" @selected(old('ip_pool_mode') === 'sql')>SQL IP Pool</option>
                         </select>
@@ -64,29 +64,30 @@
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group col-md-6">
-                        <label>Range IP Awal</label>
-                        <input type="text" name="range_start" value="{{ old('range_start') }}" class="form-control @error('range_start') is-invalid @enderror" placeholder="10.0.0.2">
-                        @error('range_start')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                <div id="sql-pool-fields">
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Range IP Awal</label>
+                            <input type="text" name="range_start" value="{{ old('range_start') }}" class="form-control @error('range_start') is-invalid @enderror" placeholder="10.0.0.2">
+                            @error('range_start')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Range IP Akhir</label>
+                            <input type="text" name="range_end" value="{{ old('range_end') }}" class="form-control @error('range_end') is-invalid @enderror" placeholder="10.0.0.254">
+                            @error('range_end')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
                     </div>
-                    <div class="form-group col-md-6">
-                        <label>Range IP Akhir</label>
-                        <input type="text" name="range_end" value="{{ old('range_end') }}" class="form-control @error('range_end') is-invalid @enderror" placeholder="10.0.0.254">
-                        @error('range_end')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group col-md-6">
-                        <label>IP Address (SQL IP Pool)</label>
-                        <input type="text" name="ip_address" value="{{ old('ip_address') }}" class="form-control @error('ip_address') is-invalid @enderror" placeholder="10.0.1.0">
-                        @error('ip_address')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-                    <div class="form-group col-md-6">
-                        <label>Netmask (SQL IP Pool)</label>
-                        <input type="text" name="netmask" value="{{ old('netmask') }}" class="form-control @error('netmask') is-invalid @enderror" placeholder="255.255.255.0 atau 24">
-                        @error('netmask')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>IP Address (SQL IP Pool)</label>
+                            <input type="text" name="ip_address" value="{{ old('ip_address') }}" class="form-control @error('ip_address') is-invalid @enderror" placeholder="10.0.1.0">
+                            @error('ip_address')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Netmask (SQL IP Pool)</label>
+                            <input type="text" name="netmask" value="{{ old('netmask') }}" class="form-control @error('netmask') is-invalid @enderror" placeholder="255.255.255.0 atau 24">
+                            @error('netmask')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
                     </div>
                 </div>
 
@@ -109,4 +110,45 @@
             </div>
         </form>
     </div>
+    <script>
+        function syncPoolMode() {
+            var type = document.querySelector('select[name="type"]').value;
+            var poolModeSelect = document.getElementById('ip_pool_mode');
+            var sqlFields = document.getElementById('sql-pool-fields');
+
+            if (type === 'hotspot') {
+                poolModeSelect.value = 'group_only';
+                poolModeSelect.disabled = true;
+                sqlFields.style.display = 'none';
+            } else {
+                poolModeSelect.disabled = false;
+                sqlFields.style.display = poolModeSelect.value === 'sql' ? '' : 'none';
+            }
+        }
+
+        function syncSqlFields() {
+            var type = document.querySelector('select[name="type"]').value;
+            if (type === 'hotspot') return;
+            var poolMode = document.getElementById('ip_pool_mode').value;
+            document.getElementById('sql-pool-fields').style.display = poolMode === 'sql' ? '' : 'none';
+        }
+
+        document.querySelector('select[name="type"]').addEventListener('change', syncPoolMode);
+        document.getElementById('ip_pool_mode').addEventListener('change', syncSqlFields);
+
+        // Init on load
+        (function () {
+            var type = document.querySelector('select[name="type"]').value;
+            var poolMode = document.getElementById('ip_pool_mode').value;
+            var poolModeSelect = document.getElementById('ip_pool_mode');
+            var sqlFields = document.getElementById('sql-pool-fields');
+            if (type === 'hotspot') {
+                poolModeSelect.value = 'group_only';
+                poolModeSelect.disabled = true;
+                sqlFields.style.display = 'none';
+            } else {
+                sqlFields.style.display = poolMode === 'sql' ? '' : 'none';
+            }
+        })();
+    </script>
 @endsection

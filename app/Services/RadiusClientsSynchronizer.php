@@ -29,32 +29,63 @@ class RadiusClientsSynchronizer
 
         $payload = $this->buildClientsPayload($connections);
         $path = (string) config('radius.clients_path');
-
         $directory = dirname($path);
-        if (! $this->filesystem->isDirectory($directory)) {
-            $parent = dirname($directory);
-            if ($this->filesystem->isDirectory($parent) && $this->filesystem->isReadable($parent)) {
-                throw new RuntimeException("Direktori {$directory} belum ada. Buat manual dan beri izin tulis untuk webserver.");
-            }
 
-            throw new RuntimeException("Tidak dapat mengakses direktori {$directory}. Periksa izin untuk webserver.");
-        } elseif (! $this->filesystem->isWritable($directory)) {
-            throw new RuntimeException("Direktori {$directory} tidak writable untuk sinkronisasi FreeRADIUS.");
+        // Try direct write first
+        $canWrite = $this->filesystem->isDirectory($directory)
+            && $this->filesystem->isWritable($directory)
+            && (! $this->filesystem->exists($path) || $this->filesystem->isWritable($path));
+
+        if ($canWrite) {
+            $this->filesystem->put($path, $payload);
+            $this->reloadRadius();
+            return;
         }
 
-        if ($this->filesystem->exists($path) && ! $this->filesystem->isWritable($path)) {
-            throw new RuntimeException("File {$path} tidak writable untuk sinkronisasi FreeRADIUS.");
+        // Fallback: use sudo wrapper script (requires /etc/sudoers.d/rafen-freeradius entry)
+        $process = Process::fromShellCommandline('sudo /usr/local/bin/rafen-sync-radius-clients');
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException(
+                "Tidak dapat menulis ke {$directory} dan fallback sudo juga gagal: " . $process->getErrorOutput()
+            );
         }
+    }
+
+    /**
+     * Write payload to file and reload FreeRADIUS (called directly when writable).
+     */
+    public function writeAndReload(string $payload): void
+    {
+        $path = (string) config('radius.clients_path');
         $this->filesystem->put($path, $payload);
+        $this->reloadRadius();
+    }
 
+    public function buildPayload(): string
+    {
+        $connections = MikrotikConnection::query()
+            ->where('is_active', true)
+            ->whereNotNull('radius_secret')
+            ->with('wgPeer')
+            ->get();
+
+        return $this->buildClientsPayload($connections);
+    }
+
+    private function reloadRadius(): void
+    {
         $command = (string) config('radius.reload_command');
-        if ($command !== '') {
-            $process = Process::fromShellCommandline($command);
-            $process->run();
+        if ($command === '') {
+            return;
+        }
 
-            if (! $process->isSuccessful()) {
-                throw new ProcessFailedException($process);
-            }
+        $process = Process::fromShellCommandline($command);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            throw new ProcessFailedException($process);
         }
     }
 
@@ -79,8 +110,9 @@ class RadiusClientsSynchronizer
             $lines[] = $nasNote;
             $lines[] = "client {$shortName} {";
             $lines[] = "    ipaddr = {$nasIp}";
-            $lines[] = "    secret = \"{$secret}\"";
+            $lines[] = "    secret = {$secret}";
             $lines[] = "    shortname = {$shortName}";
+            $lines[] = '    require_message_authenticator = yes';
             $lines[] = '}';
             $lines[] = '';
         }

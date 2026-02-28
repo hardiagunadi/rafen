@@ -107,7 +107,16 @@ class MikrotikConnectionController extends Controller
             }
         }
 
-        return view('mikrotik_connections.edit', compact('mikrotikConnection', 'radiusHost'));
+        // Deteksi mismatch: cek apakah secret di clients.conf sudah cocok dengan DB
+        $radiusSecretMismatch = false;
+        $clientsPath = (string) config('radius.clients_path');
+        if ($mikrotikConnection->radius_secret && file_exists($clientsPath) && is_readable($clientsPath)) {
+            $contents = file_get_contents($clientsPath);
+            $radiusSecretMismatch = $contents !== false
+                && ! str_contains($contents, 'secret = ' . $mikrotikConnection->radius_secret);
+        }
+
+        return view('mikrotik_connections.edit', compact('mikrotikConnection', 'radiusHost', 'radiusSecretMismatch'));
     }
 
     public function pingNow(MikrotikConnection $mikrotikConnection): JsonResponse
@@ -125,6 +134,16 @@ class MikrotikConnectionController extends Controller
             ]);
         } catch (Throwable $e) {
             return response()->json(['error' => 'Ping gagal: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function syncRadiusClients(): JsonResponse
+    {
+        try {
+            $this->synchronizer->sync();
+            return response()->json(['status' => 'RADIUS clients.conf berhasil disinkron.']);
+        } catch (Throwable $e) {
+            return response()->json(['error' => 'Sync gagal: ' . $e->getMessage()], 500);
         }
     }
 

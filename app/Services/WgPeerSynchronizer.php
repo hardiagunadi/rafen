@@ -69,9 +69,13 @@ class WgPeerSynchronizer
         @chgrp($confPath, 'www-data');
 
         // Apply changes without restarting the interface (no dropped connections)
-        // wg syncconf requires stripped config (no PostUp/PostDown) — pipe via bash
+        // wg syncconf memerlukan config tanpa PostUp/PostDown (stripped).
+        // Pipe via /dev/stdin karena process substitution <(...) tidak kompatibel
+        // dengan sudo. sudoers di /etc/sudoers.d/rafen-wireguard mengizinkan
+        // www-data menjalankan kedua perintah tanpa password.
         $interface = (string) config('wg.interface', 'wg0');
-        $command   = "bash -c 'wg syncconf " . escapeshellarg($interface) . " <(wg-quick strip " . escapeshellarg($interface) . ")'";
+        $iface     = escapeshellarg($interface);
+        $command   = "sudo wg-quick strip {$iface} | sudo wg syncconf {$iface} /dev/stdin";
 
         $process = Process::fromShellCommandline($command);
         $process->run();
