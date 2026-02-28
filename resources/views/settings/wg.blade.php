@@ -46,13 +46,17 @@
                         @endif
                     </div>
                     @if ($keyAutoDetected)
-                        <div class="alert alert-warning py-2 mb-0">
-                            <i class="fas fa-exclamation-triangle mr-1"></i>
-                            Server keypair dibaca dari <code>/etc/wireguard/server_private.key</code>.
-                            Tambahkan ke <code>.env</code> untuk menetapkan secara permanen:
-                            <div class="mt-1">
-                                <code>WG_SERVER_PUBLIC_KEY={{ $wg['server_public_key'] }}</code>
-                            </div>
+                        <div class="alert alert-warning py-2 mb-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                            <span>
+                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                Server keypair dibaca dari <code>/etc/wireguard/</code> — belum tersimpan di <code>.env</code>.
+                            </span>
+                            <form method="POST" action="{{ route('settings.wg.save-server-keys') }}" class="mb-0">
+                                @csrf
+                                <button type="submit" class="btn btn-warning btn-sm">
+                                    <i class="fas fa-save mr-1"></i> Simpan ke .env
+                                </button>
+                            </form>
                         </div>
                     @endif
                 </div>

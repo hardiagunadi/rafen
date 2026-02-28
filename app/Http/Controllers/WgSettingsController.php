@@ -266,6 +266,42 @@ class WgSettingsController extends Controller
             ->with('status', 'NAS berhasil dibuat dengan IP VPN ' . $wgPeer->vpn_ip . '. Lengkapi konfigurasi router di sini.');
     }
 
+    public function saveServerKeys(): RedirectResponse
+    {
+        $configuredPub  = (string) config('wg.server_public_key');
+        $configuredPriv = (string) config('wg.server_private_key');
+
+        // Resolve from disk if not already in .env
+        [$resolvedPriv, $resolvedPub] = $this->resolveServerKeypair($configuredPriv, $configuredPub);
+
+        if ($resolvedPub === '') {
+            return redirect()->route('settings.wg')
+                ->with('error', 'Server public key tidak ditemukan. Pastikan WireGuard sudah terinstall.');
+        }
+
+        $envPath = base_path('.env');
+        $env     = file_get_contents($envPath);
+
+        foreach ([
+            'WG_SERVER_PUBLIC_KEY'  => $resolvedPub,
+            'WG_SERVER_PRIVATE_KEY' => $resolvedPriv,
+        ] as $key => $value) {
+            if ($value === '') {
+                continue;
+            }
+            if (preg_match('/^' . $key . '=.*$/m', $env)) {
+                $env = preg_replace('/^' . $key . '=.*$/m', $key . '=' . $value, $env);
+            } else {
+                $env .= PHP_EOL . $key . '=' . $value;
+            }
+        }
+
+        file_put_contents($envPath, $env);
+
+        return redirect()->route('settings.wg')
+            ->with('status', 'Server keypair berhasil disimpan ke .env.');
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────────
 
     /**
