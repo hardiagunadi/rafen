@@ -590,6 +590,13 @@
             row.dataset.updateUrl  = peer.update_url;
             if (peer.keygen_url) row.dataset.keygenUrl = peer.keygen_url;
 
+            // Perbarui data-script di tombol "Script MikroTik" agar selalu pakai keypair terbaru
+            const scriptBtn = row.querySelector('.wg-script-btn');
+            if (scriptBtn) {
+                const newScript = buildScriptData(peer);
+                scriptBtn.dataset.script = JSON.stringify(newScript).replace(/'/g, '&#39;');
+            }
+
             const editRow = document.getElementById('wg-edit-' + peer.id);
             if (editRow) {
                 const f = editRow.querySelector('form');
