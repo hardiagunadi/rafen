@@ -266,6 +266,25 @@ class WgSettingsController extends Controller
             ->with('status', 'NAS berhasil dibuat dengan IP VPN ' . $wgPeer->vpn_ip . '. Lengkapi konfigurasi router di sini.');
     }
 
+    public function ping(): JsonResponse
+    {
+        $ip = request()->query('ip', '');
+
+        if (! filter_var($ip, FILTER_VALIDATE_IP)) {
+            return response()->json(['error' => 'IP tidak valid.'], 422);
+        }
+
+        $output = [];
+        $escaped = escapeshellarg($ip);
+        exec("ping -c 4 -W 2 {$escaped} 2>&1", $output, $code);
+
+        return response()->json([
+            'ip'     => $ip,
+            'output' => implode("\n", $output),
+            'alive'  => $code === 0,
+        ]);
+    }
+
     public function saveServerKeys(): RedirectResponse
     {
         $configuredPub  = (string) config('wg.server_public_key');

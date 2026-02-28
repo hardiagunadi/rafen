@@ -323,7 +323,14 @@
                                 @endif
                             </td>
                             <td class="wg-col-name">{{ $peer->name }}</td>
-                            <td class="wg-col-ip">{{ $peer->vpn_ip ?? '-' }}</td>
+                            <td class="wg-col-ip">
+                                @if($peer->vpn_ip)
+                                    <a href="#" class="wg-ping-link" data-ip="{{ $peer->vpn_ip }}"
+                                       title="Klik untuk ping {{ $peer->vpn_ip }}">{{ $peer->vpn_ip }}</a>
+                                @else
+                                    -
+                                @endif
+                            </td>
                             <td class="wg-col-pubkey">
                                 <code style="font-size:10px;">{{ $peer->public_key ? \Illuminate\Support\Str::limit($peer->public_key, 20) : '-' }}</code>
                             </td>
@@ -398,6 +405,34 @@
                     @endforelse
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    {{-- Ping Modal --}}
+    <div class="modal fade" id="wg-ping-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0">
+                        <i class="fas fa-network-wired mr-1"></i>
+                        Ping — <span id="wg-ping-ip"></span>
+                    </h6>
+                    <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="wg-ping-loading" class="text-center py-3">
+                        <i class="fas fa-spinner fa-spin mr-1"></i> Mengirim ping…
+                    </div>
+                    <pre id="wg-ping-output" class="mb-0 p-2" style="display:none;font-size:12px;background:#1e1e1e;color:#d4d4d4;border-radius:4px;white-space:pre-wrap;max-height:300px;overflow-y:auto;"></pre>
+                    <div id="wg-ping-result" class="mt-2" style="display:none;"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" id="wg-ping-retry" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-redo mr-1"></i>Ulangi
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Tutup</button>
+                </div>
             </div>
         </div>
     </div>
@@ -595,7 +630,12 @@
         function updateRow(row, peer) {
             row.querySelector('.wg-col-router').textContent = peer.mikrotik_connection || '-';
             row.querySelector('.wg-col-name').textContent   = peer.name;
-            row.querySelector('.wg-col-ip').textContent     = peer.vpn_ip || '-';
+            const ipCell = row.querySelector('.wg-col-ip');
+            if (peer.vpn_ip) {
+                ipCell.innerHTML = '<a href="#" class="wg-ping-link" data-ip="' + peer.vpn_ip + '" title="Klik untuk ping ' + peer.vpn_ip + '">' + peer.vpn_ip + '</a>';
+            } else {
+                ipCell.textContent = '-';
+            }
             const pkCell = row.querySelector('.wg-col-pubkey code');
             if (pkCell) pkCell.textContent = peer.public_key ? peer.public_key.substring(0, 20) + '…' : '-';
             row.querySelector('.wg-col-status').textContent = peer.is_active ? 'Aktif' : 'Nonaktif';
@@ -962,7 +1002,7 @@
                 ' data-has-nas="' + (peer.mikrotik_connection ? '1' : '0') + '">' +
                 '<td class="wg-col-router">' + (peer.mikrotik_connection || '-') + '</td>' +
                 '<td class="wg-col-name">' + peer.name + '</td>' +
-                '<td class="wg-col-ip">' + (peer.vpn_ip || '-') + '</td>' +
+                '<td class="wg-col-ip">' + (peer.vpn_ip ? '<a href="#" class="wg-ping-link" data-ip="' + peer.vpn_ip + '" title="Klik untuk ping ' + peer.vpn_ip + '">' + peer.vpn_ip + '</a>' : '-') + '</td>' +
                 '<td class="wg-col-pubkey"><code style="font-size:10px;">' + pubKeyShort + '</code></td>' +
                 '<td class="wg-col-status">' + (peer.is_active ? 'Aktif' : 'Nonaktif') + '</td>' +
                 '<td class="wg-col-sync">' + (peer.last_synced_at || '-') + '</td>' +
@@ -1091,6 +1131,52 @@
 
         const copyDirectBtn = document.getElementById('wg-copy-direct');
         if (copyDirectBtn) copyDirectBtn.addEventListener('click', function () { copyTextarea('wg-script-direct', this); });
+
+        // ── Ping IP VPN ───────────────────────────────────────────────────────
+        const pingUrl = '{{ route('settings.wg.ping') }}';
+        let currentPingIp = null;
+
+        function runPing(ip) {
+            currentPingIp = ip;
+            document.getElementById('wg-ping-ip').textContent       = ip;
+            document.getElementById('wg-ping-loading').style.display = '';
+            document.getElementById('wg-ping-output').style.display  = 'none';
+            document.getElementById('wg-ping-result').style.display  = 'none';
+
+            fetch(pingUrl + '?ip=' + encodeURIComponent(ip), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                document.getElementById('wg-ping-loading').style.display = 'none';
+                const out = document.getElementById('wg-ping-output');
+                out.textContent    = data.output || '(tidak ada output)';
+                out.style.display  = '';
+                const res = document.getElementById('wg-ping-result');
+                res.innerHTML = data.alive
+                    ? '<span class="badge badge-success px-2 py-1"><i class="fas fa-check-circle mr-1"></i>Host aktif</span>'
+                    : '<span class="badge badge-danger px-2 py-1"><i class="fas fa-times-circle mr-1"></i>Host tidak merespons</span>';
+                res.style.display = '';
+            })
+            .catch(function () {
+                document.getElementById('wg-ping-loading').style.display = 'none';
+                document.getElementById('wg-ping-result').innerHTML      = '<span class="badge badge-danger">Ping gagal dijalankan</span>';
+                document.getElementById('wg-ping-result').style.display  = '';
+            });
+        }
+
+        document.addEventListener('click', function (e) {
+            const link = e.target.closest('.wg-ping-link');
+            if (!link) return;
+            e.preventDefault();
+            const ip = link.dataset.ip;
+            $('#wg-ping-modal').modal('show');
+            runPing(ip);
+        });
+
+        document.getElementById('wg-ping-retry')?.addEventListener('click', function () {
+            if (currentPingIp) runPing(currentPingIp);
+        });
 
         // Toggle manual keypair fields di form create
         document.getElementById('toggle-manual-keypair')?.addEventListener('click', function (e) {
