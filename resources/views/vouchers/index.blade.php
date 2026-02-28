@@ -54,105 +54,48 @@
                 </div>
             </div>
 
-            <form method="GET" action="{{ route('vouchers.index') }}" class="form-inline justify-content-between mb-3 flex-wrap">
-                <div class="d-flex flex-wrap">
-                    <div class="form-group mb-2 mr-2">
-                        <label for="per-page" class="mr-2">Show</label>
-                        <select name="per_page" id="per-page" class="form-control form-control-sm" onchange="this.form.submit()">
-                            @foreach([20, 50, 100, 200] as $size)
-                                <option value="{{ $size }}" @selected($perPage == $size)>{{ $size }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="form-group mb-2 mr-2">
-                        <select name="status" class="form-control form-control-sm" onchange="this.form.submit()">
-                            <option value="">- Semua Status -</option>
-                            @foreach(['unused', 'used', 'expired'] as $s)
-                                <option value="{{ $s }}" @selected($status === $s)>{{ strtoupper($s) }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="form-group mb-2 mr-2">
-                        <select name="batch" class="form-control form-control-sm" onchange="this.form.submit()">
-                            <option value="">- Semua Batch -</option>
-                            @foreach($batches as $b)
-                                <option value="{{ $b }}" @selected($batch === $b)>{{ $b }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+            {{-- Filter status & batch --}}
+            <div class="d-flex flex-wrap mb-3">
+                <div class="form-group mb-2 mr-2">
+                    <select id="filter-status" class="form-control form-control-sm">
+                        <option value="">- Semua Status -</option>
+                        <option value="unused">UNUSED</option>
+                        <option value="used">USED</option>
+                        <option value="expired">EXPIRED</option>
+                    </select>
                 </div>
-                <div class="form-group mb-2">
-                    <input type="text" name="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="Cari kode...">
-                    <button type="submit" class="btn btn-sm btn-primary ml-1">Cari</button>
+                <div class="form-group mb-2 mr-2">
+                    <select id="filter-batch" class="form-control form-control-sm">
+                        <option value="">- Semua Batch -</option>
+                        @foreach($batches as $b)
+                            <option value="{{ $b }}">{{ $b }}</option>
+                        @endforeach
+                    </select>
                 </div>
-            </form>
-
-            {{-- Print batch shortcut --}}
-            @if($batch)
-                <div class="mb-2">
-                    <a href="{{ route('vouchers.print', $batch) }}" class="btn btn-sm btn-outline-secondary" target="_blank">
-                        <i class="fas fa-print"></i> Print Batch "{{ $batch }}"
+                <div id="print-batch-btn" class="mb-2" style="display:none;">
+                    <a id="print-batch-link" href="#" class="btn btn-sm btn-outline-secondary" target="_blank">
+                        <i class="fas fa-print"></i> Print Batch
                     </a>
                 </div>
-            @endif
+            </div>
 
             <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0">
+                <table id="vouchers-table" class="table table-striped table-hover mb-0" style="width:100%;">
                     <thead class="thead-light">
-                    <tr>
-                        <th style="width:40px;"><input type="checkbox" id="select-all"></th>
-                        <th>Kode</th>
-                        <th>Batch</th>
-                        <th>Profil Hotspot</th>
-                        <th>Status</th>
-                        <th>Expired</th>
-                        <th class="text-right">Aksi</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($vouchers as $voucher)
                         <tr>
-                            <td><input type="checkbox" name="ids[]" value="{{ $voucher->id }}" @disabled($voucher->status !== 'unused')></td>
-                            <td><code class="text-lg font-weight-bold">{{ $voucher->code }}</code></td>
-                            <td>{{ $voucher->batch_name ?? '-' }}</td>
-                            <td>{{ $voucher->hotspotProfile?->name ?? '-' }}</td>
-                            <td>
-                                @php
-                                    $statusClass = match($voucher->status) {
-                                        'unused'  => 'success',
-                                        'used'    => 'info',
-                                        'expired' => 'secondary',
-                                        default   => 'light',
-                                    };
-                                @endphp
-                                <span class="badge badge-{{ $statusClass }}">{{ strtoupper($voucher->status) }}</span>
-                            </td>
-                            <td>{{ $voucher->expired_at?->format('Y-m-d') ?? '-' }}</td>
-                            <td class="text-right">
-                                @if($voucher->status === 'unused')
-                                    <button type="button" class="btn btn-sm btn-danger" title="Hapus"
-                                        data-ajax-delete="{{ route('vouchers.destroy', $voucher) }}"
-                                        data-confirm="Hapus voucher {{ $voucher->code }}?">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                @else
-                                    <button class="btn btn-sm btn-light" disabled><i class="fas fa-trash"></i></button>
-                                @endif
-                            </td>
+                            <th style="width:40px;"><input type="checkbox" id="select-all"></th>
+                            <th>Kode</th>
+                            <th>Batch</th>
+                            <th>Profil Hotspot</th>
+                            <th>Status</th>
+                            <th>Expired</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
-                    @empty
-                        <tr><td colspan="7" class="text-center p-4">Belum ada voucher.</td></tr>
-                    @endforelse
-                    </tbody>
+                    </thead>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
-
-        @if($vouchers->hasPages())
-            <div class="card-footer">
-                {{ $vouchers->links() }}
-            </div>
-        @endif
 
         <form id="bulk-delete-form" action="{{ route('vouchers.bulk-destroy') }}" method="POST">
             @csrf
@@ -161,25 +104,103 @@
     </div>
 
     <script>
-        const selectAll = document.getElementById('select-all');
-        if (selectAll) {
-            selectAll.addEventListener('change', function (e) {
-                document.querySelectorAll('input[name="ids[]"]:not(:disabled)').forEach(cb => cb.checked = e.target.checked);
+    (function () {
+        function init() {
+            if (!document.getElementById('vouchers-table')) return;
+            if ($.fn.DataTable.isDataTable('#vouchers-table')) return;
+            var table = $('#vouchers-table').DataTable({
+                processing: true,
+                serverSide: true,
+                ajax: {
+                    url: '{{ route("vouchers.datatable") }}',
+                    type: 'GET',
+                    data: function (d) {
+                        d.status = $('#filter-status').val();
+                        d.batch  = $('#filter-batch').val();
+                    },
+                },
+                columns: [
+                    { data: 'checkbox', orderable: false, searchable: false, width: '40px' },
+                    { data: 'code',     orderable: true },
+                    { data: 'batch',    orderable: true },
+                    { data: 'profil',   orderable: false },
+                    { data: 'status',   orderable: false },
+                    { data: 'expired',  orderable: true },
+                    { data: 'aksi',     orderable: false, searchable: false, className: 'text-right' },
+                ],
+                language: {
+                    search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ data',
+                    info: 'Menampilkan _START_ - _END_ dari _TOTAL_ data',
+                    infoEmpty: 'Tidak ada data', infoFiltered: '(disaring dari _MAX_ total data)',
+                    zeroRecords: 'Tidak ada voucher yang cocok.', emptyTable: 'Belum ada voucher.',
+                    paginate: { first: 'Pertama', last: 'Terakhir', next: 'Selanjutnya', previous: 'Sebelumnya' },
+                    processing: 'Memuat...',
+                },
+                pageLength: 20,
+                lengthMenu: [[20, 50, 100, 200], [20, 50, 100, 200]],
+                order: [[1, 'asc']],
+                stateSave: false,
+                drawCallback: function () {
+                    document.querySelectorAll('[data-ajax-delete]').forEach(function (btn) {
+                        if (btn._bound) return;
+                        btn._bound = true;
+                        btn.addEventListener('click', function () {
+                            if (!confirm(btn.dataset.confirm || 'Hapus?')) return;
+                            fetch(btn.dataset.ajaxDelete, {
+                                method: 'POST',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                                },
+                                body: new URLSearchParams({ _method: 'DELETE' }),
+                            }).then(function (r) { return r.json(); }).then(function (data) {
+                                if (typeof AppAjax !== 'undefined') AppAjax.showToast(data.status || 'Dihapus.', 'success');
+                                if ($.fn.DataTable.isDataTable('#vouchers-table')) $('#vouchers-table').DataTable().ajax.reload(null, false);
+                            });
+                        });
+                    });
+                },
+            });
+
+            $('#filter-status, #filter-batch').on('change', function () {
+                var batchVal = $('#filter-batch').val();
+                if (batchVal) {
+                    $('#print-batch-btn').show();
+                    $('#print-batch-link')
+                        .attr('href', '{{ url("vouchers") }}/' + encodeURIComponent(batchVal) + '/print')
+                        .text(' Print Batch "' + batchVal + '"');
+                } else {
+                    $('#print-batch-btn').hide();
+                }
+                if ($.fn.DataTable.isDataTable('#vouchers-table')) $('#vouchers-table').DataTable().ajax.reload();
+            });
+
+            $('#select-all').on('change', function () {
+                $('#vouchers-table tbody input[type="checkbox"]:not(:disabled)').prop('checked', this.checked);
+            });
+
+            $('.bulk-delete-action').on('click', function (e) {
+                e.preventDefault();
+                var ids = $('#vouchers-table tbody input[name="ids[]"]:checked').map(function () { return this.value; }).get();
+                if (!ids.length) { alert('Pilih voucher unused terlebih dahulu.'); return; }
+                if (!confirm('Hapus ' + ids.length + ' voucher terpilih?')) return;
+                var form = document.getElementById('bulk-delete-form');
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden'; inp.name = 'ids[]'; inp.value = id;
+                    form.appendChild(inp);
+                });
+                form.submit();
             });
         }
 
-        document.querySelector('.bulk-delete-action')?.addEventListener('click', function (e) {
-            e.preventDefault();
-            const ids = [...document.querySelectorAll('input[name="ids[]"]:checked')].map(cb => cb.value);
-            if (ids.length === 0) { alert('Pilih voucher unused terlebih dahulu.'); return; }
-            if (!confirm('Hapus ' + ids.length + ' voucher terpilih?')) return;
-            const form = document.getElementById('bulk-delete-form');
-            ids.forEach(id => {
-                const input = document.createElement('input');
-                input.type = 'hidden'; input.name = 'ids[]'; input.value = id;
-                form.appendChild(input);
-            });
-            form.submit();
+        document.addEventListener('turbo:before-cache', function () {
+            if ($.fn.DataTable.isDataTable('#vouchers-table')) {
+                $('#vouchers-table').DataTable().destroy();
+            }
         });
+        document.addEventListener('turbo:load', init);
+        if (document.readyState !== 'loading') init();
+    })();
     </script>
 @endsection

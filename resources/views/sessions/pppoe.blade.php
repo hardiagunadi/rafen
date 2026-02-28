@@ -1,24 +1,11 @@
 @extends('layouts.admin')
 
-@section('title', 'Session PPPoE Aktif')
+@section('title', 'Session User')
 
 @section('content')
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header">
             <h3 class="card-title mb-0">Session PPPoE Aktif</h3>
-            <div>
-                @foreach ($routers as $router)
-                    <button type="button"
-                        class="btn btn-sm btn-info text-white ml-1 btn-refresh-router"
-                        data-router-id="{{ $router->id }}"
-                        data-router-name="{{ $router->name }}"
-                        data-refresh-url="{{ route('sessions.refresh-router', $router) }}"
-                        data-service="pppoe"
-                        title="Refresh sesi dari {{ $router->name }}">
-                        <i class="fas fa-sync-alt"></i> {{ $router->name }}
-                    </button>
-                @endforeach
-            </div>
         </div>
 
         <div class="card-body">
@@ -78,6 +65,8 @@
                                 <th>IP Address</th>
                                 <th>Uptime</th>
                                 <th>Caller-ID</th>
+                                <th>Upload</th>
+                                <th>Download</th>
                                 <th>Profile</th>
                                 <th>Router</th>
                                 <th>Diperbarui</th>
@@ -96,6 +85,12 @@
                                         <span class="badge badge-success">{{ $session->uptime ?? '-' }}</span>
                                     </td>
                                     <td>{{ $session->caller_id ?? '-' }}</td>
+                                    @php
+                                        $bytesIn  = $session->bytes_in  ? number_format($session->bytes_in / 1073741824, 2).' GB'  : '-';
+                                        $bytesOut = $session->bytes_out ? number_format($session->bytes_out / 1073741824, 2).' GB' : '-';
+                                    @endphp
+                                    <td><small>{{ $bytesIn }}</small></td>
+                                    <td><small>{{ $bytesOut }}</small></td>
                                     <td>{{ $session->profile ?? '-' }}</td>
                                     <td>
                                         <span class="badge badge-info">{{ $session->mikrotikConnection?->name ?? '-' }}</span>
@@ -106,10 +101,9 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center p-4 text-muted">
+                                    <td colspan="9" class="text-center p-4 text-muted">
                                         <i class="fas fa-info-circle"></i>
                                         Belum ada sesi PPPoE aktif.
-                                        Klik tombol <strong>Refresh</strong> di atas untuk mengambil data dari router.
                                     </td>
                                 </tr>
                             @endforelse
@@ -127,64 +121,34 @@
     </div>
 
     <script>
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+    (function () {
+        var autoRefreshTimer = null;
 
-        function refreshTable() {
+        function ajaxRefresh() {
+            var wrapper = document.getElementById('session-table-wrapper');
+            if (!wrapper) return;
             fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(response => response.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const newWrapper = doc.getElementById('session-table-wrapper');
-                    const currentWrapper = document.getElementById('session-table-wrapper');
-                    if (newWrapper && currentWrapper) {
-                        currentWrapper.innerHTML = newWrapper.innerHTML;
-                    }
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    var doc = new DOMParser().parseFromString(html, 'text/html');
+                    var fresh = doc.getElementById('session-table-wrapper');
+                    if (fresh) wrapper.innerHTML = fresh.innerHTML;
                 })
-                .catch(() => {});
+                .catch(function () {});
         }
 
-        document.querySelectorAll('.btn-refresh-router').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                const routerName = this.dataset.routerName;
-                const refreshUrl = this.dataset.refreshUrl;
-                const service = this.dataset.service;
-                const icon = this.querySelector('i');
+        function init() {
+            if (!document.getElementById('session-table-wrapper')) return;
+            if (autoRefreshTimer) { clearInterval(autoRefreshTimer); }
+            autoRefreshTimer = setInterval(ajaxRefresh, 60000);
+        }
 
-                icon.classList.add('fa-spin');
-                this.disabled = true;
-
-                fetch(refreshUrl, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': csrfToken,
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({ service: service }),
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (typeof AppAjax !== 'undefined') {
-                        AppAjax.showToast(data.message ?? (data.success ? 'Berhasil' : 'Gagal'), data.success ? 'success' : 'error');
-                    }
-                    if (data.success) {
-                        refreshTable();
-                    }
-                })
-                .catch(() => {
-                    if (typeof AppAjax !== 'undefined') {
-                        AppAjax.showToast('Terjadi kesalahan saat menghubungi server.', 'error');
-                    }
-                })
-                .finally(() => {
-                    icon.classList.remove('fa-spin');
-                    this.disabled = false;
-                });
-            });
+        document.addEventListener('turbo:before-cache', function () {
+            if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
         });
 
-        // Auto-refresh every 60 seconds
-        setInterval(refreshTable, 60000);
+        document.addEventListener('turbo:load', init);
+        if (document.readyState !== 'loading') init();
+    })();
     </script>
 @endsection

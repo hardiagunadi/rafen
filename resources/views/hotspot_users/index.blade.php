@@ -63,93 +63,25 @@
                 </div>
             </div>
 
-            <form method="GET" action="{{ route('hotspot-users.index') }}" class="form-inline justify-content-between mb-3">
-                <div class="form-group mb-2">
-                    <label for="per-page" class="mr-2">Show</label>
-                    <select name="per_page" id="per-page" class="form-control form-control-sm" onchange="this.form.submit()">
-                        @foreach([10, 25, 50, 100] as $size)
-                            <option value="{{ $size }}" @selected($perPage == $size)>{{ $size }}</option>
-                        @endforeach
-                    </select>
-                    <span class="ml-2">entries</span>
-                </div>
-                <div class="form-group mb-2">
-                    <label for="search" class="mr-2">Search:</label>
-                    <input type="text" name="search" id="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="ID/Nama/Username">
-                </div>
-            </form>
-
             <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0">
+                <table id="hotspot-users-table" class="table table-striped table-hover mb-0" style="width:100%;">
                     <thead class="thead-light">
-                    <tr>
-                        <th style="width:40px;"><input type="checkbox" id="select-all"></th>
-                        <th>ID Pelanggan</th>
-                        <th>Nama</th>
-                        <th>Username</th>
-                        <th>Profil Hotspot</th>
-                        <th>Status Akun</th>
-                        <th>Jatuh Tempo</th>
-                        <th>Owner</th>
-                        <th class="text-right">Aksi</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($users as $user)
                         <tr>
-                            <td><input type="checkbox" name="ids[]" value="{{ $user->id }}"></td>
-                            <td>{{ $user->customer_id ?? '-' }}</td>
-                            <td>
-                                <div class="font-weight-bold text-uppercase">{{ $user->customer_name ?? '-' }}</div>
-                                <div class="small text-muted">{{ $user->nomor_hp ?? '' }}</div>
-                            </td>
-                            <td>{{ $user->username ?? '-' }}</td>
-                            <td>{{ $user->hotspotProfile?->name ?? '-' }}</td>
-                            <td>
-                                @php
-                                    $statusClass = match($user->status_akun) {
-                                        'enable'  => 'success',
-                                        'disable' => 'danger',
-                                        'isolir'  => 'warning',
-                                        default   => 'secondary',
-                                    };
-                                @endphp
-                                <span class="badge badge-{{ $statusClass }}">{{ strtoupper($user->status_akun) }}</span>
-                            </td>
-                            <td>
-                                @if($user->jatuh_tempo)
-                                    <span class="{{ $user->jatuh_tempo->isPast() ? 'text-danger' : 'text-primary' }} font-weight-bold">
-                                        {{ $user->jatuh_tempo->format('Y-m-d') }}
-                                    </span>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td>{{ $user->owner?->name ?? '-' }}</td>
-                            <td class="text-right">
-                                <a href="{{ route('hotspot-users.edit', $user) }}" class="btn btn-sm btn-warning text-white" title="Edit">
-                                    <i class="fas fa-pen"></i>
-                                </a>
-                                <button type="button" class="btn btn-sm btn-danger" title="Hapus"
-                                    data-ajax-delete="{{ route('hotspot-users.destroy', $user) }}"
-                                    data-confirm="Hapus user hotspot ini?">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </td>
+                            <th style="width:40px;"><input type="checkbox" id="select-all"></th>
+                            <th>ID Pelanggan</th>
+                            <th>Nama</th>
+                            <th>Username</th>
+                            <th>Profil Hotspot</th>
+                            <th>Status Akun</th>
+                            <th>Jatuh Tempo</th>
+                            <th>Owner</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
-                    @empty
-                        <tr><td colspan="9" class="text-center p-4">Belum ada user hotspot.</td></tr>
-                    @endforelse
-                    </tbody>
+                    </thead>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
-
-        @if($users->hasPages())
-            <div class="card-footer">
-                {{ $users->links() }}
-            </div>
-        @endif
 
         <form id="bulk-delete-form" action="{{ route('hotspot-users.bulk-destroy') }}" method="POST">
             @csrf
@@ -158,25 +90,61 @@
     </div>
 
     <script>
-        const selectAll = document.getElementById('select-all');
-        if (selectAll) {
-            selectAll.addEventListener('change', function (e) {
-                document.querySelectorAll('input[name="ids[]"]').forEach(cb => cb.checked = e.target.checked);
+    (function () {
+        function init() {
+            if (!document.getElementById('hotspot-users-table')) return;
+            if ($.fn.DataTable.isDataTable('#hotspot-users-table')) {
+                $('#hotspot-users-table').DataTable().destroy();
+            }
+            var table = $('#hotspot-users-table').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: true,
+                ajax: { url: '{{ route('hotspot-users.datatable') }}', type: 'GET' },
+                columns: [
+                    { data: 'checkbox',    orderable: false, searchable: false, width: '40px' },
+                    { data: 'customer_id', orderable: true },
+                    { data: 'nama',        orderable: false },
+                    { data: 'username',    orderable: true },
+                    { data: 'profil',      orderable: false },
+                    { data: 'status',      orderable: false },
+                    { data: 'jatuh_tempo', orderable: false },
+                    { data: 'owner',       orderable: false },
+                    { data: 'aksi',        orderable: false, searchable: false, className: 'text-right' },
+                ],
+                language: {
+                    search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ data',
+                    info: 'Menampilkan _START_ - _END_ dari _TOTAL_ data',
+                    infoEmpty: 'Tidak ada data', infoFiltered: '(disaring dari _MAX_ total data)',
+                    zeroRecords: 'Tidak ada data yang cocok.', emptyTable: 'Belum ada user hotspot.',
+                    paginate: { first: 'Pertama', last: 'Terakhir', next: 'Selanjutnya', previous: 'Sebelumnya' },
+                    processing: 'Memuat...',
+                },
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+                order: [[1, 'asc']],
+            });
+
+            $('#select-all').on('change', function () {
+                $('#hotspot-users-table tbody input[type="checkbox"]').prop('checked', this.checked);
+            });
+
+            $('.bulk-delete-action').on('click', function (e) {
+                e.preventDefault();
+                var ids = $('#hotspot-users-table tbody input[name="ids[]"]:checked').map(function () { return this.value; }).get();
+                if (!ids.length) { alert('Pilih user terlebih dahulu.'); return; }
+                if (!confirm('Hapus ' + ids.length + ' user terpilih?')) return;
+                var form = document.getElementById('bulk-delete-form');
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden'; inp.name = 'ids[]'; inp.value = id;
+                    form.appendChild(inp);
+                });
+                form.submit();
             });
         }
-
-        document.querySelector('.bulk-delete-action')?.addEventListener('click', function (e) {
-            e.preventDefault();
-            const ids = [...document.querySelectorAll('input[name="ids[]"]:checked')].map(cb => cb.value);
-            if (ids.length === 0) { alert('Pilih user terlebih dahulu.'); return; }
-            if (!confirm('Hapus ' + ids.length + ' user terpilih?')) return;
-            const form = document.getElementById('bulk-delete-form');
-            ids.forEach(id => {
-                const input = document.createElement('input');
-                input.type = 'hidden'; input.name = 'ids[]'; input.value = id;
-                form.appendChild(input);
-            });
-            form.submit();
-        });
+        document.addEventListener('turbo:load', init);
+        if (document.readyState !== 'loading') init();
+    })();
     </script>
 @endsection

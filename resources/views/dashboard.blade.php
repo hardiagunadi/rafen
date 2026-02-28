@@ -33,25 +33,25 @@
         <div class="col-lg-3 col-12">
             <div class="small-box bg-info">
                 <div class="inner">
-                    <h3>{{ $stats['ppp_online'] }} Users</h3>
+                    <h3 id="stat-ppp-online">{{ $stats['ppp_online'] }} Users</h3>
                     <p>PPP Online</p>
                 </div>
                 <div class="icon">
                     <i class="fas fa-exchange-alt"></i>
                 </div>
-                <a href="{{ route('ppp-users.index') }}" class="small-box-footer">Lihat Detil <i class="fas fa-arrow-circle-right"></i></a>
+                <a href="{{ route('sessions.pppoe') }}" class="small-box-footer">Lihat Detil <i class="fas fa-arrow-circle-right"></i></a>
             </div>
         </div>
         <div class="col-lg-3 col-12">
             <div class="small-box bg-danger">
                 <div class="inner">
-                    <h3>{{ $stats['hotspot_online'] }} Users</h3>
+                    <h3 id="stat-hotspot-online">{{ $stats['hotspot_online'] }} Users</h3>
                     <p>Hotspot Online</p>
                 </div>
                 <div class="icon">
                     <i class="fas fa-signal"></i>
                 </div>
-                    <a href="{{ route('radius-accounts.index') }}" class="small-box-footer">Lihat Detil <i class="fas fa-arrow-circle-right"></i></a>
+                <a href="{{ route('sessions.hotspot') }}" class="small-box-footer">Lihat Detil <i class="fas fa-arrow-circle-right"></i></a>
             </div>
         </div>
     </div>
@@ -250,48 +250,46 @@
             </div>
         </div>
     </div>
-@endsection
-
-@push('scripts')
     <script>
-        (function () {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-            const buttons = document.querySelectorAll('.service-action-btn');
+    (function () {
+        function init() {
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-            buttons.forEach(btn => {
-                btn.addEventListener('click', async function () {
-                    if (! this.dataset.url) {
-                        return;
-                    }
+            // Service action buttons (e.g. Restart RADIUS)
+            document.querySelectorAll('.service-action-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (!this.dataset.url) return;
+                    var self = this;
+                    var originalHtml = self.innerHTML;
+                    self.disabled = true;
+                    self.innerHTML = '<span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span> Processing...';
 
-                    const originalHtml = this.innerHTML;
-                    this.disabled = true;
-                    this.innerHTML = '<span class="spinner-border spinner-border-sm mr-1" role="status" aria-hidden="true"></span> Processing...';
-
-                    try {
-                        const response = await fetch(this.dataset.url, {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': csrfToken,
-                                'Accept': 'application/json',
-                            },
-                        });
-
-                        const data = await response.json();
-                        if (response.ok && data?.status === 'ok') {
-                            this.classList.remove('btn-outline-secondary');
-                            this.classList.add('btn-success');
-                            this.innerHTML = 'Reloaded';
+                    fetch(self.dataset.url, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    })
+                    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+                    .then(function (res) {
+                        if (res.ok && res.data?.status === 'ok') {
+                            self.classList.remove('btn-outline-secondary');
+                            self.classList.add('btn-success');
+                            self.innerHTML = 'Reloaded';
                         } else {
-                            throw new Error(data?.message || 'Gagal memproses permintaan.');
+                            throw new Error(res.data?.message || 'Gagal memproses permintaan.');
                         }
-                    } catch (e) {
+                    })
+                    .catch(function (e) {
                         alert(e?.message || 'Gagal memproses permintaan.');
-                        this.disabled = false;
-                        this.innerHTML = originalHtml;
-                    }
+                        self.disabled = false;
+                        self.innerHTML = originalHtml;
+                    });
                 });
             });
-        })();
+
+        }
+
+        document.addEventListener('turbo:load', init);
+        if (document.readyState !== 'loading') init();
+    })();
     </script>
-@endpush
+@endsection

@@ -17,7 +17,7 @@ class ActiveSessionFetcher
     public function syncPpp(MikrotikConnection $conn): int
     {
         $this->client->connect();
-        $response = $this->client->command('/ppp/active');
+        $response = $this->client->command('/ppp/active/print');
         $this->client->disconnect();
 
         $sessions = $response['data'] ?? [];
@@ -43,7 +43,7 @@ class ActiveSessionFetcher
     public function syncHotspot(MikrotikConnection $conn): int
     {
         $this->client->connect();
-        $response = $this->client->command('/ip/hotspot/active');
+        $response = $this->client->command('/ip/hotspot/active/print');
         $this->client->disconnect();
 
         $sessions = $response['data'] ?? [];
@@ -56,6 +56,8 @@ class ActiveSessionFetcher
                 'caller_id'   => $row['mac-address'] ?? null,
                 'server_name' => $row['server'] ?? null,
                 'profile'     => null,
+                'bytes_in'    => isset($row['bytes-in']) ? (int) $row['bytes-in'] : null,
+                'bytes_out'   => isset($row['bytes-out']) ? (int) $row['bytes-out'] : null,
             ];
         });
 
@@ -97,6 +99,8 @@ class ActiveSessionFetcher
                     'caller_id'    => $mapped['caller_id'],
                     'server_name'  => $mapped['server_name'],
                     'profile'      => $mapped['profile'],
+                    'bytes_in'     => $mapped['bytes_in'] ?? null,
+                    'bytes_out'    => $mapped['bytes_out'] ?? null,
                     'is_active'    => true,
                     'updated_at'   => $now,
                 ]

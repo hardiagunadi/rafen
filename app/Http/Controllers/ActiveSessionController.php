@@ -8,6 +8,7 @@ use App\Services\ActiveSessionFetcher;
 use App\Services\MikrotikApiClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use RuntimeException;
 
@@ -22,12 +23,26 @@ class ActiveSessionController extends Controller
             ->orderBy('name')
             ->get();
 
+        // Auto-sync from all accessible routers on page load
+        foreach ($routers as $router) {
+            try {
+                (new ActiveSessionFetcher(new MikrotikApiClient($router)))->syncPpp($router);
+            } catch (RuntimeException) {
+                // silently skip unreachable routers
+            }
+        }
+
         $sessions = RadiusAccount::query()
             ->where('service', 'pppoe')
             ->where('is_active', true)
             ->with('mikrotikConnection')
             ->accessibleBy($user)
             ->when($request->router_id, fn ($q) => $q->where('mikrotik_connection_id', $request->router_id))
+            ->addSelect([
+                'radius_accounts.*',
+                DB::raw('(SELECT acctinputoctets FROM radacct WHERE radacct.username = radius_accounts.username AND radacct.acctstoptime IS NULL ORDER BY acctstarttime DESC LIMIT 1) as bytes_in'),
+                DB::raw('(SELECT acctoutputoctets FROM radacct WHERE radacct.username = radius_accounts.username AND radacct.acctstoptime IS NULL ORDER BY acctstarttime DESC LIMIT 1) as bytes_out'),
+            ])
             ->orderByDesc('updated_at')
             ->paginate(50)
             ->withQueryString();
@@ -49,6 +64,15 @@ class ActiveSessionController extends Controller
             ->accessibleBy($user)
             ->orderBy('name')
             ->get();
+
+        // Auto-sync from all accessible routers on page load
+        foreach ($routers as $router) {
+            try {
+                (new ActiveSessionFetcher(new MikrotikApiClient($router)))->syncHotspot($router);
+            } catch (RuntimeException) {
+                // silently skip unreachable routers
+            }
+        }
 
         $sessions = RadiusAccount::query()
             ->where('service', 'hotspot')
@@ -97,5 +121,40 @@ class ActiveSessionController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    public function refreshAll(): JsonResponse
+    {
+        $user = auth()->user();
+
+        $routers = MikrotikConnection::query()
+            ->accessibleBy($user)
+            ->get();
+
+        $pppTotal = 0;
+        $hotspotTotal = 0;
+        $errors = [];
+
+        foreach ($routers as $router) {
+            $fetcher = new ActiveSessionFetcher(new MikrotikApiClient($router));
+            try {
+                $pppTotal += $fetcher->syncPpp($router);
+            } catch (RuntimeException $e) {
+                $errors[] = $router->name.': '.$e->getMessage();
+            }
+            try {
+                $hotspotTotal += $fetcher->syncHotspot($router);
+            } catch (RuntimeException $e) {
+                $errors[] = $router->name.': '.$e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'success'       => true,
+            'ppp_online'    => $pppTotal,
+            'hotspot_online' => $hotspotTotal,
+            'errors'        => $errors,
+            'message'       => "PPPoE: {$pppTotal}, Hotspot: {$hotspotTotal} sesi aktif",
+        ]);
     }
 }

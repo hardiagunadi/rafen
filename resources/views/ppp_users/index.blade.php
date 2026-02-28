@@ -12,26 +12,9 @@
                     </button>
                     <div class="dropdown-menu dropdown-menu-left" aria-labelledby="managementDropdown" style="min-width: 260px;">
                         <a class="dropdown-item" href="{{ route('ppp-users.create') }}">Tambah Pelanggan</a>
-                        <a class="dropdown-item" href="{{ route('ppp-users.index') }}">Cari Pelanggan</a>
                         <a class="dropdown-item" href="{{ route('ppp-users.index') }}">List Pelanggan</a>
-                        <a class="dropdown-item d-flex justify-content-between align-items-center" href="#">
-                            Kirim Notifikasi WA
-                            <span class="badge badge-warning">OLD</span>
-                        </a>
                         <div class="dropdown-header text-danger text-uppercase">Aksi Checkbox (Massal)</div>
-                        <a class="dropdown-item d-flex justify-content-between align-items-center" href="#">
-                            Kirim Notifikasi WA
-                            <span class="badge badge-success">NEW</span>
-                        </a>
-                        <a class="dropdown-item" href="#">Proses Registrasi</a>
-                        <a class="dropdown-item" href="#">Perpanjang Langganan</a>
-                        <a class="dropdown-item" href="#">Ubah Owner Data</a>
-                        <a class="dropdown-item" href="#">Ubah Tipe Pelanggan</a>
-                        <a class="dropdown-item" href="#">Set Bind Onlogin</a>
-                        <a class="dropdown-item" href="#">Ekspor CSV</a>
-                        <a class="dropdown-item" href="#">Aktifkan Pelanggan</a>
-                        <a class="dropdown-item" href="#">Nonaktifkan Pelanggan</a>
-                        <a class="dropdown-item text-danger" href="#">Hapus Pelanggan</a>
+                        <a class="dropdown-item text-danger bulk-delete-action" href="#">Hapus Terpilih</a>
                     </div>
                 </div>
             </div>
@@ -80,136 +63,92 @@
                 </div>
             </div>
 
-            <form method="GET" action="{{ route('ppp-users.index') }}" class="form-inline justify-content-between mb-3">
-                <div class="form-group mb-2">
-                    <label for="per-page" class="mr-2">Show</label>
-                    <select name="per_page" id="per-page" class="form-control form-control-sm" onchange="this.form.submit()">
-                        @foreach([10,25,50,100] as $size)
-                            <option value="{{ $size }}" @selected($perPage == $size)>{{ $size }}</option>
-                        @endforeach
-                    </select>
-                    <span class="ml-2">entries</span>
-                </div>
-                <div class="form-group mb-2">
-                    <label for="search" class="mr-2">Search:</label>
-                    <input type="text" name="search" id="search" value="{{ $search }}" class="form-control form-control-sm" placeholder="ID/Nama/Username">
-                </div>
-            </form>
-
             <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0">
+                <table id="ppp-users-table" class="table table-striped table-hover mb-0" style="width:100%;">
                     <thead class="thead-light">
-                    <tr>
-                        <th style="width:40px;"><input type="checkbox" id="select-all"></th>
-                        <th>ID Pelanggan</th>
-                        <th>Nama</th>
-                        <th>Tipe Service</th>
-                        <th>Paket Langganan</th>
-                        <th>IP Address</th>
-                        <th>Diperpanjang</th>
-                        <th>Jatuh Tempo</th>
-                        <th>Owner Data</th>
-                        <th>Renew | Print</th>
-                        <th class="text-right">Aksi</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($users as $user)
-                        @php
-                            $invoice = $user->invoices->firstWhere('status', 'unpaid');
-                            $canRenew = $invoice && $invoice->status === 'unpaid' && $invoice->created_at->equalTo($invoice->updated_at);
-                            $canPay = $invoice && $invoice->status === 'unpaid';
-                        @endphp
                         <tr>
-                            <td><input type="checkbox" name="ids[]" value="{{ $user->id }}"></td>
-                            <td>{{ $user->customer_id ?? '-' }}</td>
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    <i class="fas fa-info-circle text-secondary mr-2"></i>
-                                    <div class="text-uppercase font-weight-bold">{{ $user->customer_name ?? '-' }}</div>
-                                </div>
-                            </td>
-                            <td>
-                                @if($user->status_registrasi)
-                                    <span class="badge badge-success mr-1">{{ strtoupper(substr($user->status_registrasi, 0, 3)) }}</span>
-                                @endif
-                                {{ strtoupper(str_replace('_', '/', $user->tipe_service)) }}
-                            </td>
-                            <td>{{ $user->profile?->name ?? '-' }}</td>
-                            <td>{{ $user->tipe_ip === 'static' ? ($user->ip_static ?? '-') : 'Automatic' }}</td>
-                            <td>{{ $user->updated_at?->format('Y-m-d H:i:s') ?? '-' }}</td>
-                            <td>
-                                @if($user->jatuh_tempo)
-                                    <a href="#" class="text-primary font-weight-bold">{{ $user->jatuh_tempo->format('Y-m-d H:i:s') }}</a>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td>{{ $user->owner?->email ?? $user->owner?->name ?? '-' }}</td>
-                            <td>
-                                <div class="btn-group btn-group-sm" role="group">
-                                    @if($invoice)
-                                        <button type="button" class="btn btn-primary" title="Renew (BELUM BAYAR)"
-                                            data-ajax-post="{{ route('invoices.renew', $invoice) }}"
-                                            data-confirm="Perpanjang layanan tanpa pembayaran?"
-                                            @disabled(! $canRenew)><i class="fas fa-bolt"></i></button>
-                                        <a href="{{ route('invoices.index') }}#invoice-{{ $invoice->id }}" class="btn btn-success @if(! $invoice) disabled @endif" title="Print Invoice"><i class="fas fa-print"></i></a>
-                                    @else
-                                        <button type="button" class="btn btn-light" disabled title="Renew (BELUM BAYAR)"><i class="fas fa-bolt"></i></button>
-                                        <button type="button" class="btn btn-light" disabled title="Print Invoice"><i class="fas fa-print"></i></button>
-                                    @endif
-                                </div>
-                            </td>
-                            <td class="text-right">
-                                @if($invoice)
-                                    <button type="button" class="btn btn-sm btn-success" title="Bayar"
-                                        data-ajax-post="{{ route('invoices.pay', $invoice) }}"
-                                        data-confirm="Bayar dan perpanjang layanan sekarang?"
-                                        @disabled(! $canPay)>
-                                        <i class="fas fa-check"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-danger" title="Hapus Pembayaran"
-                                        data-ajax-delete="{{ route('invoices.destroy', $invoice) }}"
-                                        data-confirm="Hapus pembayaran?">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                @else
-                                    <button type="button" class="btn btn-sm btn-light" disabled title="Bayar"><i class="fas fa-check"></i></button>
-                                    <button type="button" class="btn btn-sm btn-light" disabled title="Hapus Pembayaran"><i class="fas fa-trash"></i></button>
-                                @endif
-                                <a href="{{ route('ppp-users.edit', $user) }}" class="btn btn-sm btn-warning text-white" title="Edit">
-                                    <i class="fas fa-pen"></i>
-                                </a>
-                                <button type="button" class="btn btn-sm btn-danger" title="Delete"
-                                    data-ajax-delete="{{ route('ppp-users.destroy', $user) }}"
-                                    data-confirm="Hapus user ini?">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </td>
+                            <th style="width:40px;"><input type="checkbox" id="select-all"></th>
+                            <th>ID Pelanggan</th>
+                            <th>Nama</th>
+                            <th>Tipe Service</th>
+                            <th>Paket Langganan</th>
+                            <th>IP Address</th>
+                            <th>Diperpanjang</th>
+                            <th>Jatuh Tempo</th>
+                            <th>Renew / Bayar</th>
+                            <th>Owner Data</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
-                    @empty
-                        <tr><td colspan="11" class="text-center p-4">Belum ada user PPP.</td></tr>
-                    @endforelse
-                    </tbody>
+                    </thead>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
-        @if($users->hasPages())
-            <div class="card-footer">
-                {{ $users->links() }}
-            </div>
-        @endif
+
         <form id="bulk-delete-form" action="{{ route('ppp-users.bulk-destroy') }}" method="POST">
             @csrf
             @method('DELETE')
         </form>
     </div>
+
     <script>
-        const selectAll = document.getElementById('select-all');
-        if (selectAll) {
-            selectAll.addEventListener('change', function (e) {
-                document.querySelectorAll('input[name="ids[]"]').forEach(cb => cb.checked = e.target.checked);
+    (function () {
+        function init() {
+            if (!document.getElementById('ppp-users-table')) return;
+            if ($.fn.DataTable.isDataTable('#ppp-users-table')) {
+                $('#ppp-users-table').DataTable().destroy();
+            }
+            var table = $('#ppp-users-table').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: true,
+                ajax: { url: '{{ route('ppp-users.datatable') }}', type: 'GET' },
+                columns: [
+                    { data: 'checkbox',    orderable: false, searchable: false, width: '40px' },
+                    { data: 'customer_id', orderable: true },
+                    { data: 'nama',        orderable: false },
+                    { data: 'tipe',        orderable: false },
+                    { data: 'paket',       orderable: false },
+                    { data: 'ip',          orderable: false },
+                    { data: 'diperpanjang',orderable: true },
+                    { data: 'jatuh_tempo', orderable: false },
+                    { data: 'renew_print', orderable: false, searchable: false },
+                    { data: 'owner',       orderable: false },
+                    { data: 'aksi',        orderable: false, searchable: false, className: 'text-right' },
+                ],
+                language: {
+                    search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ data',
+                    info: 'Menampilkan _START_ - _END_ dari _TOTAL_ data',
+                    infoEmpty: 'Tidak ada data', infoFiltered: '(disaring dari _MAX_ total data)',
+                    zeroRecords: 'Tidak ada data yang cocok.', emptyTable: 'Belum ada user PPP.',
+                    paginate: { first: 'Pertama', last: 'Terakhir', next: 'Selanjutnya', previous: 'Sebelumnya' },
+                    processing: 'Memuat...',
+                },
+                pageLength: 10,
+                lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+                order: [[6, 'desc']],
+            });
+
+            $('#select-all').on('change', function () {
+                $('#ppp-users-table tbody input[type="checkbox"]').prop('checked', this.checked);
+            });
+
+            $('.bulk-delete-action').on('click', function (e) {
+                e.preventDefault();
+                var ids = $('#ppp-users-table tbody input[name="ids[]"]:checked').map(function () { return this.value; }).get();
+                if (!ids.length) { alert('Pilih user terlebih dahulu.'); return; }
+                if (!confirm('Hapus ' + ids.length + ' user terpilih?')) return;
+                var form = document.getElementById('bulk-delete-form');
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden'; inp.name = 'ids[]'; inp.value = id;
+                    form.appendChild(inp);
+                });
+                form.submit();
             });
         }
+        document.addEventListener('turbo:load', init);
+        if (document.readyState !== 'loading') init();
+    })();
     </script>
 @endsection

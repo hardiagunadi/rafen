@@ -15,6 +15,71 @@ class VoucherController extends Controller
 {
     public function __construct(private readonly VoucherGeneratorService $generator) {}
 
+    public function datatable(Request $request): JsonResponse
+    {
+        $currentUser = $request->user();
+        $draw   = (int) $request->input('draw', 1);
+        $start  = (int) $request->input('start', 0);
+        $length = (int) $request->input('length', 20);
+        $search = $request->input('search.value', '');
+        $status = $request->input('status', '');
+        $batch  = $request->input('batch', '');
+
+        $query = Voucher::query()->with(['hotspotProfile'])->accessibleBy($currentUser);
+
+        $total = (clone $query)->count();
+
+        if ($search !== '') {
+            $query->where('code', 'like', "%{$search}%");
+        }
+
+        if ($status !== '' && in_array($status, ['unused', 'used', 'expired'])) {
+            $query->where('status', $status);
+        }
+
+        if ($batch !== '') {
+            $query->where('batch_name', $batch);
+        }
+
+        $filtered = (clone $query)->count();
+
+        $vouchers = $query->latest()->skip($start)->take($length > 0 ? $length : 20)->get();
+
+        $data = $vouchers->map(function (Voucher $voucher) {
+            $statusColor = match ($voucher->status) {
+                'unused'  => 'success',
+                'used'    => 'info',
+                'expired' => 'secondary',
+                default   => 'light',
+            };
+            $statusBadge = '<span class="badge badge-'.$statusColor.'">'.strtoupper((string) $voucher->status).'</span>';
+
+            $isUnused = $voucher->status === 'unused';
+            $checkbox = '<input type="checkbox" name="ids[]" value="'.$voucher->id.'"'.($isUnused ? '' : ' disabled').'>';
+
+            $aksi = $isUnused
+                ? '<button class="btn btn-sm btn-danger" data-ajax-delete="'.route('vouchers.destroy', $voucher).'" data-confirm="Hapus voucher '.$voucher->code.'?"><i class="fas fa-trash"></i></button>'
+                : '<button class="btn btn-sm btn-light" disabled><i class="fas fa-trash"></i></button>';
+
+            return [
+                'checkbox'  => $checkbox,
+                'code'      => '<code class="font-weight-bold">'.$voucher->code.'</code>',
+                'batch'     => $voucher->batch_name ?? '-',
+                'profil'    => $voucher->hotspotProfile?->name ?? '-',
+                'status'    => $statusBadge,
+                'expired'   => $voucher->expired_at?->format('Y-m-d') ?? '-',
+                'aksi'      => '<div class="text-right">'.$aksi.'</div>',
+            ];
+        });
+
+        return response()->json([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data,
+        ]);
+    }
+
     public function index(Request $request): View
     {
         $perPage = (int) $request->input('per_page', 20);

@@ -16,6 +16,72 @@ use Illuminate\View\View;
 
 class HotspotUserController extends Controller
 {
+    public function datatable(Request $request): JsonResponse
+    {
+        $currentUser = $request->user();
+        $draw   = (int) $request->input('draw', 1);
+        $start  = (int) $request->input('start', 0);
+        $length = (int) $request->input('length', 10);
+        $search = $request->input('search.value', '');
+
+        $query = HotspotUser::query()
+            ->with(['owner', 'hotspotProfile'])
+            ->accessibleBy($currentUser);
+
+        $total = (clone $query)->count();
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_id', 'like', "%{$search}%")
+                    ->orWhere('username', 'like', "%{$search}%");
+            });
+        }
+
+        $filtered = (clone $query)->count();
+
+        $users = $query->latest()->skip($start)->take($length > 0 ? $length : 10)->get();
+
+        $data = $users->map(function (HotspotUser $user) {
+            $statusColor = match ($user->status_akun) {
+                'enable'  => 'success',
+                'disable' => 'danger',
+                'isolir'  => 'warning',
+                default   => 'secondary',
+            };
+            $statusBadge = '<span class="badge badge-'.$statusColor.'">'.strtoupper((string) $user->status_akun).'</span>';
+
+            if ($user->jatuh_tempo) {
+                $isPast = $user->jatuh_tempo->isPast();
+                $due = '<span class="'.($isPast ? 'text-danger' : 'text-primary').' font-weight-bold">'.$user->jatuh_tempo->format('Y-m-d').'</span>';
+            } else {
+                $due = '<span class="text-muted">-</span>';
+            }
+
+            $aksi = '<a href="'.route('hotspot-users.edit', $user).'" class="btn btn-sm btn-warning text-white"><i class="fas fa-pen"></i></a> ';
+            $aksi .= '<button class="btn btn-sm btn-danger" data-ajax-delete="'.route('hotspot-users.destroy', $user).'" data-confirm="Hapus user hotspot ini?"><i class="fas fa-trash"></i></button>';
+
+            return [
+                'checkbox'    => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
+                'customer_id' => $user->customer_id ?? '-',
+                'nama'        => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div><div class="small text-muted">'.($user->nomor_hp ?? '').'</div>',
+                'username'    => $user->username ?? '-',
+                'profil'      => $user->hotspotProfile?->name ?? '-',
+                'status'      => $statusBadge,
+                'jatuh_tempo' => $due,
+                'owner'       => $user->owner?->name ?? '-',
+                'aksi'        => '<div class="text-right">'.$aksi.'</div>',
+            ];
+        });
+
+        return response()->json([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data,
+        ]);
+    }
+
     public function index(Request $request): View
     {
         $perPage = (int) $request->input('per_page', 10);

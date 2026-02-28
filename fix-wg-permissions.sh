@@ -209,8 +209,54 @@ if [ -f "${APP_DIR}/artisan" ]; then
         || warn "Sync radcheck/radreply gagal — jalankan manual: php ${APP_DIR}/artisan radius:sync-replies"
 fi
 
-# ── 11. Sync WireGuard peers dari DB ────────────────────────────────────────
-info "11. Sync WireGuard peer dari database..."
+# ── 11. FreeRADIUS default site — aktifkan sql di blok session{} ───────────
+info "11. FreeRADIUS — mengaktifkan Simultaneous-Use check (session sql)..."
+FR_DEFAULT="/etc/freeradius/3.0/sites-available/default"
+if [ -f "$FR_DEFAULT" ]; then
+    # Aktifkan baris '#\tsql' di dalam blok session {} menjadi '\tsql'
+    if grep -qP '^\s*session\s*\{' "$FR_DEFAULT" && grep -qP '^#\s*sql' "$FR_DEFAULT"; then
+        # Hanya aktifkan '#\tsql' yang ada di dalam blok session{}
+        python3 - "$FR_DEFAULT" <<'PYEOF'
+import sys, re
+
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+
+# Aktifkan '# sql' atau '#\tsql' di dalam blok session {}
+# dengan mengganti hanya satu kemunculan di blok session
+result = re.sub(
+    r'(session\s*\{[^}]*?)#\s*(sql)',
+    lambda m: m.group(1) + m.group(2),
+    content,
+    count=1,
+    flags=re.DOTALL
+)
+
+if result != content:
+    with open(path, 'w') as f:
+        f.write(result)
+    print("[OK   ] sql diaktifkan di blok session{}")
+else:
+    print("[INFO ] sql sudah aktif atau tidak perlu perubahan di blok session{}")
+PYEOF
+    else
+        ok "Blok session{} sudah dikonfigurasi atau file tidak sesuai pola, lewati."
+    fi
+
+    # Validasi konfigurasi
+    if freeradius -XC 2>&1 | grep -q "Configuration appears to be OK"; then
+        ok "Konfigurasi FreeRADIUS valid."
+        systemctl restart freeradius && ok "FreeRADIUS di-restart." || warn "Gagal restart FreeRADIUS."
+    else
+        warn "Konfigurasi FreeRADIUS mungkin bermasalah — cek: sudo freeradius -XC"
+    fi
+else
+    warn "$FR_DEFAULT tidak ditemukan — lewati konfigurasi Simultaneous-Use."
+fi
+
+# ── 12. Sync WireGuard peers dari DB ────────────────────────────────────────
+info "12. Sync WireGuard peer dari database..."
 if [ -f "${APP_DIR}/artisan" ]; then
     php "${APP_DIR}/artisan" tinker --execute="
 \$peers = \App\Models\WgPeer::where('is_active', true)->get();

@@ -20,6 +20,7 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SubscriptionPlanController;
 use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TenantSettingsController;
+use App\Http\Controllers\HelpController;
 use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
@@ -49,6 +50,7 @@ Route::middleware('auth')->group(function () {
     Route::post('profile-groups/export-bulk', [ProfileGroupController::class, 'bulkExport'])->name('profile-groups.export-bulk');
     Route::delete('profile-groups/bulk-destroy', [ProfileGroupController::class, 'bulkDestroy'])->name('profile-groups.bulk-destroy');
     Route::resource('profile-groups', ProfileGroupController::class);
+    Route::get('hotspot-profiles/datatable', [HotspotProfileController::class, 'datatable'])->name('hotspot-profiles.datatable');
     Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');
     Route::resource('hotspot-profiles', HotspotProfileController::class);
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
@@ -71,16 +73,23 @@ Route::middleware('auth')->group(function () {
     Route::post('settings/wg/install-cron', [WgSettingsController::class, 'installCron'])->name('settings.wg.install-cron');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
+    Route::get('ppp-users/datatable', [\App\Http\Controllers\PppUserController::class, 'datatable'])->name('ppp-users.datatable');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::delete('ppp-users/bulk-destroy', [\App\Http\Controllers\PppUserController::class, 'bulkDestroy'])->name('ppp-users.bulk-destroy');
+    Route::get('hotspot-users/datatable', [HotspotUserController::class, 'datatable'])->name('hotspot-users.datatable');
     Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');
     Route::resource('hotspot-users', HotspotUserController::class);
+    Route::get('vouchers/datatable', [VoucherController::class, 'datatable'])->name('vouchers.datatable');
     Route::delete('vouchers/bulk-destroy', [VoucherController::class, 'bulkDestroy'])->name('vouchers.bulk-destroy');
     Route::get('vouchers/{batch}/print', [VoucherController::class, 'printBatch'])->name('vouchers.print');
     Route::resource('vouchers', VoucherController::class);
+    Route::get('help', [HelpController::class, 'index'])->name('help.index');
+    Route::get('help/{slug}', [HelpController::class, 'topic'])->name('help.topic');
+
     Route::get('sessions/pppoe', [ActiveSessionController::class, 'pppoe'])->name('sessions.pppoe');
     Route::get('sessions/hotspot', [ActiveSessionController::class, 'hotspot'])->name('sessions.hotspot');
     Route::post('sessions/refresh-router/{connection}', [ActiveSessionController::class, 'refreshRouter'])->name('sessions.refresh-router');
+    Route::post('sessions/refresh-all', [ActiveSessionController::class, 'refreshAll'])->name('sessions.refresh-all');
 
     // Subscription routes for tenants
     Route::prefix('subscription')->name('subscription.')->group(function () {

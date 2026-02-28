@@ -18,6 +18,90 @@ use Illuminate\View\View;
 
 class PppUserController extends Controller
 {
+    public function datatable(Request $request): JsonResponse
+    {
+        $currentUser = $request->user();
+        $draw   = (int) $request->input('draw', 1);
+        $start  = (int) $request->input('start', 0);
+        $length = (int) $request->input('length', 10);
+        $search = $request->input('search.value', '');
+
+        $query = PppUser::query()
+            ->with(['owner', 'profile', 'invoices' => fn ($q) => $q->where('status', 'unpaid')->latest()->limit(1)])
+            ->accessibleBy($currentUser);
+
+        $total = (clone $query)->count();
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_id', 'like', "%{$search}%")
+                    ->orWhere('username', 'like', "%{$search}%");
+            });
+        }
+
+        $filtered = (clone $query)->count();
+
+        $users = $query->latest()->skip($start)->take($length > 0 ? $length : 10)->get();
+
+        $data = $users->map(function (PppUser $user) {
+            $invoice = $user->invoices->first();
+            $canRenew = $invoice && $invoice->created_at->equalTo($invoice->updated_at);
+            $canPay   = (bool) $invoice;
+
+            $statusBadge = '';
+            if ($user->status_registrasi) {
+                $statusBadge = '<span class="badge badge-success mr-1">'.strtoupper(substr($user->status_registrasi, 0, 3)).'</span>';
+            }
+            $tipe = $statusBadge.strtoupper(str_replace('_', '/', (string) $user->tipe_service));
+
+            $ip = $user->tipe_ip === 'static' ? ($user->ip_static ?? '-') : 'Automatic';
+
+            $updated  = $user->updated_at?->format('Y-m-d H:i') ?? '-';
+            $due      = $user->jatuh_tempo
+                ? '<a href="#" class="text-primary font-weight-bold">'.$user->jatuh_tempo->format('Y-m-d H:i').'</a>'
+                : '<span class="text-muted">-</span>';
+
+            $renewBtn = $invoice
+                ? '<button class="btn btn-primary btn-sm mr-1" data-ajax-post="'.route('invoices.renew', $invoice).'" data-confirm="Perpanjang layanan tanpa pembayaran?" '.($canRenew ? '' : 'disabled').'><i class="fas fa-bolt"></i> Renew</button>'
+                : '<button class="btn btn-light btn-sm mr-1" disabled><i class="fas fa-bolt"></i> Renew</button>';
+
+            $bayarBtn = $invoice
+                ? '<button class="btn btn-success btn-sm" data-ajax-post="'.route('invoices.pay', $invoice).'" data-confirm="Bayar dan perpanjang layanan sekarang?" '.($canPay ? '' : 'disabled').'><i class="fas fa-check"></i> Bayar</button>'
+                : '<button class="btn btn-light btn-sm" disabled><i class="fas fa-check"></i> Bayar</button>';
+
+            $aksi = '';
+            if ($invoice) {
+                $aksi .= '<button class="btn btn-sm btn-danger" data-ajax-delete="'.route('invoices.destroy', $invoice).'" data-confirm="Hapus pembayaran?"><i class="fas fa-trash"></i></button> ';
+            } else {
+                $aksi .= '<button class="btn btn-sm btn-light" disabled><i class="fas fa-trash"></i></button> ';
+            }
+            $aksi .= '<a href="'.route('ppp-users.edit', $user).'" class="btn btn-sm btn-warning text-white"><i class="fas fa-pen"></i></a> ';
+            $aksi .= '<button class="btn btn-sm btn-danger" data-ajax-delete="'.route('ppp-users.destroy', $user).'" data-confirm="Hapus user ini?"><i class="fas fa-trash"></i></button>';
+
+            return [
+                'checkbox'    => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
+                'customer_id' => $user->customer_id ?? '-',
+                'nama'        => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div>',
+                'tipe'        => $tipe,
+                'paket'       => $user->profile?->name ?? '-',
+                'ip'          => $ip,
+                'diperpanjang'=> $updated,
+                'jatuh_tempo' => $due,
+                'owner'       => $user->owner?->email ?? $user->owner?->name ?? '-',
+                'renew_print' => $renewBtn.$bayarBtn,
+                'aksi'        => '<div class="text-right">'.$aksi.'</div>',
+            ];
+        });
+
+        return response()->json([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data,
+        ]);
+    }
+
     /**
      * Display a listing of the resource.
      */

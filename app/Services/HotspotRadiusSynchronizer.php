@@ -38,6 +38,13 @@ class HotspotRadiusSynchronizer
                 ['op' => ':=', 'value' => $user->hotspot_password]
             );
 
+            // radcheck: simultaneous-use (shared_users dari profil, default 1)
+            $sharedUsers = $user->hotspotProfile?->shared_users ?? 1;
+            DB::table('radcheck')->updateOrInsert(
+                ['username' => $user->username, 'attribute' => 'Simultaneous-Use'],
+                ['op' => ':=', 'value' => (string) $sharedUsers]
+            );
+
             // radreply: rate limit
             $rateLimit = $this->resolveRateLimit($user->hotspotProfile?->bandwidthProfile);
             if ($rateLimit) {
@@ -94,6 +101,13 @@ class HotspotRadiusSynchronizer
             DB::table('radcheck')->updateOrInsert(
                 ['username' => $voucher->username, 'attribute' => 'Cleartext-Password'],
                 ['op' => ':=', 'value' => $voucher->password]
+            );
+
+            // radcheck: simultaneous-use
+            $sharedUsers = $voucher->hotspotProfile?->shared_users ?? 1;
+            DB::table('radcheck')->updateOrInsert(
+                ['username' => $voucher->username, 'attribute' => 'Simultaneous-Use'],
+                ['op' => ':=', 'value' => (string) $sharedUsers]
             );
 
             // radreply: rate limit

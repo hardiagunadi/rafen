@@ -487,6 +487,33 @@ EOF
         ${SUDO_CMD} chmod 0440 /etc/sudoers.d/rafen-freeradius
     fi
 
+    # Aktifkan sql di blok session{} FreeRADIUS agar Simultaneous-Use berfungsi
+    local fr_default="/etc/freeradius/3.0/sites-available/default"
+    if [ -f "$fr_default" ]; then
+        if python3 - "$fr_default" <<'PYEOF' 2>/dev/null
+import sys, re
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+result = re.sub(
+    r'(session\s*\{[^}]*?)#\s*(sql)',
+    lambda m: m.group(1) + m.group(2),
+    content, count=1, flags=re.DOTALL
+)
+if result != content:
+    with open(path, 'w') as f:
+        f.write(result)
+    print("INFO: sql diaktifkan di blok session{} (Simultaneous-Use check aktif)")
+else:
+    print("INFO: sql sudah aktif di blok session{}, tidak ada perubahan")
+PYEOF
+        then
+            echo "INFO: FreeRADIUS session{} sql dikonfigurasi."
+        else
+            echo "NOTIFIKASI: Gagal mengkonfigurasi FreeRADIUS session{} — aktifkan manual: uncomment 'sql' di blok session{} pada $fr_default"
+        fi
+    fi
+
     if [ "$needs_restart" -eq 1 ]; then
         restart_service_if_present "php8.4-fpm.service"
         restart_service_if_present "apache2.service"

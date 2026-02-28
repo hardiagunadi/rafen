@@ -28,6 +28,8 @@ class RadiusAccount extends Model
         'uptime',
         'caller_id',
         'server_name',
+        'bytes_in',
+        'bytes_out',
     ];
 
     /**
