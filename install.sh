@@ -339,6 +339,7 @@ setup_env() {
     fi
 
     set_env APP_URL "$app_url"
+    set_env APP_TIMEZONE "Asia/Jakarta"
     set_env APP_ENV "$app_env"
     set_env APP_DEBUG "$app_debug"
     set_env DB_DATABASE "$db_database"
@@ -347,7 +348,7 @@ setup_env() {
     set_env DB_HOST "$db_host"
     set_env RADIUS_CLIENTS_PATH "/etc/freeradius/clients.d/laravel.conf"
     set_env RADIUS_LOG_PATH "/var/log/freeradius/radius.log"
-    set_env RADIUS_RELOAD_COMMAND "sudo systemctl reload freeradius"
+    set_env RADIUS_RELOAD_COMMAND "sudo systemctl restart freeradius"
     set_env RADIUS_RESTART_COMMAND "sudo systemctl restart freeradius"
     set_env RADIUS_SERVER_IP "$radius_server_ip"
 }
@@ -628,7 +629,7 @@ check_permissions() {
     fi
 
     if ! grep -q '^RADIUS_RELOAD_COMMAND=".*"$' "$env_path"; then
-        echo "NOTIFIKASI: RADIUS_RELOAD_COMMAND harus di-quote (contoh: \"sudo systemctl reload freeradius\")."
+        echo "NOTIFIKASI: RADIUS_RELOAD_COMMAND harus di-quote (contoh: \"sudo systemctl restart freeradius\")."
         missing=1
     fi
 

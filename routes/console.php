@@ -11,8 +11,7 @@ Artisan::command('inspire', function () {
 // Ping semua router MikroTik aktif setiap 5 menit
 Schedule::command('mikrotik:ping-once')
     ->everyFiveMinutes()
-    ->withoutOverlapping()
-    ->runInBackground();
+    ->withoutOverlapping();
 
 // Generate invoice untuk user PPP yang jatuh tempo dalam 14 hari ke depan (setiap hari jam 07:00)
 Schedule::command('invoice:generate-upcoming --days=14')

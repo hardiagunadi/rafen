@@ -255,8 +255,33 @@ else
     warn "$FR_DEFAULT tidak ditemukan — lewati konfigurasi Simultaneous-Use."
 fi
 
-# ── 12. Sync WireGuard peers dari DB ────────────────────────────────────────
-info "12. Sync WireGuard peer dari database..."
+# ── 12. .env — pastikan APP_TIMEZONE dan RADIUS_RELOAD_COMMAND benar ─────────
+ENV_FILE="${APP_DIR}/.env"
+if [ -f "$ENV_FILE" ]; then
+    # Set APP_TIMEZONE
+    if grep -q "^APP_TIMEZONE=" "$ENV_FILE"; then
+        sed -i 's|^APP_TIMEZONE=.*|APP_TIMEZONE=Asia/Jakarta|' "$ENV_FILE"
+    else
+        sed -i "/^APP_LOCALE=/i APP_TIMEZONE=Asia/Jakarta" "$ENV_FILE"
+    fi
+    ok "[OK   ] APP_TIMEZONE=Asia/Jakarta"
+
+    # Pastikan RADIUS_RELOAD_COMMAND pakai restart bukan reload
+    if grep -q "^RADIUS_RELOAD_COMMAND=" "$ENV_FILE"; then
+        sed -i 's|^RADIUS_RELOAD_COMMAND=.*|RADIUS_RELOAD_COMMAND="sudo systemctl restart freeradius"|' "$ENV_FILE"
+        ok "[OK   ] RADIUS_RELOAD_COMMAND diset ke restart"
+    fi
+
+    # Clear Laravel config cache
+    if [ -f "${APP_DIR}/artisan" ]; then
+        php "${APP_DIR}/artisan" config:clear >/dev/null 2>&1 && ok "[OK   ] Laravel config cache cleared"
+    fi
+else
+    warn ".env tidak ditemukan di $APP_DIR"
+fi
+
+# ── 13. Sync WireGuard peers dari DB ────────────────────────────────────────
+info "13. Sync WireGuard peer dari database..."
 if [ -f "${APP_DIR}/artisan" ]; then
     php "${APP_DIR}/artisan" tinker --execute="
 \$peers = \App\Models\WgPeer::where('is_active', true)->get();
