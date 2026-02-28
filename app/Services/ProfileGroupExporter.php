@@ -116,8 +116,10 @@ class ProfileGroupExporter
 
     private function hotspotProfileAttributes(ProfileGroup $group, ?string $poolName): array
     {
+        // Use explicit ip_pool_name if set; otherwise 'none' so MikroTik assigns IP directly
+        $explicitPool = trim((string) $group->ip_pool_name);
         $attributes = [
-            'address-pool' => $poolName ?? 'none',
+            'address-pool' => $explicitPool !== '' ? $explicitPool : 'none',
         ];
 
         $dns = trim((string) $group->dns_servers);
