@@ -100,19 +100,17 @@ class RadiusClientsSynchronizer
             $secret = addslashes($connection->radius_secret);
 
             $wgPeer = $connection->wgPeer;
-            $nasIp = ($wgPeer?->is_active && $wgPeer->vpn_ip)
-                ? $wgPeer->vpn_ip
-                : $connection->host;
-            $nasNote = ($wgPeer?->is_active && $wgPeer->vpn_ip)
-                ? '# NAS IP via WireGuard tunnel'
-                : '# NAS IP: direct';
+            $viaWg  = $wgPeer?->is_active && $wgPeer->vpn_ip;
+            $nasIp  = $viaWg ? $wgPeer->vpn_ip : $connection->host;
+            $nasNote = $viaWg ? '# NAS IP via WireGuard tunnel' : '# NAS IP: direct (public)';
+            $requireMsgAuth = $viaWg ? 'yes' : 'no';
 
             $lines[] = $nasNote;
             $lines[] = "client {$shortName} {";
             $lines[] = "    ipaddr = {$nasIp}";
             $lines[] = "    secret = {$secret}";
             $lines[] = "    shortname = {$shortName}";
-            $lines[] = '    require_message_authenticator = yes';
+            $lines[] = "    require_message_authenticator = {$requireMsgAuth}";
             $lines[] = '}';
             $lines[] = '';
         }
