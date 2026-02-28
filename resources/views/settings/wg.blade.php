@@ -629,7 +629,13 @@
 
             if (!confirm('Generate keypair baru untuk peer ini?\n\nSetelah ini, jalankan Script MikroTik yang baru agar handshake kembali berfungsi.')) return;
 
-            const row = btn.closest('tr[data-peer-id]');
+            // Cari row dari form edit (data-peer-id di form) atau tr sebelumnya
+            const form = btn.closest('form.wg-update-form');
+            const peerId = form ? form.dataset.peerId : null;
+            const row = peerId
+                ? document.getElementById('wg-row-' + peerId)
+                : btn.closest('tr[data-peer-id]');
+
             const origHtml = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Generating…';
@@ -638,12 +644,12 @@
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
                 const peer = data.peer;
+                const msg = (data.status || data.warning || 'Keypair baru berhasil di-generate.') + ' Jalankan Script MikroTik yang baru.';
+                const alertType = data.warning ? 'warning' : 'success';
                 if (peer && row) {
                     updateRow(row, peer);
-                    showAlert((data.status || data.warning || 'Keypair baru berhasil di-generate.') + ' Jalankan Script MikroTik yang baru.', data.warning ? 'warning' : 'success');
-                } else {
-                    showAlert(data.status || data.warning || 'Keypair berhasil di-generate.', 'success');
                 }
+                showAlert(msg, alertType);
             }).catch(function (err) {
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
