@@ -87,7 +87,7 @@ generate_server_keys() {
 
     umask 077
     wg genkey | tee "$privkey_file" | wg pubkey > "$pubkey_file"
-    chown root:"$WG_CONF_GROUP" "$privkey_file" 2>/dev/null || true
+    chown root:"$WG_CONF_GROUP" "$privkey_file" "$pubkey_file" 2>/dev/null || true
     chmod 0640 "$privkey_file"
     chmod 0644 "$pubkey_file"
 
@@ -161,17 +161,29 @@ setup_permissions() {
 
     info "Mengatur permission direktori WireGuard..."
 
-    # Direktori: root:www-data 770 — www-data perlu bisa buat/tulis file di sini
     if getent group "$WG_CONF_GROUP" >/dev/null 2>&1; then
+        # Direktori: root:www-data 750 — www-data bisa masuk dan baca, tidak bisa list tanpa akses grup
         chown root:"$WG_CONF_GROUP" "$conf_dir" 2>/dev/null || true
         chmod 0770 "$conf_dir"
-    fi
 
-    # wg0.conf: root:www-data 660 — www-data perlu baca & TULIS
-    if [ -f "$WG_CONFIG_PATH" ]; then
-        if getent group "$WG_CONF_GROUP" >/dev/null 2>&1; then
+        # wg0.conf: root:www-data 660 — www-data perlu baca & TULIS
+        if [ -f "$WG_CONFIG_PATH" ]; then
             chown root:"$WG_CONF_GROUP" "$WG_CONFIG_PATH" 2>/dev/null || true
             chmod 0660 "$WG_CONFIG_PATH"
+        fi
+
+        # server_private.key: root:www-data 640 — www-data bisa baca (untuk export pubkey)
+        local privkey_file="${WG_KEY_DIR}/server_private.key"
+        if [ -f "$privkey_file" ]; then
+            chown root:"$WG_CONF_GROUP" "$privkey_file" 2>/dev/null || true
+            chmod 0640 "$privkey_file"
+        fi
+
+        # server_public.key: root:www-data 644 — readable oleh semua
+        local pubkey_file="${WG_KEY_DIR}/server_public.key"
+        if [ -f "$pubkey_file" ]; then
+            chown root:"$WG_CONF_GROUP" "$pubkey_file" 2>/dev/null || true
+            chmod 0644 "$pubkey_file"
         fi
     fi
 
@@ -207,11 +219,25 @@ EOF
 # ── Phase 5: IP forwarding ─────────────────────────────────────────────────
 enable_ip_forwarding() {
     info "Mengaktifkan IP forwarding..."
+
+    # Aktifkan langsung tanpa perlu reboot
     sysctl -w net.ipv4.ip_forward=1 >/dev/null
-    if ! grep -q '^net\.ipv4\.ip_forward\s*=\s*1' /etc/sysctl.conf 2>/dev/null; then
+
+    # Pastikan entry aktif (non-komentar) ada di /etc/sysctl.conf
+    if grep -qE '^\s*#\s*net\.ipv4\.ip_forward\s*=\s*1' /etc/sysctl.conf 2>/dev/null; then
+        # Uncomment baris yang ada
+        sed -i 's/^\s*#\s*\(net\.ipv4\.ip_forward\s*=\s*1\)/\1/' /etc/sysctl.conf
+        info "net.ipv4.ip_forward=1 di-uncomment di /etc/sysctl.conf"
+    elif ! grep -qE '^\s*net\.ipv4\.ip_forward\s*=\s*1' /etc/sysctl.conf 2>/dev/null; then
         echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+        info "net.ipv4.ip_forward=1 ditambahkan ke /etc/sysctl.conf"
+    else
+        info "net.ipv4.ip_forward=1 sudah ada di /etc/sysctl.conf"
     fi
-    info "IP forwarding aktif."
+
+    # Apply agar persistent tanpa reboot
+    sysctl -p /etc/sysctl.conf >/dev/null 2>&1 || true
+    info "IP forwarding aktif (persistent)."
 }
 
 # ── Phase 6: Enable service ────────────────────────────────────────────────
@@ -239,6 +265,46 @@ restart_service() {
         systemctl start "wg-quick@${WG_INTERFACE}.service" || \
             warn "Gagal start service. Cek log: journalctl -u wg-quick@${WG_INTERFACE} -n 20"
     fi
+}
+
+# ── Phase 7: Tune PHP ini ──────────────────────────────────────────────────
+tune_php() {
+    local php_ver
+    # Auto-detect versi PHP aktif; fallback ke 8.4
+    php_ver="${PHP_VERSION:-$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo '8.4')}"
+    info "Menyesuaikan php.ini untuk PHP ${php_ver}..."
+
+    _update_ini() {
+        local file="$1"
+        [ -f "$file" ] || return 0
+        info "  Update $file"
+        sed -i "s/^upload_max_filesize.*/upload_max_filesize = 64M/"  "$file"
+        sed -i "s/^post_max_size.*/post_max_size = 64M/"              "$file"
+        sed -i "s/^memory_limit.*/memory_limit = 128M/"               "$file"
+        sed -i "s/^max_execution_time.*/max_execution_time = 300/"    "$file"
+    }
+
+    # CLI
+    _update_ini "/etc/php/${php_ver}/cli/php.ini"
+
+    # FPM
+    if systemctl list-units --type=service 2>/dev/null | grep -q "php${php_ver}-fpm"; then
+        _update_ini "/etc/php/${php_ver}/fpm/php.ini"
+        systemctl restart "php${php_ver}-fpm" && info "  PHP-FPM restarted." || warn "  Gagal restart PHP-FPM."
+    fi
+
+    # Apache
+    if systemctl list-units --type=service 2>/dev/null | grep -q "apache2"; then
+        _update_ini "/etc/php/${php_ver}/apache2/php.ini"
+        systemctl restart apache2 && info "  Apache restarted." || warn "  Gagal restart Apache."
+    fi
+
+    # Nginx (tidak punya php.ini sendiri — sudah ditangani FPM di atas)
+    if systemctl list-units --type=service 2>/dev/null | grep -q "nginx"; then
+        systemctl restart nginx && info "  Nginx restarted." || warn "  Gagal restart Nginx."
+    fi
+
+    info "PHP tuning selesai."
 }
 
 # ── Print .env hint ────────────────────────────────────────────────────────
@@ -312,6 +378,7 @@ main() {
     write_server_config
     setup_permissions
     enable_ip_forwarding
+    tune_php
     enable_service
     print_env_hint
 
