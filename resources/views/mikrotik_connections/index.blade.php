@@ -47,9 +47,9 @@
                             @endphp
                             <tr>
                                 <td>
-                                    <button type="button" class="btn btn-info btn-sm text-white">
+                                    <a href="{{ route('dashboard.api') }}?connection_id={{ $connection->id }}" class="btn btn-info btn-sm text-white" title="Buka API Dashboard">
                                         <i class="fas fa-plug"></i>
-                                    </button>
+                                    </a>
                                 </td>
                                 <td>
                                     @if ($connection->is_online === null)
