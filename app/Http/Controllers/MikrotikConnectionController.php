@@ -98,6 +98,15 @@ class MikrotikConnectionController extends Controller
 
         $mikrotikConnection->load('wgPeer');
 
+        // Jika router menggunakan IP WireGuard (ada wgPeer), login address RADIUS
+        // harus menggunakan IP tunnel server (WG_SERVER_IP), bukan IP publik.
+        if ($mikrotikConnection->wgPeer) {
+            $wgServerIp = (string) config('wg.server_ip');
+            if ($wgServerIp !== '') {
+                $radiusHost = $wgServerIp;
+            }
+        }
+
         return view('mikrotik_connections.edit', compact('mikrotikConnection', 'radiusHost'));
     }
 

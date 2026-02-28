@@ -168,17 +168,32 @@
         </form>
     </div>
 
-    {{-- ── WireGuard Tunnel Card ─────────────────────────────────────────── --}}
+    {{-- ── Tombol buat WireGuard — hanya tampil jika belum punya tunnel --}}
+    @if(! $mikrotikConnection->wgPeer)
+        <div class="alert alert-info mt-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span>
+                <i class="fas fa-shield-alt mr-1"></i>
+                Router ini menggunakan <strong>IP publik</strong> langsung.
+                Optionally, gunakan <strong>WireGuard Tunnel</strong> agar RADIUS terhubung via jaringan privat.
+            </span>
+            <a href="{{ route('settings.wg') }}?router_id={{ $mikrotikConnection->id }}&router_name={{ urlencode($mikrotikConnection->name) }}"
+               class="btn btn-sm btn-outline-info text-nowrap">
+                <i class="fas fa-plus mr-1"></i> Buat Tunnel WireGuard
+            </a>
+        </div>
+    @endif
+
+    {{-- ── WireGuard Tunnel Card — hanya tampil jika router menggunakan IP tunnel WG --}}
     @php
+        $hasWgPeer      = (bool) $mikrotikConnection->wgPeer;
         $connIsOnline   = $mikrotikConnection->is_online ?? null;
         $connUnstable   = (bool) ($mikrotikConnection->ping_unstable ?? false);
-        $wgCardClass    = 'card-warning';
-        if ($mikrotikConnection->wgPeer) {
-            $wgCardClass = ($connIsOnline && ! $connUnstable) ? 'card-success'
-                         : ($connUnstable ? 'card-orange' : 'card-secondary');
-        }
+        $wgCardClass    = $hasWgPeer
+            ? (($connIsOnline && ! $connUnstable) ? 'card-success'
+                : ($connUnstable ? 'card-orange' : 'card-secondary'))
+            : 'card-secondary';
     @endphp
-    <div class="card card-outline mt-3 {{ $wgCardClass }}">
+    <div class="card card-outline mt-3 {{ $wgCardClass }}" id="wg-tunnel-card" style="{{ $hasWgPeer ? '' : 'display:none;' }}">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fas fa-network-wired mr-1"></i> WireGuard Tunnel</h5>
             @if($mikrotikConnection->wgPeer)
@@ -290,6 +305,14 @@
                     </button>
                 </div>
                 <div class="modal-body">
+                    @if($mikrotikConnection->wgPeer)
+                        <div class="alert alert-info py-2 mb-2">
+                            <i class="fas fa-network-wired mr-1"></i>
+                            Router ini menggunakan <strong>WireGuard Tunnel</strong>.
+                            Login address RADIUS menggunakan <strong>IP gateway tunnel: {{ config('wg.server_ip', '10.0.0.1') }}</strong>
+                            (bukan IP publik server).
+                        </div>
+                    @endif
                     <p class="text-muted">Salin script berikut ke terminal Mikrotik untuk menyiapkan RADIUS (PPPoE/Hotspot/Login). Secret Radius disamakan dengan Password API.</p>
                     <textarea id="generated-script" class="form-control" rows="10" readonly></textarea>
                 </div>
