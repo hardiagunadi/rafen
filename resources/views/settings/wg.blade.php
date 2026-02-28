@@ -77,6 +77,45 @@
         </div>
     </div>
 
+    {{-- Card Scheduler --}}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Laravel Scheduler (Cron)</h4>
+            @if ($cronInstalled)
+                <span class="badge badge-success"><i class="fas fa-check mr-1"></i>Aktif</span>
+            @else
+                <span class="badge badge-warning"><i class="fas fa-exclamation-triangle mr-1"></i>Belum Terpasang</span>
+            @endif
+        </div>
+        <div class="card-body">
+            @if ($cronInstalled)
+                <div class="alert alert-success py-2 mb-0">
+                    <i class="fas fa-check-circle mr-1"></i>
+                    Cron scheduler sudah aktif. Ping router berjalan otomatis setiap <strong>5 menit</strong>.
+                </div>
+            @else
+                <div class="alert alert-warning py-2 mb-3">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Scheduler belum terpasang di crontab. Ping otomatis dan tugas terjadwal <strong>tidak akan berjalan</strong>.
+                </div>
+                <p class="mb-2 text-muted">Entri yang akan ditambahkan ke crontab:</p>
+                <pre class="bg-dark text-light p-2 rounded mb-3" style="font-size:12px;">* * * * * php {{ base_path('artisan') }} schedule:run >> /dev/null 2>&1</pre>
+                @if (auth()->user()?->isAdmin())
+                    <form method="POST" action="{{ route('settings.wg.install-cron') }}">
+                        @csrf
+                        <button type="submit" class="btn btn-warning btn-sm">
+                            <i class="fas fa-clock mr-1"></i> Pasang Cron Otomatis
+                        </button>
+                    </form>
+                @else
+                    <div class="text-muted small">
+                        <i class="fas fa-lock mr-1"></i> Hanya administrator yang dapat memasang cron.
+                    </div>
+                @endif
+            @endif
+        </div>
+    </div>
+
     <div class="card mb-4" id="tambah-peer">
         <div class="card-header">
             <h4 class="mb-0">Tambah WireGuard Peer</h4>

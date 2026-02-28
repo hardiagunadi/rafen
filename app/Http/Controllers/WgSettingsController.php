@@ -36,6 +36,9 @@ class WgSettingsController extends Controller
             );
         }
 
+        exec('crontab -l 2>/dev/null', $cronLines);
+        $cronInstalled = str_contains(implode("\n", $cronLines), 'artisan schedule:run');
+
         return view('settings.wg', [
             'wg' => [
                 'host'              => $configuredHost,
@@ -51,6 +54,7 @@ class WgSettingsController extends Controller
             'peers'           => $peers,
             'routers'         => $routers,
             'keyAutoDetected' => $serverPublicKey !== '' && (string) config('wg.server_public_key') === '',
+            'cronInstalled'   => $cronInstalled,
         ]);
     }
 
@@ -319,6 +323,36 @@ class WgSettingsController extends Controller
 
         return redirect()->route('settings.wg')
             ->with('status', 'Server keypair berhasil disimpan ke .env.');
+    }
+
+    public function installCron(): RedirectResponse
+    {
+        abort_unless(auth()->user()?->isAdmin(), 403, 'Akses ditolak. Hanya administrator yang dapat memasang cron.');
+
+        $artisan = base_path('artisan');
+        $entry   = "* * * * * php {$artisan} schedule:run >> /dev/null 2>&1";
+
+        exec('crontab -l 2>/dev/null', $lines, $code);
+        $current = implode("\n", $lines);
+
+        if (str_contains($current, 'artisan schedule:run')) {
+            return redirect()->route('settings.wg')
+                ->with('status', 'Entri cron scheduler sudah ada — tidak perlu ditambahkan lagi.');
+        }
+
+        $newCrontab = trim($current) . "\n" . $entry . "\n";
+        $tmp        = tempnam(sys_get_temp_dir(), 'cron_');
+        file_put_contents($tmp, $newCrontab);
+        exec('crontab ' . escapeshellarg($tmp), $out, $exitCode);
+        @unlink($tmp);
+
+        if ($exitCode !== 0) {
+            return redirect()->route('settings.wg')
+                ->with('error', 'Gagal menulis crontab. Jalankan perintah ini secara manual: crontab -e, lalu tambahkan: ' . $entry);
+        }
+
+        return redirect()->route('settings.wg')
+            ->with('status', 'Cron scheduler berhasil ditambahkan. Laravel scheduler akan berjalan setiap menit.');
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────

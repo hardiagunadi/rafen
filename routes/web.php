@@ -38,6 +38,7 @@ Route::middleware('auth')->group(function () {
     Route::get('api-dashboard/data', [DashboardController::class, 'apiDashboardData'])->name('dashboard.api.data');
     Route::get('reports/income', IncomeReportController::class)->name('reports.income');
     Route::post('mikrotik-connections/test', [MikrotikConnectionController::class, 'test'])->name('mikrotik-connections.test');
+    Route::post('mikrotik-connections/{mikrotikConnection}/ping', [MikrotikConnectionController::class, 'pingNow'])->name('mikrotik-connections.ping-now');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
     Route::resource('mikrotik-connections', MikrotikConnectionController::class);
     Route::resource('radius-accounts', RadiusAccountController::class);
@@ -65,6 +66,7 @@ Route::middleware('auth')->group(function () {
     Route::post('settings/wg/peers/{wgPeer}/keygen', [WgSettingsController::class, 'keygen'])->name('settings.wg.peers.keygen');
     Route::post('settings/wg/save-server-keys', [WgSettingsController::class, 'saveServerKeys'])->name('settings.wg.save-server-keys');
     Route::get('settings/wg/ping', [WgSettingsController::class, 'ping'])->name('settings.wg.ping');
+    Route::post('settings/wg/install-cron', [WgSettingsController::class, 'installCron'])->name('settings.wg.install-cron');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);

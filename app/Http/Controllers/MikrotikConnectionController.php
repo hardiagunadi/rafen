@@ -110,6 +110,24 @@ class MikrotikConnectionController extends Controller
         return view('mikrotik_connections.edit', compact('mikrotikConnection', 'radiusHost'));
     }
 
+    public function pingNow(MikrotikConnection $mikrotikConnection): JsonResponse
+    {
+        $this->authorizeAccess($mikrotikConnection);
+
+        try {
+            $this->pingService->ping($mikrotikConnection);
+            $mikrotikConnection->refresh();
+
+            return response()->json([
+                'is_online'     => $mikrotikConnection->is_online,
+                'ping_unstable' => $mikrotikConnection->ping_unstable,
+                'message'       => $mikrotikConnection->last_ping_message,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json(['error' => 'Ping gagal: ' . $e->getMessage()], 500);
+        }
+    }
+
     /**
      * Update the specified resource in storage.
      */

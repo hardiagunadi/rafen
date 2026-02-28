@@ -214,9 +214,14 @@
             @if($mikrotikConnection->wgPeer)
                 @php $wgPeer = $mikrotikConnection->wgPeer; @endphp
                 @if($connIsOnline === null)
-                    <div class="alert alert-secondary py-2">
-                        <i class="fas fa-clock mr-1"></i>
-                        Tunnel WireGuard terdaftar. Status koneksi belum pernah dicek — tunggu ping checker berjalan.
+                    <div class="alert alert-secondary py-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <span>
+                            <i class="fas fa-clock mr-1"></i>
+                            Tunnel WireGuard terdaftar. Status koneksi akan dicek otomatis setiap <strong>5 menit</strong> oleh scheduler.
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="wg-ping-now-btn">
+                            <i class="fas fa-satellite-dish mr-1"></i>Cek Sekarang
+                        </button>
                     </div>
                 @elseif($connIsOnline && ! $connUnstable)
                     <div class="alert alert-success py-2">
@@ -465,5 +470,41 @@
             textarea.setSelectionRange(0, 99999);
             document.execCommand('copy');
         });
+
+        // ── Cek Sekarang (ping manual) ────────────────────────────────────────
+        const pingNowBtn = document.getElementById('wg-ping-now-btn');
+        if (pingNowBtn) {
+            pingNowBtn.addEventListener('click', function () {
+                const btn = this;
+                const origHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Mengecek…';
+
+                fetch('{{ route('mikrotik-connections.ping-now', $mikrotikConnection) }}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    if (data.error) {
+                        alert('Ping gagal: ' + data.error);
+                        return;
+                    }
+                    // Reload halaman agar status card diperbarui
+                    window.location.reload();
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    alert('Gagal menghubungi server.');
+                });
+            });
+        }
     </script>
 @endsection
