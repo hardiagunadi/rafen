@@ -340,7 +340,9 @@
                         </tr>
                         <tr class="collapse" id="wg-edit-{{ $peer->id }}">
                             <td colspan="7" class="bg-light">
-                                <form class="wg-update-form p-2">
+                                <form class="wg-update-form p-2"
+                                      data-update-url="{{ route('settings.wg.peers.update', $peer) }}"
+                                      data-peer-id="{{ $peer->id }}">
                                     @csrf
                                     <div class="form-row">
                                         <div class="form-group col-md-4">
@@ -562,6 +564,7 @@
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded',
                     'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
@@ -603,11 +606,12 @@
             if (editRow) {
                 const f = editRow.querySelector('form');
                 if (f) {
-                    f.querySelector('[name="name"]').value       = peer.name;
-                    f.querySelector('[name="vpn_ip"]').value     = peer.vpn_ip || '';
-                    f.querySelector('[name="public_key"]').value = peer.public_key || '';
+                    if (peer.update_url) f.dataset.updateUrl = peer.update_url;
+                    f.querySelector('[name="name"]').value        = peer.name;
+                    f.querySelector('[name="vpn_ip"]').value      = peer.vpn_ip || '';
+                    f.querySelector('[name="public_key"]').value  = peer.public_key || '';
                     f.querySelector('[name="private_key"]').value = peer.private_key || '';
-                    f.querySelector('[name="is_active"]').value  = peer.is_active ? '1' : '0';
+                    f.querySelector('[name="is_active"]').value   = peer.is_active ? '1' : '0';
                 }
             }
         }
@@ -732,18 +736,23 @@
             if (!form) return;
             e.preventDefault();
 
-            let row = form.closest('tr').previousElementSibling;
-            while (row && !row.dataset.peerId) {
-                row = row.previousElementSibling;
-            }
-            if (!row) return;
+            // Ambil update URL dari form (data-update-url), fallback ke row sebelumnya
+            const updateUrl = form.dataset.updateUrl || (function () {
+                let r = form.closest('tr');
+                if (r) r = r.previousElementSibling;
+                while (r && !r.dataset.peerId) { r = r.previousElementSibling; }
+                return r ? r.dataset.updateUrl : null;
+            })();
+            if (!updateUrl) return;
 
+            const peerId   = form.dataset.peerId;
+            const peerRow  = peerId ? document.getElementById('wg-row-' + peerId) : null;
             const submitBtn = form.querySelector('[type="submit"]');
             if (submitBtn) submitBtn.disabled = true;
 
-            ajaxForm('PATCH', row.dataset.updateUrl, new FormData(form)).then(function (data) {
+            ajaxForm('PATCH', updateUrl, new FormData(form)).then(function (data) {
                 if (submitBtn) submitBtn.disabled = false;
-                updateRow(row, data.peer);
+                if (peerRow && data.peer) updateRow(peerRow, data.peer);
                 const editRow = form.closest('tr');
                 if (editRow && typeof $ !== 'undefined') $(editRow).collapse('hide');
                 showAlert(data.status || data.warning || 'Peer diperbarui.', data.warning ? 'warning' : 'success');
@@ -937,7 +946,7 @@
                 '</td>' +
                 '</tr>' +
                 '<tr class="collapse" id="wg-edit-' + peer.id + '">' +
-                '<td colspan="7" class="bg-light"><form class="wg-update-form p-2">' +
+                '<td colspan="7" class="bg-light"><form class="wg-update-form p-2" data-update-url="' + peer.update_url + '" data-peer-id="' + peer.id + '">' +
                 '<input type="hidden" name="_token" value="{{ csrf_token() }}">' +
                 '<div class="form-row">' +
                 '<div class="form-group col-md-4"><label>Nama</label><input type="text" name="name" value="' + peer.name + '" class="form-control" required></div>' +
