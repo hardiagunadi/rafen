@@ -116,10 +116,12 @@ class HotspotUserController extends Controller
 
     public function create(): View
     {
+        $currentUser = auth()->user();
+
         return view('hotspot_users.create', [
-            'owners'   => User::query()->orderBy('name')->get(),
-            'groups'   => ProfileGroup::query()->orderBy('name')->get(),
-            'profiles' => HotspotProfile::query()->orderBy('name')->get(),
+            'owners'   => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups'   => ProfileGroup::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'profiles' => HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
         ]);
     }
 
@@ -138,11 +140,17 @@ class HotspotUserController extends Controller
 
     public function edit(HotspotUser $hotspotUser): View
     {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $hotspotUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
         return view('hotspot_users.edit', [
             'hotspotUser' => $hotspotUser,
-            'owners'      => User::query()->orderBy('name')->get(),
-            'groups'      => ProfileGroup::query()->orderBy('name')->get(),
-            'profiles'    => HotspotProfile::query()->orderBy('name')->get(),
+            'owners'      => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups'      => ProfileGroup::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'profiles'    => HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
         ]);
     }
 
@@ -156,6 +164,12 @@ class HotspotUserController extends Controller
 
     public function destroy(HotspotUser $hotspotUser): JsonResponse|RedirectResponse
     {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $hotspotUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
         $hotspotUser->delete();
 
         if (request()->wantsJson()) {
@@ -167,9 +181,10 @@ class HotspotUserController extends Controller
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
+        $currentUser = auth()->user();
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
-            HotspotUser::query()->whereIn('id', $ids)->delete();
+            HotspotUser::query()->whereIn('id', $ids)->accessibleBy($currentUser)->delete();
         }
 
         if ($request->wantsJson()) {

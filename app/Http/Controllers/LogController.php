@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
 use App\Models\LoginLog;
+use App\Models\PppUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -19,8 +20,16 @@ class LogController extends Controller
 
     public function loginDatatable(Request $request): JsonResponse
     {
+        $user   = auth()->user();
         $search = $request->input('search.value', $request->input('search', ''));
+
+        // Build set of user IDs this user can see login logs for
+        $visibleUserIds = $user->isSuperAdmin()
+            ? null
+            : array_merge([$user->id], $user->subUsers()->pluck('id')->all());
+
         $query = LoginLog::with('user')
+            ->when($visibleUserIds !== null, fn($q) => $q->whereIn('user_id', $visibleUserIds))
             ->when($request->filled('event'), fn($q) => $q->where('event', $request->event))
             ->when($search !== '', function ($q) use ($search) {
                 $q->where(fn($q2) => $q2->where('email', 'like', "%{$search}%")
@@ -28,7 +37,7 @@ class LogController extends Controller
             })
             ->orderByDesc('created_at');
 
-        $total    = LoginLog::count();
+        $total    = LoginLog::when($visibleUserIds !== null, fn($q) => $q->whereIn('user_id', $visibleUserIds))->count();
         $filtered = $query->count();
         $rows     = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
@@ -63,7 +72,7 @@ class LogController extends Controller
         $search = $request->input('search.value', $request->input('search', ''));
 
         $query = ActivityLog::with('user')
-            ->when(! $user->isSuperAdmin(), fn($q) => $q->where('owner_id', $user->id))
+            ->when(! $user->isSuperAdmin(), fn($q) => $q->where('owner_id', $user->effectiveOwnerId()))
             ->when($request->filled('action'), fn($q) => $q->where('action', $request->action))
             ->when($request->filled('subject_type'), fn($q) => $q->where('subject_type', $request->subject_type))
             ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
@@ -100,6 +109,10 @@ class LogController extends Controller
 
     public function bgProcessIndex(): View
     {
+        if (! auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
         $stats = [
             'pending'    => \DB::table('jobs')->count(),
             'failed'     => \DB::table('failed_jobs')->count(),
@@ -111,6 +124,10 @@ class LogController extends Controller
 
     public function bgProcessDatatable(Request $request): JsonResponse
     {
+        if (! auth()->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
         $type = $request->input('type', 'failed');
 
         $search = $request->input('search.value', $request->input('search', ''));
@@ -171,9 +188,15 @@ class LogController extends Controller
 
     public function radiusAuthDatatable(Request $request): JsonResponse
     {
+        $user   = auth()->user();
         $search = $request->input('search.value', $request->input('search', ''));
 
+        $ownedUsernames = $user->isSuperAdmin()
+            ? null
+            : PppUser::where('owner_id', $user->id)->pluck('username');
+
         $query = \DB::table('radpostauth')
+            ->when($ownedUsernames !== null, fn($q) => $q->whereIn('username', $ownedUsernames))
             ->when($request->filled('reply'), fn($q) => $q->where('reply', $request->reply))
             ->when($search !== '', function ($q) use ($search) {
                 $q->where(fn($q2) => $q2->where('username', 'like', "%{$search}%")
@@ -181,7 +204,9 @@ class LogController extends Controller
             })
             ->orderByDesc('authdate');
 
-        $total    = \DB::table('radpostauth')->count();
+        $total    = \DB::table('radpostauth')
+            ->when($ownedUsernames !== null, fn($q) => $q->whereIn('username', $ownedUsernames))
+            ->count();
         $filtered = $query->count();
         $rows     = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))->get();

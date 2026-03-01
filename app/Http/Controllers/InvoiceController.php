@@ -70,7 +70,7 @@ class InvoiceController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->id) {
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -86,7 +86,7 @@ class InvoiceController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->id) {
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -100,6 +100,12 @@ class InvoiceController extends Controller
 
     public function pay(Invoice $invoice): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
         $invoice->update(['status' => 'paid']);
         if ($invoice->pppUser) {
             $invoice->pppUser->update([
@@ -119,6 +125,12 @@ class InvoiceController extends Controller
 
     public function renew(Invoice $invoice): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
         if ($invoice->status === 'paid') {
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Invoice sudah dibayar.'], 422);
@@ -157,6 +169,12 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
         $this->logActivity('deleted', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
         $pppUser = $invoice->pppUser;
         $invoice->delete();

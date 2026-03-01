@@ -44,7 +44,7 @@ class PaymentController extends Controller
         $user = auth()->user();
 
         // Check ownership
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->id) {
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -96,7 +96,7 @@ class PaymentController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->id) {
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -217,7 +217,7 @@ class PaymentController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->id) {
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -258,7 +258,7 @@ class PaymentController extends Controller
         // Only owner or super admin can confirm
         if (!$user->isSuperAdmin()) {
             $invoice = $payment->invoice;
-            if (!$invoice || $invoice->owner_id !== $user->id) {
+            if (!$invoice || $invoice->owner_id !== $user->effectiveOwnerId()) {
                 abort(403);
             }
         }
@@ -277,7 +277,7 @@ class PaymentController extends Controller
 
         if (!$user->isSuperAdmin()) {
             $invoice = $payment->invoice;
-            if (!$invoice || $invoice->owner_id !== $user->id) {
+            if (!$invoice || $invoice->owner_id !== $user->effectiveOwnerId()) {
                 abort(403);
             }
         }

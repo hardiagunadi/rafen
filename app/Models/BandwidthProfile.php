@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BandwidthProfile extends Model
 {
@@ -16,5 +18,22 @@ class BandwidthProfile extends Model
         'download_min_mbps',
         'download_max_mbps',
         'owner',
+        'owner_id',
     ];
+
+    public function ownerUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function scopeAccessibleBy(Builder $query, User $user): Builder
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+
+        return $query->where(function (Builder $q) use ($user) {
+            $q->whereNull('owner_id')->orWhere('owner_id', $user->effectiveOwnerId());
+        });
+    }
 }

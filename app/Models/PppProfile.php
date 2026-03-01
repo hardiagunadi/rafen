@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -39,5 +40,13 @@ class PppProfile extends Model
     public function bandwidthProfile(): BelongsTo
     {
         return $this->belongsTo(BandwidthProfile::class);
+    }
+
+    public function scopeAccessibleBy(Builder $query, User $user): Builder
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+        return $query->where('owner_id', $user->effectiveOwnerId());
     }
 }

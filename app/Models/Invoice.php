@@ -106,7 +106,7 @@ class Invoice extends Model
         if ($user->isSuperAdmin()) {
             return $query;
         }
-        return $query->where('owner_id', $user->id);
+        return $query->where('owner_id', $user->effectiveOwnerId());
     }
 
     public function getFormattedTotalAttribute(): string

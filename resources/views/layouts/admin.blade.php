@@ -335,12 +335,14 @@
                             </p>
                         </a>
                         <ul class="nav nav-treeview">
+                            @if(auth()->user()->isSuperAdmin() || (auth()->user()->isAdmin() && !auth()->user()->isSubUser()))
                             <li class="nav-item">
                                 <a href="{{ route('users.index') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Manajemen Pengguna</p>
                                 </a>
                             </li>
+                            @endif
                             <li class="nav-item">
                                 <a href="{{ route('tenant-settings.index') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>

@@ -7,6 +7,7 @@ use App\Http\Requests\StoreProfileGroupRequest;
 use App\Http\Requests\UpdateProfileGroupRequest;
 use App\Models\MikrotikConnection;
 use App\Models\ProfileGroup;
+use App\Models\User;
 use App\Services\ProfileGroupExporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -22,21 +23,24 @@ class ProfileGroupController extends Controller
      */
     public function index(): View
     {
-        $mikrotikConnections = MikrotikConnection::query()->orderBy('name')->get();
+        $user = auth()->user();
+        $mikrotikConnections = MikrotikConnection::query()->accessibleBy($user)->orderBy('name')->get();
 
         return view('profile_groups.index', compact('mikrotikConnections'));
     }
 
     public function datatable(Request $request): JsonResponse
     {
+        $user   = auth()->user();
         $search = $request->input('search.value', '');
 
         $query = ProfileGroup::query()
+            ->accessibleBy($user)
             ->with('mikrotikConnection')
             ->when($search !== '', fn($q) => $q->where('name', 'like', "%{$search}%"))
             ->latest();
 
-        $total    = ProfileGroup::count();
+        $total    = ProfileGroup::query()->accessibleBy($user)->count();
         $filtered = $query->count();
         $rows     = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
@@ -68,8 +72,9 @@ class ProfileGroupController extends Controller
      */
     public function create(): View
     {
-        $mikrotikConnections = \App\Models\MikrotikConnection::query()->orderBy('name')->get();
-        $users = \App\Models\User::query()->orderBy('name')->get();
+        $user = auth()->user();
+        $mikrotikConnections = MikrotikConnection::query()->accessibleBy($user)->orderBy('name')->get();
+        $users = $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]);
 
         return view('profile_groups.create', compact('mikrotikConnections', 'users'));
     }
@@ -99,8 +104,14 @@ class ProfileGroupController extends Controller
      */
     public function edit(ProfileGroup $profileGroup): View
     {
-        $mikrotikConnections = \App\Models\MikrotikConnection::query()->orderBy('name')->get();
-        $users = \App\Models\User::query()->orderBy('name')->get();
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $profileGroup->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $mikrotikConnections = MikrotikConnection::query()->accessibleBy($user)->orderBy('name')->get();
+        $users = $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]);
 
         return view('profile_groups.edit', compact('profileGroup', 'mikrotikConnections', 'users'));
     }
@@ -122,6 +133,12 @@ class ProfileGroupController extends Controller
      */
     public function destroy(ProfileGroup $profileGroup): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $profileGroup->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
         $profileGroup->delete();
 
         if (request()->wantsJson()) {
@@ -133,9 +150,10 @@ class ProfileGroupController extends Controller
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
-            ProfileGroup::query()->whereIn('id', $ids)->delete();
+            ProfileGroup::query()->whereIn('id', $ids)->accessibleBy($user)->delete();
         }
 
                 if ($request->wantsJson()) {
@@ -181,15 +199,18 @@ class ProfileGroupController extends Controller
 
     public function bulkExport(BulkExportProfileGroupRequest $request, ProfileGroupExporter $exporter): RedirectResponse
     {
+        $user = auth()->user();
         $groupIds = $request->input('profile_group_ids', []);
         $connectionIds = $request->input('mikrotik_connection_ids', []);
 
         $groups = ProfileGroup::query()
             ->whereIn('id', $groupIds)
+            ->accessibleBy($user)
             ->get();
 
         $connections = MikrotikConnection::query()
             ->whereIn('id', $connectionIds)
+            ->accessibleBy($user)
             ->get();
 
         if ($groups->isEmpty() || $connections->isEmpty()) {
@@ -274,13 +295,17 @@ class ProfileGroupController extends Controller
      */
     private function resolveExportConnections(ProfileGroup $profileGroup): Collection
     {
+        $user = auth()->user();
+
         if ($profileGroup->mikrotik_connection_id) {
             return MikrotikConnection::query()
                 ->whereKey($profileGroup->mikrotik_connection_id)
+                ->accessibleBy($user)
                 ->get();
         }
 
         return MikrotikConnection::query()
+            ->accessibleBy($user)
             ->where('is_active', true)
             ->orderBy('name')
             ->get();

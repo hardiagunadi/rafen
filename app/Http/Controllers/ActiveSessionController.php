@@ -163,7 +163,7 @@ class ActiveSessionController extends Controller
     {
         $user = auth()->user();
 
-        if (! $user->is_super_admin && $connection->owner_id !== $user->id) {
+        if (! $user->isSuperAdmin() && $connection->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 

@@ -49,10 +49,10 @@ class RadiusAccount extends Model
 
     public function scopeAccessibleBy(Builder $query, User $user): Builder
     {
-        if ($user->is_super_admin) {
+        if ($user->isSuperAdmin()) {
             return $query;
         }
 
-        return $query->whereHas('mikrotikConnection', fn (Builder $q) => $q->where('owner_id', $user->id));
+        return $query->whereHas('mikrotikConnection', fn (Builder $q) => $q->where('owner_id', $user->effectiveOwnerId()));
     }
 }

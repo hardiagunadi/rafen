@@ -18,16 +18,25 @@ class DashboardController extends Controller
 {
     public function index(): View
     {
-        $pppAccounts = RadiusAccount::query()->where('service', 'pppoe')->where('is_active', true)->count();
-        $hotspotAccounts = RadiusAccount::query()->where('service', 'hotspot')->where('is_active', true)->count();
-
-        $routers = MikrotikConnection::query()->select('is_online')->get();
+        $user = auth()->user();
         $systemInfo = $this->systemMetrics();
         $now = now();
         $monthStart = $now->copy()->startOfMonth();
         $monthEnd = $now->copy()->endOfMonth();
 
+        $pppAccounts = RadiusAccount::query()
+            ->accessibleBy($user)
+            ->where('service', 'pppoe')->where('is_active', true)->count();
+        $hotspotAccounts = RadiusAccount::query()
+            ->accessibleBy($user)
+            ->where('service', 'hotspot')->where('is_active', true)->count();
+
+        $routers = MikrotikConnection::query()
+            ->accessibleBy($user)
+            ->select('is_online')->get();
+
         $invoicesMonth = Invoice::query()
+            ->accessibleBy($user)
             ->whereBetween('created_at', [$monthStart, $monthEnd])
             ->get();
         $incomeToday = $invoicesMonth->where('status', 'paid')->whereBetween('updated_at', [$now->copy()->startOfDay(), $now->copy()->endOfDay()])->sum('total');
@@ -41,7 +50,7 @@ class DashboardController extends Controller
             'router_total' => $routers->count(),
             'router_online' => $routers->where('is_online', true)->count(),
             'router_offline' => $routers->where('is_online', false)->count(),
-            'ppp_users' => PppUser::query()->count(),
+            'ppp_users' => PppUser::query()->accessibleBy($user)->count(),
         ];
 
         $serviceInfo = Collection::make([
@@ -76,14 +85,17 @@ class DashboardController extends Controller
             ],
         ]);
 
-        $owners = User::query()->orderBy('name')->get();
+        // Daftar owner hanya untuk super admin (untuk filter switcher)
+        $owners = $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect();
 
         return view('dashboard', compact('stats', 'serviceInfo', 'owners', 'systemInfo'));
     }
 
     public function apiDashboard(Request $request): View
     {
+        $user = auth()->user();
         $connections = MikrotikConnection::query()
+            ->accessibleBy($user)
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
@@ -95,7 +107,8 @@ class DashboardController extends Controller
 
     public function apiDashboardData(Request $request): JsonResponse
     {
-        $connection = $this->resolveConnection($request->integer('connection_id'));
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
 
         return response()->json([
             'data' => $this->apiDashboardPayload($connection),
@@ -315,6 +328,17 @@ class DashboardController extends Controller
             $selected = $query->whereKey($connectionId)->first();
 
             return $selected ?: MikrotikConnection::query()->where('is_active', true)->orderBy('name')->first();
+        }
+
+        return $query->first();
+    }
+
+    private function resolveConnectionForUser(?int $connectionId, User $user): ?MikrotikConnection
+    {
+        $query = MikrotikConnection::query()->accessibleBy($user)->where('is_active', true)->orderBy('name');
+        if ($connectionId) {
+            return $query->whereKey($connectionId)->first()
+                ?? $query->first();
         }
 
         return $query->first();

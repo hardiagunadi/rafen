@@ -292,7 +292,7 @@ class MikrotikConnectionController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $connection->owner_id !== $user->id) {
+        if (!$user->isSuperAdmin() && $connection->owner_id !== $user->effectiveOwnerId()) {
             abort(403, 'Anda tidak memiliki akses ke koneksi ini.');
         }
     }

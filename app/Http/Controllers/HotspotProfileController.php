@@ -18,7 +18,9 @@ class HotspotProfileController extends Controller
 {
     public function datatable(Request $request): JsonResponse
     {
+        $user  = $request->user();
         $query = HotspotProfile::query()
+            ->accessibleBy($user)
             ->with(['owner', 'profileGroup', 'bandwidthProfile'])
             ->select('hotspot_profiles.*');
 
@@ -64,10 +66,11 @@ class HotspotProfileController extends Controller
      */
     public function create(): View
     {
+        $user = auth()->user();
         return view('hotspot_profiles.create', [
-            'owners' => User::query()->orderBy('name')->get(),
-            'groups' => ProfileGroup::query()->orderBy('name')->get(),
-            'bandwidths' => BandwidthProfile::query()->orderBy('name')->get(),
+            'owners'     => $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]),
+            'groups'     => ProfileGroup::query()->accessibleBy($user)->orderBy('name')->get(),
+            'bandwidths' => BandwidthProfile::query()->accessibleBy($user)->orderBy('name')->get(),
         ]);
     }
 
@@ -94,11 +97,15 @@ class HotspotProfileController extends Controller
      */
     public function edit(HotspotProfile $hotspotProfile): View
     {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && $hotspotProfile->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
         return view('hotspot_profiles.edit', [
             'hotspotProfile' => $hotspotProfile,
-            'owners' => User::query()->orderBy('name')->get(),
-            'groups' => ProfileGroup::query()->orderBy('name')->get(),
-            'bandwidths' => BandwidthProfile::query()->orderBy('name')->get(),
+            'owners'         => $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]),
+            'groups'         => ProfileGroup::query()->accessibleBy($user)->orderBy('name')->get(),
+            'bandwidths'     => BandwidthProfile::query()->accessibleBy($user)->orderBy('name')->get(),
         ]);
     }
 
@@ -117,6 +124,10 @@ class HotspotProfileController extends Controller
      */
     public function destroy(HotspotProfile $hotspotProfile): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && $hotspotProfile->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
         $hotspotProfile->delete();
 
         if (request()->wantsJson()) {
@@ -128,9 +139,10 @@ class HotspotProfileController extends Controller
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
-        $ids = $request->input('ids', []);
+        $user = $request->user();
+        $ids  = $request->input('ids', []);
         if (! empty($ids)) {
-            HotspotProfile::query()->whereIn('id', $ids)->delete();
+            HotspotProfile::query()->accessibleBy($user)->whereIn('id', $ids)->delete();
         }
 
         if ($request->wantsJson()) {

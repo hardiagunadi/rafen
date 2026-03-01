@@ -54,6 +54,6 @@ class Transaction extends Model
             return $query;
         }
 
-        return $query->where('owner_id', $user->id);
+        return $query->where('owner_id', $user->effectiveOwnerId());
     }
 }

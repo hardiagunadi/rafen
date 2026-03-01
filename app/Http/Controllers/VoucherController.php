@@ -172,9 +172,10 @@ class VoucherController extends Controller
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
-            Voucher::query()->whereIn('id', $ids)->where('status', 'unused')->delete();
+            Voucher::query()->whereIn('id', $ids)->accessibleBy($user)->where('status', 'unused')->delete();
         }
 
         if ($request->wantsJson()) {

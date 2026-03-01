@@ -27,14 +27,16 @@ class PppProfileController extends Controller
 
     public function datatable(Request $request): JsonResponse
     {
+        $user   = $request->user();
         $search = $request->input('search.value', '');
 
         $query = PppProfile::query()
+            ->accessibleBy($user)
             ->with(['owner', 'profileGroup', 'bandwidthProfile'])
             ->when($search !== '', fn($q) => $q->where('name', 'like', "%{$search}%"))
             ->latest();
 
-        $total    = PppProfile::count();
+        $total    = PppProfile::query()->accessibleBy($user)->count();
         $filtered = $query->count();
         $rows     = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
@@ -65,10 +67,11 @@ class PppProfileController extends Controller
      */
     public function create(): View
     {
+        $user = auth()->user();
         return view('ppp_profiles.create', [
-            'owners' => User::query()->orderBy('name')->get(),
-            'groups' => ProfileGroup::query()->orderBy('name')->get(),
-            'bandwidths' => BandwidthProfile::query()->orderBy('name')->get(),
+            'owners'     => $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]),
+            'groups'     => ProfileGroup::query()->accessibleBy($user)->orderBy('name')->get(),
+            'bandwidths' => BandwidthProfile::query()->accessibleBy($user)->orderBy('name')->get(),
         ]);
     }
 
@@ -97,11 +100,15 @@ class PppProfileController extends Controller
      */
     public function edit(PppProfile $pppProfile): View
     {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && $pppProfile->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
         return view('ppp_profiles.edit', [
             'pppProfile' => $pppProfile,
-            'owners' => User::query()->orderBy('name')->get(),
-            'groups' => ProfileGroup::query()->orderBy('name')->get(),
-            'bandwidths' => BandwidthProfile::query()->orderBy('name')->get(),
+            'owners'     => $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]),
+            'groups'     => ProfileGroup::query()->accessibleBy($user)->orderBy('name')->get(),
+            'bandwidths' => BandwidthProfile::query()->accessibleBy($user)->orderBy('name')->get(),
         ]);
     }
 
@@ -122,6 +129,10 @@ class PppProfileController extends Controller
      */
     public function destroy(PppProfile $pppProfile): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && $pppProfile->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
         $this->logActivity('deleted', 'PppProfile', $pppProfile->id, $pppProfile->name, (int) $pppProfile->owner_id);
         $pppProfile->delete();
 
@@ -134,12 +145,16 @@ class PppProfileController extends Controller
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
-        $ids = $request->input('ids', []);
+        $user = $request->user();
+        $ids  = $request->input('ids', []);
         if (! empty($ids)) {
-            PppProfile::query()->whereIn('id', $ids)->each(function (PppProfile $p): void {
-                $this->logActivity('deleted', 'PppProfile', $p->id, $p->name, (int) $p->owner_id);
-            });
-            PppProfile::query()->whereIn('id', $ids)->delete();
+            PppProfile::query()
+                ->accessibleBy($user)
+                ->whereIn('id', $ids)
+                ->each(function (PppProfile $p): void {
+                    $this->logActivity('deleted', 'PppProfile', $p->id, $p->name, (int) $p->owner_id);
+                });
+            PppProfile::query()->accessibleBy($user)->whereIn('id', $ids)->delete();
         }
 
         if ($request->wantsJson()) {

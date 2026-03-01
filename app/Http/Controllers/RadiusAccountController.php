@@ -23,9 +23,11 @@ class RadiusAccountController extends Controller
 
     public function datatable(Request $request): JsonResponse
     {
+        $user   = $request->user();
         $search = $request->input('search.value', '');
 
         $query = RadiusAccount::query()
+            ->accessibleBy($user)
             ->with('mikrotikConnection')
             ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('username', 'like', "%{$search}%")
@@ -33,7 +35,7 @@ class RadiusAccountController extends Controller
             }))
             ->latest();
 
-        $total    = RadiusAccount::count();
+        $total    = RadiusAccount::query()->accessibleBy($user)->count();
         $filtered = $query->count();
         $rows     = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
@@ -62,7 +64,9 @@ class RadiusAccountController extends Controller
      */
     public function create(): View
     {
+        $user = auth()->user();
         $mikrotikConnections = MikrotikConnection::query()
+            ->accessibleBy($user)
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
@@ -102,7 +106,14 @@ class RadiusAccountController extends Controller
      */
     public function edit(RadiusAccount $radiusAccount): View
     {
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $radiusAccount->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
         $mikrotikConnections = MikrotikConnection::query()
+            ->accessibleBy($user)
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
@@ -134,6 +145,12 @@ class RadiusAccountController extends Controller
      */
     public function destroy(RadiusAccount $radiusAccount): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $radiusAccount->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
         $radiusAccount->delete();
 
         if (request()->wantsJson()) {

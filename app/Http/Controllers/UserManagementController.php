@@ -12,23 +12,55 @@ use Illuminate\View\View;
 
 class UserManagementController extends Controller
 {
+    private function authorizeAccess(User $authUser): void
+    {
+        // Sub-users cannot manage users
+        if ($authUser->isSubUser()) {
+            abort(403);
+        }
+        // Only super admin or tenant admin
+        if (! $authUser->isSuperAdmin() && ! $authUser->isAdmin()) {
+            abort(403);
+        }
+    }
+
+    private function authorizeTarget(User $authUser, User $targetUser): void
+    {
+        if ($authUser->isSuperAdmin()) {
+            return;
+        }
+        // Tenant admin can only manage their own sub-users
+        if ($targetUser->parent_id !== $authUser->id) {
+            abort(403);
+        }
+    }
+
     public function index(): View
     {
+        $user = auth()->user();
+        $this->authorizeAccess($user);
+
         return view('users.index');
     }
 
     public function datatable(Request $request): JsonResponse
     {
+        $user   = auth()->user();
+        $this->authorizeAccess($user);
+
         $search = $request->input('search.value', '');
 
         $query = User::query()
+            ->when(! $user->isSuperAdmin(), fn($q) => $q->where('parent_id', $user->id))
             ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('name', 'like', "%{$search}%")
                    ->orWhere('email', 'like', "%{$search}%");
             }))
             ->latest();
 
-        $total    = User::count();
+        $total    = User::query()
+            ->when(! $user->isSuperAdmin(), fn($q) => $q->where('parent_id', $user->id))
+            ->count();
         $filtered = $query->count();
         $rows     = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
@@ -52,30 +84,54 @@ class UserManagementController extends Controller
 
     public function create(): View
     {
-        $roles = $this->roles();
+        $user = auth()->user();
+        $this->authorizeAccess($user);
+
+        $roles = $user->isSuperAdmin() ? $this->roles() : $this->subUserRoles();
 
         return view('users.create', compact('roles'));
     }
 
     public function store(StoreUserRequest $request): RedirectResponse
     {
+        $user = auth()->user();
+        $this->authorizeAccess($user);
+
         $data = $request->validated();
         $data['password'] = bcrypt($data['password']);
+
+        if (! $user->isSuperAdmin()) {
+            // Tenant admin creates sub-users under themselves
+            $data['parent_id'] = $user->id;
+            // Prevent creating administrator-level or super admin accounts
+            if (($data['role'] ?? '') === 'administrator') {
+                $data['role'] = 'it_support';
+            }
+            unset($data['is_super_admin']);
+        }
 
         User::create($data);
 
         return redirect()->route('users.index')->with('status', 'Pengguna dibuat.');
     }
 
-    public function edit(User $user): View
+    public function edit(User $targetUser): View
     {
-        $roles = $this->roles();
+        $user = auth()->user();
+        $this->authorizeAccess($user);
+        $this->authorizeTarget($user, $targetUser);
 
-        return view('users.edit', compact('user', 'roles'));
+        $roles = $user->isSuperAdmin() ? $this->roles() : $this->subUserRoles();
+
+        return view('users.edit', ['user' => $targetUser, 'roles' => $roles]);
     }
 
-    public function update(UpdateUserRequest $request, User $user): RedirectResponse
+    public function update(UpdateUserRequest $request, User $targetUser): RedirectResponse
     {
+        $user = auth()->user();
+        $this->authorizeAccess($user);
+        $this->authorizeTarget($user, $targetUser);
+
         $data = $request->validated();
         if (! empty($data['password'])) {
             $data['password'] = bcrypt($data['password']);
@@ -83,14 +139,26 @@ class UserManagementController extends Controller
             unset($data['password']);
         }
 
-        $user->update($data);
+        if (! $user->isSuperAdmin()) {
+            // Tenant admin cannot change parent_id or promote to administrator
+            unset($data['parent_id'], $data['is_super_admin']);
+            if (($data['role'] ?? '') === 'administrator') {
+                unset($data['role']);
+            }
+        }
+
+        $targetUser->update($data);
 
         return redirect()->route('users.index')->with('status', 'Pengguna diperbarui.');
     }
 
-    public function destroy(User $user): JsonResponse|RedirectResponse
+    public function destroy(User $targetUser): JsonResponse|RedirectResponse
     {
-        $user->delete();
+        $user = auth()->user();
+        $this->authorizeAccess($user);
+        $this->authorizeTarget($user, $targetUser);
+
+        $targetUser->delete();
 
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Pengguna dihapus.']);
@@ -103,10 +171,20 @@ class UserManagementController extends Controller
     {
         return [
             'administrator' => 'Administrator',
+            'it_support'    => 'IT Support',
+            'noc'           => 'NOC',
+            'keuangan'      => 'Keuangan',
+            'mitra'         => 'Mitra',
+        ];
+    }
+
+    private function subUserRoles(): array
+    {
+        return [
             'it_support' => 'IT Support',
-            'noc' => 'NOC',
-            'keuangan' => 'Keuangan',
-            'mitra' => 'Mitra',
+            'noc'        => 'NOC',
+            'keuangan'   => 'Keuangan',
+            'mitra'      => 'Mitra',
         ];
     }
 }

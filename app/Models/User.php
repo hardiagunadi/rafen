@@ -30,6 +30,7 @@ class User extends Authenticatable
         'company_name',
         'address',
         'is_super_admin',
+        'parent_id',
         'subscription_status',
         'subscription_expires_at',
         'subscription_plan_id',
@@ -103,6 +104,16 @@ class User extends Authenticatable
         return $this->hasOne(TenantSettings::class);
     }
 
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'parent_id');
+    }
+
+    public function subUsers(): HasMany
+    {
+        return $this->hasMany(User::class, 'parent_id');
+    }
+
     public function mikrotikConnections(): HasMany
     {
         return $this->hasMany(MikrotikConnection::class, 'owner_id');
@@ -128,6 +139,16 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->is_super_admin === true;
+    }
+
+    public function isSubUser(): bool
+    {
+        return $this->parent_id !== null;
+    }
+
+    public function effectiveOwnerId(): int
+    {
+        return $this->parent_id ?? $this->id;
     }
 
     public function isAdmin(): bool
@@ -160,7 +181,15 @@ class User extends Authenticatable
 
     public function canAccessApp(): bool
     {
-        return $this->isSuperAdmin() || $this->hasActiveSubscription() || $this->isOnTrial();
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        if ($this->isSubUser()) {
+            return $this->parent?->canAccessApp() ?? false;
+        }
+
+        return $this->hasActiveSubscription() || $this->isOnTrial();
     }
 
     public function getSubscriptionDaysRemaining(): int

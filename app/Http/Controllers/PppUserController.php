@@ -151,10 +151,12 @@ class PppUserController extends Controller
      */
     public function create(): View
     {
+        $currentUser = auth()->user();
+
         return view('ppp_users.create', [
-            'owners' => User::query()->orderBy('name')->get(),
-            'groups' => ProfileGroup::query()->orderBy('name')->get(),
-            'profiles' => PppProfile::query()->orderBy('name')->get(),
+            'owners'   => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups'   => ProfileGroup::query()->orderBy('name')->get(),
+            'profiles' => PppProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
         ]);
     }
 
@@ -189,11 +191,17 @@ class PppUserController extends Controller
      */
     public function edit(PppUser $pppUser): View
     {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
         return view('ppp_users.edit', [
-            'pppUser' => $pppUser,
-            'owners' => User::query()->orderBy('name')->get(),
-            'groups' => ProfileGroup::query()->orderBy('name')->get(),
-            'profiles' => PppProfile::query()->orderBy('name')->get(),
+            'pppUser'  => $pppUser,
+            'owners'   => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups'   => ProfileGroup::query()->orderBy('name')->get(),
+            'profiles' => PppProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
         ]);
     }
 
@@ -231,6 +239,12 @@ class PppUserController extends Controller
      */
     public function destroy(PppUser $pppUser): JsonResponse|RedirectResponse
     {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
         $this->logActivity('deleted', 'PppUser', $pppUser->id, $pppUser->customer_name, (int) $pppUser->owner_id);
         $pppUser->delete();
 
@@ -243,12 +257,14 @@ class PppUserController extends Controller
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
+        $currentUser = auth()->user();
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
-            PppUser::query()->whereIn('id', $ids)->each(function (PppUser $u): void {
+            $query = PppUser::query()->whereIn('id', $ids)->accessibleBy($currentUser);
+            $query->each(function (PppUser $u): void {
                 $this->logActivity('deleted', 'PppUser', $u->id, $u->customer_name, (int) $u->owner_id);
             });
-            PppUser::query()->whereIn('id', $ids)->delete();
+            $query->delete();
         }
 
         if ($request->wantsJson()) {
