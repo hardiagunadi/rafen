@@ -61,27 +61,34 @@
                     @error('host')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
 
-                <div class="form-row">
+                <div class="form-row align-items-end">
                     <div class="form-group col-md-4">
                         <label>Port API
                             <span class="badge badge-warning ml-1" style="font-size:10px;" title="Port default 8728 mudah dipindai. Gunakan port custom di MikroTik untuk keamanan.">⚠ Keamanan</span>
                         </label>
                         <input type="number" name="api_port" value="{{ old('api_port', 8728) }}" class="form-control @error('api_port') is-invalid @enderror" placeholder="Contoh: 29412">
                         @error('api_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        <small class="text-muted">Default MikroTik: 8728. Disarankan ganti ke port random &gt;1024.</small>
+                        <small class="text-muted">Default: 8728</small>
                     </div>
-                    <div class="form-group col-md-4">
+                    <div class="form-group col-md-4" id="ssl-port-group" style="display:none">
                         <label>Port API SSL
                             <span class="badge badge-warning ml-1" style="font-size:10px;" title="Port default 8729 mudah dipindai. Gunakan port custom di MikroTik untuk keamanan.">⚠ Keamanan</span>
                         </label>
                         <input type="number" name="api_ssl_port" value="{{ old('api_ssl_port', 8729) }}" class="form-control @error('api_ssl_port') is-invalid @enderror" placeholder="Contoh: 29413">
                         @error('api_ssl_port')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        <small class="text-muted">Default MikroTik: 8729. Disarankan ganti ke port random &gt;1024.</small>
+                        <small class="text-muted">Default: 8729</small>
                     </div>
-                    <div class="form-group col-md-4">
+                    <div class="form-group col-md-2">
                         <label>Timeout (detik)</label>
                         <input type="number" name="api_timeout" value="{{ old('api_timeout', 10) }}" class="form-control @error('api_timeout') is-invalid @enderror">
                         @error('api_timeout')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="form-group col-md-2">
+                        <label class="d-block">Gunakan SSL</label>
+                        <div class="custom-control custom-switch mt-1">
+                            <input type="checkbox" class="custom-control-input" name="use_ssl" value="1" id="use_ssl" @checked(old('use_ssl'))>
+                            <label class="custom-control-label" for="use_ssl">SSL API</label>
+                        </div>
                     </div>
                 </div>
                 <div class="alert alert-warning py-2" id="api-port-warning" style="display:none;">
@@ -126,12 +133,6 @@
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group col-md-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="use_ssl" value="1" id="use_ssl" @checked(old('use_ssl'))>
-                            <label class="form-check-label" for="use_ssl">Gunakan SSL API</label>
-                        </div>
-                    </div>
                     <div class="form-group col-md-4">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="is_active" value="1" id="is_active" @checked(old('is_active', true))>
@@ -222,12 +223,22 @@
             checkApiPortWarning();
         });
 
+        // Toggle SSL port group
+        const sslToggle = document.getElementById('use_ssl');
+        const sslPortGroup = document.getElementById('ssl-port-group');
+        function toggleSslPort() {
+            sslPortGroup.style.display = sslToggle.checked ? '' : 'none';
+            checkApiPortWarning();
+        }
+        sslToggle.addEventListener('change', toggleSslPort);
+
         function checkApiPortWarning() {
             const apiPort = parseInt(document.querySelector('input[name="api_port"]').value, 10);
             const apiSslPort = parseInt(document.querySelector('input[name="api_ssl_port"]').value, 10);
             const warning = document.getElementById('api-port-warning');
             if (!warning) return;
-            warning.style.display = (apiPort === 8728 || apiSslPort === 8729) ? '' : 'none';
+            const sslActive = sslToggle.checked;
+            warning.style.display = (apiPort === 8728 || (sslActive && apiSslPort === 8729)) ? '' : 'none';
         }
 
         document.querySelector('input[name="api_port"]').addEventListener('input', checkApiPortWarning);

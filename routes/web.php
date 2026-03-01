@@ -110,8 +110,12 @@ Route::middleware('auth')->group(function () {
 
     Route::get('sessions/pppoe', [ActiveSessionController::class, 'pppoe'])->name('sessions.pppoe');
     Route::get('sessions/pppoe/datatable', [ActiveSessionController::class, 'pppoeDatatable'])->name('sessions.pppoe.datatable');
+    Route::get('sessions/pppoe-inactive', [ActiveSessionController::class, 'pppoeInactive'])->name('sessions.pppoe-inactive');
+    Route::get('sessions/pppoe-inactive/datatable', [ActiveSessionController::class, 'pppoeInactiveDatatable'])->name('sessions.pppoe-inactive.datatable');
     Route::get('sessions/hotspot', [ActiveSessionController::class, 'hotspot'])->name('sessions.hotspot');
     Route::get('sessions/hotspot/datatable', [ActiveSessionController::class, 'hotspotDatatable'])->name('sessions.hotspot.datatable');
+    Route::get('sessions/hotspot-inactive', [ActiveSessionController::class, 'hotspotInactive'])->name('sessions.hotspot-inactive');
+    Route::get('sessions/hotspot-inactive/datatable', [ActiveSessionController::class, 'hotspotInactiveDatatable'])->name('sessions.hotspot-inactive.datatable');
     Route::post('sessions/refresh-router/{connection}', [ActiveSessionController::class, 'refreshRouter'])->name('sessions.refresh-router');
     Route::post('sessions/refresh-all', [ActiveSessionController::class, 'refreshAll'])->name('sessions.refresh-all');
 

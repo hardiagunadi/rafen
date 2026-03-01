@@ -7,15 +7,12 @@ use App\Models\MikrotikConnection;
 use App\Models\PppUser;
 use App\Models\RadiusAccount;
 use App\Models\User;
-use App\Services\ActiveSessionFetcher;
-use App\Services\MikrotikApiClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Process;
 use Illuminate\View\View;
-use RuntimeException;
 
 class DashboardController extends Controller
 {
@@ -27,24 +24,9 @@ class DashboardController extends Controller
         $monthStart = $now->copy()->startOfMonth();
         $monthEnd = $now->copy()->endOfMonth();
 
-        // Sync realtime dari semua router yang online
         $routers = MikrotikConnection::query()
             ->accessibleBy($user)
             ->get();
-
-        foreach ($routers as $router) {
-            $fetcher = new ActiveSessionFetcher(new MikrotikApiClient($router));
-            try {
-                $fetcher->syncPpp($router);
-            } catch (RuntimeException) {
-                // PPPoE sync gagal — data lama tetap dipakai
-            }
-            try {
-                $fetcher->syncHotspot($router);
-            } catch (RuntimeException) {
-                // Hotspot sync gagal — data lama tetap dipakai
-            }
-        }
 
         $pppAccounts = RadiusAccount::query()
             ->accessibleBy($user)

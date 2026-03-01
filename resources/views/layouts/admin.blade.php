@@ -226,8 +226,8 @@
                             </li>
                         </ul>
                     </li>
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    <li class="nav-item has-treeview {{ request()->is('sessions*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->is('sessions*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-signal"></i>
                             <p>
                                 Session User
@@ -236,15 +236,27 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="{{ route('sessions.pppoe') }}" class="nav-link">
+                                <a href="{{ route('sessions.pppoe') }}" class="nav-link {{ request()->routeIs('sessions.pppoe') || request()->routeIs('sessions.pppoe.datatable') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>PPPoE</p>
+                                    <p>PPPoE Aktif</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('sessions.hotspot') }}" class="nav-link">
+                                <a href="{{ route('sessions.pppoe-inactive') }}" class="nav-link {{ request()->routeIs('sessions.pppoe-inactive*') ? 'active' : '' }}">
+                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
+                                    <p>PPPoE Tidak Aktif</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.hotspot') }}" class="nav-link {{ request()->routeIs('sessions.hotspot') || request()->routeIs('sessions.hotspot.datatable') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>Hotspot</p>
+                                    <p>Hotspot Aktif</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.hotspot-inactive') }}" class="nav-link {{ request()->routeIs('sessions.hotspot-inactive*') ? 'active' : '' }}">
+                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
+                                    <p>Hotspot Tidak Aktif</p>
                                 </a>
                             </li>
                         </ul>
