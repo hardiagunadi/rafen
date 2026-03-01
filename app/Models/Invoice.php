@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 
 class Invoice extends Model
 {
@@ -111,5 +112,26 @@ class Invoice extends Model
     public function getFormattedTotalAttribute(): string
     {
         return 'Rp ' . number_format($this->total, 0, ',', '.');
+    }
+
+    /**
+     * Generate nomor invoice berurutan per-tenant per-bulan.
+     * Format: PREFIX-YYYYMMnnnn  contoh: INV-2026030001
+     */
+    public static function generateNumber(int $ownerId, string $prefix): string
+    {
+        return DB::transaction(function () use ($ownerId, $prefix) {
+            $yearMonth = now()->format('Ym');
+            $pattern   = $prefix . '-' . $yearMonth . '%';
+
+            $last = static::where('owner_id', $ownerId)
+                ->where('invoice_number', 'like', $pattern)
+                ->lockForUpdate()
+                ->max('invoice_number');
+
+            $seq = $last ? ((int) substr($last, -4)) + 1 : 1;
+
+            return $prefix . '-' . $yearMonth . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+        });
     }
 }

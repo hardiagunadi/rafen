@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\PppProfile;
 use App\Models\PppUser;
 use App\Models\ProfileGroup;
+use App\Models\TenantSettings;
 use App\Models\User;
 use App\Traits\LogsActivity;
 use Carbon\Carbon;
@@ -442,7 +443,8 @@ class PppUserController extends Controller
         $ppnAmount = round($basePrice * ($ppnPercent / 100), 2);
         $total = $basePrice + $ppnAmount;
 
-        $invoiceNumber = $this->generateInvoiceNumber();
+        $prefix = TenantSettings::getOrCreate($user->owner_id)->invoice_prefix ?? 'INV';
+        $invoiceNumber = Invoice::generateNumber($user->owner_id, $prefix);
         $dueDate = $dueOverride
             ? $dueOverride
             : ($user->jatuh_tempo ? Carbon::parse($user->jatuh_tempo)->endOfDay() : now()->addMonthNoOverflow()->endOfDay());
@@ -464,15 +466,6 @@ class PppUserController extends Controller
             'due_date' => $dueDate,
             'status' => 'unpaid',
         ]);
-    }
-
-    private function generateInvoiceNumber(): string
-    {
-        do {
-            $number = 'INV-'.str_pad((string) random_int(0, 9999999), 7, '0', STR_PAD_LEFT);
-        } while (Invoice::where('invoice_number', $number)->exists());
-
-        return $number;
     }
 
     private function markInvoicePaid(PppUser $user): void

@@ -31,6 +31,14 @@
                         <textarea name="business_address" class="form-control" rows="3">{{ old('business_address', $settings->business_address) }}</textarea>
                     </div>
                     <div class="form-group">
+                        <label>NPWP</label>
+                        <input type="text" name="npwp" class="form-control" value="{{ old('npwp', $settings->npwp) }}" placeholder="xx.xxx.xxx.x-xxx.xxx">
+                    </div>
+                    <div class="form-group">
+                        <label>Website</label>
+                        <input type="url" name="website" class="form-control" value="{{ old('website', $settings->website) }}" placeholder="https://www.isp-anda.com">
+                    </div>
+                    <div class="form-group">
                         <label>Prefix Invoice</label>
                         <input type="text" name="invoice_prefix" class="form-control" value="{{ old('invoice_prefix', $settings->invoice_prefix) }}" maxlength="10">
                         <small class="text-muted">Contoh: INV, BILL, dll</small>
@@ -46,6 +54,38 @@
                     </button>
                 </div>
             </form>
+        </div>
+
+        <!-- Logo Upload -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Logo Bisnis</h3>
+            </div>
+            <div class="card-body">
+                @if($settings->business_logo)
+                    <div class="mb-3">
+                        <img src="{{ Storage::url($settings->business_logo) }}" alt="Logo Bisnis" style="max-height: 80px; max-width: 200px;">
+                        <p class="text-muted small mt-1">Logo saat ini</p>
+                    </div>
+                @else
+                    <p class="text-muted small">Belum ada logo. Upload logo untuk ditampilkan di invoice cetak.</p>
+                @endif
+                <form action="{{ route('tenant-settings.upload-logo') }}" method="POST" enctype="multipart/form-data">
+                    @csrf
+                    <div class="input-group">
+                        <div class="custom-file">
+                            <input type="file" class="custom-file-input" id="business_logo" name="business_logo" accept="image/*">
+                            <label class="custom-file-label" for="business_logo">Pilih gambar...</label>
+                        </div>
+                        <div class="input-group-append">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload"></i> Upload
+                            </button>
+                        </div>
+                    </div>
+                    <small class="text-muted">Format: JPG, PNG, GIF. Maks: 2MB.</small>
+                </form>
+            </div>
         </div>
 
         <!-- Bank Accounts -->

@@ -25,6 +25,8 @@ class TenantSettingsController extends Controller
             'business_phone' => 'nullable|string|max:20',
             'business_email' => 'nullable|email|max:255',
             'business_address' => 'nullable|string|max:1000',
+            'npwp' => 'nullable|string|max:30',
+            'website' => 'nullable|url|max:255',
             'invoice_prefix' => 'nullable|string|max:10',
             'invoice_footer' => 'nullable|string|max:1000',
             'invoice_notes' => 'nullable|string|max:1000',

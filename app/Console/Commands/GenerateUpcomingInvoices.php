@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Invoice;
 use App\Models\PppUser;
+use App\Models\TenantSettings;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 
@@ -32,7 +33,7 @@ class GenerateUpcomingInvoices extends Command
             ->where('status_bayar', 'belum_bayar')
             ->whereNotNull('jatuh_tempo')
             ->where('jatuh_tempo', '<=', $windowEnd->toDateString())
-            ->with(['profile', 'invoices' => fn ($q) => $q->where('status', 'unpaid')])
+            ->with(['profile', 'owner', 'invoices' => fn ($q) => $q->where('status', 'unpaid')])
             ->get();
 
         $generated = 0;
@@ -85,8 +86,10 @@ class GenerateUpcomingInvoices extends Command
         $total      = $basePrice + $ppnAmount;
         $dueDate    = Carbon::parse($user->jatuh_tempo)->endOfDay();
 
+        $prefix = TenantSettings::getOrCreate($user->owner_id)->invoice_prefix ?? 'INV';
+
         Invoice::create([
-            'invoice_number'  => $this->generateInvoiceNumber(),
+            'invoice_number'  => Invoice::generateNumber($user->owner_id, $prefix),
             'ppp_user_id'     => $user->id,
             'ppp_profile_id'  => $user->ppp_profile_id,
             'owner_id'        => $user->owner_id,
@@ -104,12 +107,4 @@ class GenerateUpcomingInvoices extends Command
         ]);
     }
 
-    private function generateInvoiceNumber(): string
-    {
-        do {
-            $number = 'INV-'.str_pad((string) random_int(0, 9999999), 7, '0', STR_PAD_LEFT);
-        } while (Invoice::where('invoice_number', $number)->exists());
-
-        return $number;
-    }
 }

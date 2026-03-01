@@ -17,6 +17,8 @@ class TenantSettings extends Model
         'business_phone',
         'business_email',
         'business_address',
+        'npwp',
+        'website',
         'invoice_prefix',
         'invoice_footer',
         'invoice_notes',

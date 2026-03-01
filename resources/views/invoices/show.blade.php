@@ -9,6 +9,9 @@
             <div class="card-header">
                 <h3 class="card-title">Detail Invoice</h3>
                 <div class="card-tools">
+                    <a href="{{ route('invoices.print', $invoice) }}" target="_blank" class="btn btn-sm btn-default mr-1">
+                        <i class="fas fa-print"></i> Cetak
+                    </a>
                     @if($invoice->isUnpaid())
                         <span class="badge badge-warning">Belum Dibayar</span>
                     @else

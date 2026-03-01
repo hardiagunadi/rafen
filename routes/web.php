@@ -71,6 +71,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');
     Route::resource('hotspot-profiles', HotspotProfileController::class);
     Route::get('invoices/datatable', [InvoiceController::class, 'datatable'])->name('invoices.datatable');
+    Route::get('invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::patch('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
