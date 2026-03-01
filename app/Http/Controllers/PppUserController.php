@@ -9,6 +9,7 @@ use App\Models\PppProfile;
 use App\Models\PppUser;
 use App\Models\ProfileGroup;
 use App\Models\User;
+use App\Traits\LogsActivity;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +19,7 @@ use Illuminate\View\View;
 
 class PppUserController extends Controller
 {
+    use LogsActivity;
     public function datatable(Request $request): JsonResponse
     {
         $currentUser = $request->user();
@@ -168,6 +170,8 @@ class PppUserController extends Controller
             $this->createInvoiceForUser($user);
         }
 
+        $this->logActivity('created', 'PppUser', $user->id, $user->customer_name, (int) $user->owner_id);
+
         return redirect()->route('ppp-users.index')->with('status', 'User PPP ditambahkan.');
     }
 
@@ -216,6 +220,8 @@ class PppUserController extends Controller
             $this->markInvoicePaid($pppUser);
         }
 
+        $this->logActivity('updated', 'PppUser', $pppUser->id, $pppUser->customer_name, (int) $pppUser->owner_id);
+
         return redirect()->route('ppp-users.index')->with('status', 'User PPP diperbarui.');
     }
 
@@ -224,6 +230,7 @@ class PppUserController extends Controller
      */
     public function destroy(PppUser $pppUser): JsonResponse|RedirectResponse
     {
+        $this->logActivity('deleted', 'PppUser', $pppUser->id, $pppUser->customer_name, (int) $pppUser->owner_id);
         $pppUser->delete();
 
         if (request()->wantsJson()) {
@@ -237,6 +244,9 @@ class PppUserController extends Controller
     {
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
+            PppUser::query()->whereIn('id', $ids)->each(function (PppUser $u): void {
+                $this->logActivity('deleted', 'PppUser', $u->id, $u->customer_name, (int) $u->owner_id);
+            });
             PppUser::query()->whereIn('id', $ids)->delete();
         }
 

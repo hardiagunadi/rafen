@@ -32,28 +32,13 @@ class ActiveSessionController extends Controller
             }
         }
 
-        $sessions = RadiusAccount::query()
-            ->where('service', 'pppoe')
-            ->where('is_active', true)
-            ->with('mikrotikConnection')
-            ->accessibleBy($user)
-            ->when($request->router_id, fn ($q) => $q->where('mikrotik_connection_id', $request->router_id))
-            ->addSelect([
-                'radius_accounts.*',
-                DB::raw('(SELECT acctinputoctets FROM radacct WHERE radacct.username = radius_accounts.username AND radacct.acctstoptime IS NULL ORDER BY acctstarttime DESC LIMIT 1) as bytes_in'),
-                DB::raw('(SELECT acctoutputoctets FROM radacct WHERE radacct.username = radius_accounts.username AND radacct.acctstoptime IS NULL ORDER BY acctstarttime DESC LIMIT 1) as bytes_out'),
-            ])
-            ->orderByDesc('updated_at')
-            ->paginate(50)
-            ->withQueryString();
-
         $total = RadiusAccount::query()
             ->where('service', 'pppoe')
             ->where('is_active', true)
             ->accessibleBy($user)
             ->count();
 
-        return view('sessions.pppoe', compact('sessions', 'routers', 'total'));
+        return view('sessions.pppoe', compact('routers', 'total'));
     }
 
     public function hotspot(Request $request): View
@@ -74,23 +59,104 @@ class ActiveSessionController extends Controller
             }
         }
 
-        $sessions = RadiusAccount::query()
-            ->where('service', 'hotspot')
-            ->where('is_active', true)
-            ->with('mikrotikConnection')
-            ->accessibleBy($user)
-            ->when($request->router_id, fn ($q) => $q->where('mikrotik_connection_id', $request->router_id))
-            ->orderByDesc('updated_at')
-            ->paginate(50)
-            ->withQueryString();
-
         $total = RadiusAccount::query()
             ->where('service', 'hotspot')
             ->where('is_active', true)
             ->accessibleBy($user)
             ->count();
 
-        return view('sessions.hotspot', compact('sessions', 'routers', 'total'));
+        return view('sessions.hotspot', compact('routers', 'total'));
+    }
+
+    public function pppoeDatatable(Request $request): JsonResponse
+    {
+        $user   = auth()->user();
+        $search = $request->input('search.value', '');
+
+        $query = RadiusAccount::query()
+            ->where('service', 'pppoe')
+            ->where('is_active', true)
+            ->with('mikrotikConnection')
+            ->accessibleBy($user)
+            ->when($request->filled('router_id'), fn($q) => $q->where('mikrotik_connection_id', $request->router_id))
+            ->addSelect([
+                'radius_accounts.*',
+                DB::raw('(SELECT acctinputoctets FROM radacct WHERE radacct.username = radius_accounts.username AND radacct.acctstoptime IS NULL ORDER BY acctstarttime DESC LIMIT 1) as bytes_in'),
+                DB::raw('(SELECT acctoutputoctets FROM radacct WHERE radacct.username = radius_accounts.username AND radacct.acctstoptime IS NULL ORDER BY acctstarttime DESC LIMIT 1) as bytes_out'),
+            ])
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('radius_accounts.username', 'like', "%{$search}%")
+                   ->orWhere('radius_accounts.ipv4_address', 'like', "%{$search}%")
+                   ->orWhere('radius_accounts.caller_id', 'like', "%{$search}%");
+            }))
+            ->orderByDesc('radius_accounts.updated_at');
+
+        $total    = RadiusAccount::where('service', 'pppoe')->where('is_active', true)->accessibleBy($user)->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'id'         => $r->id,
+                'username'   => $r->username,
+                'ipv4'       => $r->ipv4_address ?? '-',
+                'uptime'     => $r->uptime ?? '-',
+                'caller_id'  => $r->caller_id ?? '-',
+                'bytes_in'   => $r->bytes_in ? number_format($r->bytes_in / 1073741824, 2).' GB' : '-',
+                'bytes_out'  => $r->bytes_out ? number_format($r->bytes_out / 1073741824, 2).' GB' : '-',
+                'profile'    => $r->profile ?? '-',
+                'router'     => $r->mikrotikConnection?->name ?? '-',
+                'updated_at' => $r->updated_at?->diffForHumans() ?? '-',
+            ]),
+        ]);
+    }
+
+    public function hotspotDatatable(Request $request): JsonResponse
+    {
+        $user   = auth()->user();
+        $search = $request->input('search.value', '');
+
+        $query = RadiusAccount::query()
+            ->where('service', 'hotspot')
+            ->where('is_active', true)
+            ->with('mikrotikConnection')
+            ->accessibleBy($user)
+            ->when($request->filled('router_id'), fn($q) => $q->where('mikrotik_connection_id', $request->router_id))
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('username', 'like', "%{$search}%")
+                   ->orWhere('ipv4_address', 'like', "%{$search}%")
+                   ->orWhere('caller_id', 'like', "%{$search}%");
+            }))
+            ->orderByDesc('updated_at');
+
+        $total    = RadiusAccount::where('service', 'hotspot')->where('is_active', true)->accessibleBy($user)->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'id'          => $r->id,
+                'username'    => $r->username,
+                'ipv4'        => $r->ipv4_address ?? '-',
+                'caller_id'   => $r->caller_id ?? '-',
+                'uptime'      => $r->uptime ?? '-',
+                'bytes_in'    => $r->bytes_in ? number_format($r->bytes_in / 1073741824, 2).' GB' : '-',
+                'bytes_out'   => $r->bytes_out ? number_format($r->bytes_out / 1073741824, 2).' GB' : '-',
+                'server_name' => $r->server_name ?? '-',
+                'router'      => $r->mikrotikConnection?->name ?? '-',
+                'updated_at'  => $r->updated_at?->diffForHumans() ?? '-',
+            ]),
+        ]);
     }
 
     public function refreshRouter(Request $request, MikrotikConnection $connection): JsonResponse

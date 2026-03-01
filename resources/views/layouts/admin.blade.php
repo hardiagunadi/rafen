@@ -187,25 +187,25 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('logs.login') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log Login</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('logs.activity') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log Aktivitas</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('logs.bg-process') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log BG Process</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('logs.radius-auth') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log Auth Radius</p>
                                 </a>
@@ -214,7 +214,7 @@
                                 <hr class="mt-1 mb-1">
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('logs.wa-blast') }}" class="nav-link">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log WA Blast</p>
                                 </a>
@@ -249,6 +249,41 @@
                             <i class="nav-icon fas fa-server"></i>
                             <p>Router (NAS)</p>
                         </a>
+                    </li>
+                    <li class="nav-item has-treeview">
+                        <a href="#" class="nav-link">
+                            <i class="nav-icon fas fa-box"></i>
+                            <p>
+                                Profil Paket
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Bandwidth</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('profile-groups.index') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Profil Group</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('hotspot-profiles.index') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Profil Hotspot</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('ppp-profiles.index') }}" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Profil PPP</p>
+                                </a>
+                            </li>
+                        </ul>
                     </li>
                     <li class="nav-item has-treeview">
                         <a href="#" class="nav-link">
@@ -382,41 +417,6 @@
                         </a>
                     </li>
                     @endif
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
-                            <i class="nav-icon fas fa-box"></i>
-                            <p>
-                                Profil Paket
-                                <i class="right fas fa-angle-left"></i>
-                            </p>
-                        </a>
-                        <ul class="nav nav-treeview">
-                            <li class="nav-item">
-                                <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Bandwidth</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('profile-groups.index') }}" class="nav-link">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil Group</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('hotspot-profiles.index') }}" class="nav-link">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil Hotspot</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('ppp-profiles.index') }}" class="nav-link">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil PPP</p>
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
                     <li class="nav-item">
                         <a href="{{ route('help.index') }}" class="nav-link">
                             <i class="nav-icon fas fa-question-circle"></i>

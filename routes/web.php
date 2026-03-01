@@ -38,26 +38,47 @@ Route::middleware('auth')->group(function () {
     Route::get('api-dashboard', [DashboardController::class, 'apiDashboard'])->name('dashboard.api');
     Route::get('api-dashboard/data', [DashboardController::class, 'apiDashboardData'])->name('dashboard.api.data');
     Route::get('reports/income', IncomeReportController::class)->name('reports.income');
+
+    // Log Aplikasi
+    Route::prefix('logs')->name('logs.')->group(function () {
+        Route::get('login', [\App\Http\Controllers\LogController::class, 'loginIndex'])->name('login');
+        Route::get('login/datatable', [\App\Http\Controllers\LogController::class, 'loginDatatable'])->name('login.datatable');
+        Route::get('activity', [\App\Http\Controllers\LogController::class, 'activityIndex'])->name('activity');
+        Route::get('activity/data', [\App\Http\Controllers\LogController::class, 'activityData'])->name('activity.data');
+        Route::get('bg-process', [\App\Http\Controllers\LogController::class, 'bgProcessIndex'])->name('bg-process');
+        Route::get('bg-process/datatable', [\App\Http\Controllers\LogController::class, 'bgProcessDatatable'])->name('bg-process.datatable');
+        Route::get('radius-auth', [\App\Http\Controllers\LogController::class, 'radiusAuthIndex'])->name('radius-auth');
+        Route::get('radius-auth/datatable', [\App\Http\Controllers\LogController::class, 'radiusAuthDatatable'])->name('radius-auth.datatable');
+        Route::get('wa-blast', [\App\Http\Controllers\LogController::class, 'waBlastIndex'])->name('wa-blast');
+    });
     Route::post('mikrotik-connections/test', [MikrotikConnectionController::class, 'test'])->name('mikrotik-connections.test');
     Route::post('mikrotik-connections/{mikrotikConnection}/ping', [MikrotikConnectionController::class, 'pingNow'])->name('mikrotik-connections.ping-now');
     Route::post('mikrotik-connections/radius-sync-clients', [MikrotikConnectionController::class, 'syncRadiusClients'])->name('mikrotik-connections.radius-sync-clients');
+    Route::get('mikrotik-connections/datatable', [MikrotikConnectionController::class, 'datatable'])->name('mikrotik-connections.datatable');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
     Route::resource('mikrotik-connections', MikrotikConnectionController::class);
+    Route::get('radius-accounts/datatable', [RadiusAccountController::class, 'datatable'])->name('radius-accounts.datatable');
     Route::resource('radius-accounts', RadiusAccountController::class);
+    Route::get('bandwidth-profiles/datatable', [BandwidthProfileController::class, 'datatable'])->name('bandwidth-profiles.datatable');
     Route::delete('bandwidth-profiles/bulk-destroy', [BandwidthProfileController::class, 'bulkDestroy'])->name('bandwidth-profiles.bulk-destroy');
     Route::resource('bandwidth-profiles', BandwidthProfileController::class);
     Route::post('profile-groups/{profileGroup}/export', [ProfileGroupController::class, 'export'])->name('profile-groups.export');
     Route::post('profile-groups/export-bulk', [ProfileGroupController::class, 'bulkExport'])->name('profile-groups.export-bulk');
     Route::delete('profile-groups/bulk-destroy', [ProfileGroupController::class, 'bulkDestroy'])->name('profile-groups.bulk-destroy');
+    Route::get('profile-groups/datatable', [ProfileGroupController::class, 'datatable'])->name('profile-groups.datatable');
     Route::resource('profile-groups', ProfileGroupController::class);
     Route::get('hotspot-profiles/datatable', [HotspotProfileController::class, 'datatable'])->name('hotspot-profiles.datatable');
     Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');
     Route::resource('hotspot-profiles', HotspotProfileController::class);
+    Route::get('invoices/datatable', [InvoiceController::class, 'datatable'])->name('invoices.datatable');
+    Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::patch('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
     Route::patch('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
     Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
+    Route::get('users/datatable', [UserManagementController::class, 'datatable'])->name('users.datatable');
     Route::resource('users', UserManagementController::class);
+    Route::get('ppp-profiles/datatable', [\App\Http\Controllers\PppProfileController::class, 'datatable'])->name('ppp-profiles.datatable');
     Route::get('settings/freeradius', [FreeRadiusSettingsController::class, 'index'])->name('settings.freeradius');
     Route::post('settings/freeradius/sync', [FreeRadiusSettingsController::class, 'sync'])->name('settings.freeradius.sync');
     Route::get('settings/wg', [WgSettingsController::class, 'index'])->name('settings.wg');
@@ -86,13 +107,16 @@ Route::middleware('auth')->group(function () {
     Route::get('help/{slug}', [HelpController::class, 'topic'])->name('help.topic');
 
     Route::get('sessions/pppoe', [ActiveSessionController::class, 'pppoe'])->name('sessions.pppoe');
+    Route::get('sessions/pppoe/datatable', [ActiveSessionController::class, 'pppoeDatatable'])->name('sessions.pppoe.datatable');
     Route::get('sessions/hotspot', [ActiveSessionController::class, 'hotspot'])->name('sessions.hotspot');
+    Route::get('sessions/hotspot/datatable', [ActiveSessionController::class, 'hotspotDatatable'])->name('sessions.hotspot.datatable');
     Route::post('sessions/refresh-router/{connection}', [ActiveSessionController::class, 'refreshRouter'])->name('sessions.refresh-router');
     Route::post('sessions/refresh-all', [ActiveSessionController::class, 'refreshAll'])->name('sessions.refresh-all');
 
     // Subscription routes for tenants
     Route::prefix('subscription')->name('subscription.')->group(function () {
         Route::get('/', [SubscriptionController::class, 'index'])->name('index');
+        Route::get('/subscriptions/datatable', [SubscriptionController::class, 'subscriptionsDatatable'])->name('subscriptions-datatable');
         Route::get('/plans', [SubscriptionController::class, 'plans'])->name('plans');
         Route::post('/subscribe/{plan}', [SubscriptionController::class, 'subscribe'])->name('subscribe');
         Route::get('/payment/{subscription}', [SubscriptionController::class, 'payment'])->name('payment');
@@ -100,6 +124,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/expired', [SubscriptionController::class, 'expired'])->name('expired');
         Route::post('/renew', [SubscriptionController::class, 'renew'])->name('renew');
         Route::get('/history', [SubscriptionController::class, 'history'])->name('history');
+        Route::get('/history/datatable', [SubscriptionController::class, 'historyDatatable'])->name('history-datatable');
     });
 
     // Payment routes

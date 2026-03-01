@@ -10,6 +10,7 @@ use App\Services\MikrotikPingService;
 use App\Services\RadiusClientsSynchronizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
@@ -26,15 +27,69 @@ class MikrotikConnectionController extends Controller
      */
     public function index(): View
     {
-        $user = auth()->user();
+        return view('mikrotik_connections.index');
+    }
 
-        $connections = MikrotikConnection::query()
+    public function datatable(Request $request): JsonResponse
+    {
+        $user   = auth()->user();
+        $search = $request->input('search.value', '');
+        $staleSeconds = (int) config('ping.stale_seconds', 600);
+
+        $query = MikrotikConnection::query()
             ->accessibleBy($user)
             ->withCount('radiusAccounts')
-            ->latest()
-            ->paginate(10);
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('name', 'like', "%{$search}%")
+                   ->orWhere('host', 'like', "%{$search}%");
+            }))
+            ->latest();
 
-        return view('mikrotik_connections.index', compact('connections'));
+        $total    = MikrotikConnection::query()->accessibleBy($user)->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(function ($r) use ($staleSeconds) {
+                $isStale = $r->last_ping_at && $r->last_ping_at->diffInSeconds(now()) > $staleSeconds;
+
+                if ($r->is_online === null) {
+                    $pingStatus = 'Belum Dicek';
+                    $pingClass  = 'badge-secondary';
+                } elseif ($isStale) {
+                    $pingStatus = 'Tidak Terhubung';
+                    $pingClass  = 'badge-danger';
+                } elseif ($r->ping_unstable) {
+                    $pingStatus = 'Tidak Stabil';
+                    $pingClass  = 'badge-warning';
+                } elseif ($r->is_online) {
+                    $pingStatus = 'Terhubung';
+                    $pingClass  = 'badge-success';
+                } else {
+                    $pingStatus = 'Tidak Terhubung';
+                    $pingClass  = 'badge-danger';
+                }
+
+                return [
+                    'id'               => $r->id,
+                    'name'             => $r->name,
+                    'host'             => $r->host,
+                    'ping_status'      => $pingStatus,
+                    'ping_class'       => $pingClass,
+                    'ping_message'     => $r->last_ping_message ?? '-',
+                    'last_ping_at'     => $r->last_ping_at?->format('Y-m-d H:i:s') ?? '-',
+                    'radius_count'     => $r->radius_accounts_count,
+                    'api_url'          => route('dashboard.api').'?connection_id='.$r->id,
+                    'edit_url'         => route('mikrotik-connections.edit', $r->id),
+                    'destroy_url'      => route('mikrotik-connections.destroy', $r->id),
+                ];
+            }),
+        ]);
     }
 
     /**

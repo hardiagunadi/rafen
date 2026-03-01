@@ -22,10 +22,45 @@ class ProfileGroupController extends Controller
      */
     public function index(): View
     {
-        $groups = ProfileGroup::query()->with('mikrotikConnection')->latest()->paginate(10);
         $mikrotikConnections = MikrotikConnection::query()->orderBy('name')->get();
 
-        return view('profile_groups.index', compact('groups', 'mikrotikConnections'));
+        return view('profile_groups.index', compact('mikrotikConnections'));
+    }
+
+    public function datatable(Request $request): JsonResponse
+    {
+        $search = $request->input('search.value', '');
+
+        $query = ProfileGroup::query()
+            ->with('mikrotikConnection')
+            ->when($search !== '', fn($q) => $q->where('name', 'like', "%{$search}%"))
+            ->latest();
+
+        $total    = ProfileGroup::count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'id'           => $r->id,
+                'name'         => $r->name,
+                'owner'        => $r->owner ?? '-',
+                'router'       => $r->mikrotikConnection?->name ?? 'Semua Router',
+                'type'         => strtoupper($r->type),
+                'ip_pool_mode' => $r->ip_pool_mode === 'sql' ? 'SQL IP Pool' : 'Group Only',
+                'pool_info'    => $r->ip_pool_mode === 'group_only'
+                    ? ($r->ip_pool_name ?? '-')
+                    : ($r->ip_address ? $r->ip_address.'/'.$r->netmask : '-'),
+                'edit_url'     => route('profile-groups.edit', $r->id),
+                'destroy_url'  => route('profile-groups.destroy', $r->id),
+                'export_url'   => route('profile-groups.export', $r->id),
+            ]),
+        ]);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Invoice;
+use App\Traits\LogsActivity;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -11,18 +12,57 @@ use Illuminate\View\View;
 
 class InvoiceController extends Controller
 {
+    use LogsActivity;
     public function index(Request $request): View
     {
-        $user = $request->user();
+        return view('invoices.index');
+    }
 
-        $query = Invoice::query()->with(['pppUser.profile', 'owner']);
+    public function datatable(Request $request): JsonResponse
+    {
+        $user   = $request->user();
+        $search = $request->input('search.value', '');
 
-        // Apply tenant data isolation
-        $query->accessibleBy($user);
+        $query = Invoice::query()
+            ->with(['pppUser.profile', 'owner'])
+            ->accessibleBy($user)
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('invoice_number', 'like', "%{$search}%")
+                   ->orWhere('customer_name', 'like', "%{$search}%")
+                   ->orWhere('customer_id', 'like', "%{$search}%");
+            }))
+            ->orderByDesc('created_at');
 
-        $invoices = $query->latest()->paginate(15);
+        $total    = Invoice::query()->accessibleBy($user)->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
 
-        return view('invoices.index', compact('invoices'));
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'id'              => $r->id,
+                'invoice_number'  => $r->invoice_number,
+                'customer_id'     => $r->customer_id ?? '-',
+                'customer_name'   => $r->customer_name ?? '-',
+                'tipe_service'    => strtoupper(str_replace('_', '/', $r->tipe_service ?? '')),
+                'paket_langganan' => $r->paket_langganan ?? '-',
+                'total'           => number_format($r->total, 0, ',', '.'),
+                'due_date'        => $r->due_date ? \Carbon\Carbon::parse($r->due_date)->format('Y-m-d') : '-',
+                'owner_name'      => $r->owner?->name ?? '-',
+                'status'          => $r->status,
+                'can_pay'         => $r->status === 'unpaid',
+                'can_renew'       => $r->status === 'unpaid' && $r->created_at->equalTo($r->updated_at),
+                'pay_url'         => route('invoices.pay', $r->id),
+                'renew_url'       => route('invoices.renew', $r->id),
+                'destroy_url'     => route('invoices.destroy', $r->id),
+                'show_url'        => route('invoices.show', $r->id),
+            ]),
+        ]);
     }
 
     public function show(Invoice $invoice): View
@@ -50,6 +90,8 @@ class InvoiceController extends Controller
                 'jatuh_tempo' => $this->extendDueDate($invoice),
             ]);
         }
+
+        $this->logActivity('paid', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
 
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Invoice dibayar.']);
@@ -87,6 +129,8 @@ class InvoiceController extends Controller
             ]);
         }
 
+        $this->logActivity('renewed', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
+
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Layanan diperpanjang, status bayar tetap BELUM BAYAR.']);
         }
@@ -96,6 +140,7 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice): JsonResponse|RedirectResponse
     {
+        $this->logActivity('deleted', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
         $pppUser = $invoice->pppUser;
         $invoice->delete();
 

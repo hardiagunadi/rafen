@@ -8,20 +8,56 @@ use App\Models\BandwidthProfile;
 use App\Models\PppProfile;
 use App\Models\ProfileGroup;
 use App\Models\User;
+use App\Traits\LogsActivity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class PppProfileController extends Controller
 {
+    use LogsActivity;
     /**
      * Display a listing of the resource.
      */
     public function index(): View
     {
-        $profiles = PppProfile::query()->with(['owner', 'profileGroup', 'bandwidthProfile'])->latest()->paginate(10);
+        return view('ppp_profiles.index');
+    }
 
-        return view('ppp_profiles.index', compact('profiles'));
+    public function datatable(Request $request): JsonResponse
+    {
+        $search = $request->input('search.value', '');
+
+        $query = PppProfile::query()
+            ->with(['owner', 'profileGroup', 'bandwidthProfile'])
+            ->when($search !== '', fn($q) => $q->where('name', 'like', "%{$search}%"))
+            ->latest();
+
+        $total    = PppProfile::count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'id'          => $r->id,
+                'name'        => $r->name,
+                'owner_name'  => $r->owner?->name ?? '-',
+                'harga_modal' => number_format($r->harga_modal, 0, ',', '.'),
+                'harga_promo' => number_format($r->harga_promo, 0, ',', '.'),
+                'ppn'         => number_format($r->ppn, 2).'%',
+                'group_name'  => $r->profileGroup?->name ?? '-',
+                'bandwidth'   => $r->bandwidthProfile?->name ?? '-',
+                'masa_aktif'  => $r->masa_aktif.' '.$r->satuan,
+                'edit_url'    => route('ppp-profiles.edit', $r->id),
+                'destroy_url' => route('ppp-profiles.destroy', $r->id),
+            ]),
+        ]);
     }
 
     /**
@@ -41,7 +77,9 @@ class PppProfileController extends Controller
      */
     public function store(StorePppProfileRequest $request): RedirectResponse
     {
-        PppProfile::create($request->validated());
+        $profile = PppProfile::create($request->validated());
+
+        $this->logActivity('created', 'PppProfile', $profile->id, $profile->name, (int) $profile->owner_id);
 
         return redirect()->route('ppp-profiles.index')->with('status', 'Profil PPP ditambahkan.');
     }
@@ -74,6 +112,8 @@ class PppProfileController extends Controller
     {
         $pppProfile->update($request->validated());
 
+        $this->logActivity('updated', 'PppProfile', $pppProfile->id, $pppProfile->name, (int) $pppProfile->owner_id);
+
         return redirect()->route('ppp-profiles.index')->with('status', 'Profil PPP diperbarui.');
     }
 
@@ -82,6 +122,7 @@ class PppProfileController extends Controller
      */
     public function destroy(PppProfile $pppProfile): JsonResponse|RedirectResponse
     {
+        $this->logActivity('deleted', 'PppProfile', $pppProfile->id, $pppProfile->name, (int) $pppProfile->owner_id);
         $pppProfile->delete();
 
         if (request()->wantsJson()) {
@@ -95,6 +136,9 @@ class PppProfileController extends Controller
     {
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
+            PppProfile::query()->whereIn('id', $ids)->each(function (PppProfile $p): void {
+                $this->logActivity('deleted', 'PppProfile', $p->id, $p->name, (int) $p->owner_id);
+            });
             PppProfile::query()->whereIn('id', $ids)->delete();
         }
 

@@ -13,15 +13,47 @@ class SubscriptionController extends Controller
     {
         $user = $request->user();
 
-        $subscriptions = $user->subscriptions()
-            ->with('plan')
-            ->orderByDesc('created_at')
-            ->paginate(10);
-
         $currentSubscription = $user->activeSubscription;
         $plans = SubscriptionPlan::active()->orderBy('sort_order')->get();
 
-        return view('subscription.index', compact('subscriptions', 'currentSubscription', 'plans', 'user'));
+        return view('subscription.index', compact('currentSubscription', 'plans', 'user'));
+    }
+
+    public function subscriptionsDatatable(Request $request)
+    {
+        $user   = $request->user();
+        $search = $request->input('search.value', '');
+
+        $query = $user->subscriptions()
+            ->with('plan')
+            ->when($search !== '', fn($q) => $q->whereHas('plan', fn($q2) => $q2->where('name', 'like', "%{$search}%")))
+            ->orderByDesc('created_at');
+
+        $total    = $user->subscriptions()->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 10)))
+            ->get();
+
+        $statusLabels = [
+            'active'    => '<span class="badge badge-success">Aktif</span>',
+            'pending'   => '<span class="badge badge-warning">Menunggu Pembayaran</span>',
+            'expired'   => '<span class="badge badge-secondary">Berakhir</span>',
+            'cancelled' => '<span class="badge badge-danger">Dibatalkan</span>',
+        ];
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'plan'       => $r->plan->name ?? '-',
+                'start_date' => $r->start_date->format('d M Y'),
+                'end_date'   => $r->end_date->format('d M Y'),
+                'status'     => $statusLabels[$r->status] ?? $r->status,
+                'amount'     => 'Rp '.number_format($r->amount_paid, 0, ',', '.'),
+            ]),
+        ]);
     }
 
     public function plans()
@@ -164,14 +196,48 @@ class SubscriptionController extends Controller
 
     public function history(Request $request)
     {
-        $user = $request->user();
+        return view('subscription.history');
+    }
 
-        $payments = $user->payments()
+    public function historyDatatable(Request $request)
+    {
+        $user   = $request->user();
+        $search = $request->input('search.value', '');
+
+        $query = $user->payments()
             ->where('payment_type', 'subscription')
             ->with('subscription.plan')
-            ->orderByDesc('created_at')
-            ->paginate(20);
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('payment_number', 'like', "%{$search}%")
+                   ->orWhere('payment_channel', 'like', "%{$search}%");
+            }))
+            ->orderByDesc('created_at');
 
-        return view('subscription.history', compact('payments'));
+        $total    = $user->payments()->where('payment_type', 'subscription')->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        $statusLabels = [
+            'paid'    => '<span class="badge badge-success">Dibayar</span>',
+            'pending' => '<span class="badge badge-warning">Menunggu</span>',
+            'expired' => '<span class="badge badge-secondary">Kedaluwarsa</span>',
+            'failed'  => '<span class="badge badge-danger">Gagal</span>',
+        ];
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'payment_number'   => $r->payment_number,
+                'plan'             => $r->subscription?->plan?->name ?? '-',
+                'payment_channel'  => $r->payment_channel ?? '-',
+                'total_amount'     => 'Rp '.number_format($r->total_amount, 0, ',', '.'),
+                'status'           => $statusLabels[$r->status] ?? $r->status,
+                'created_at'       => $r->created_at->format('d M Y H:i'),
+            ]),
+        ]);
     }
 }

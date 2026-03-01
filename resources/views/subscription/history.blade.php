@@ -7,8 +7,8 @@
     <div class="card-header">
         <h3 class="card-title">Riwayat Pembayaran Langganan</h3>
     </div>
-    <div class="card-body table-responsive p-0">
-        <table class="table table-hover text-nowrap">
+    <div class="card-body p-0">
+        <table id="dt-history" class="table table-hover text-nowrap mb-0 w-100">
             <thead>
                 <tr>
                     <th>No. Pembayaran</th>
@@ -19,43 +19,44 @@
                     <th>Tanggal</th>
                 </tr>
             </thead>
-            <tbody>
-                @forelse($payments as $payment)
-                <tr>
-                    <td>{{ $payment->payment_number }}</td>
-                    <td>{{ $payment->subscription?->plan?->name ?? '-' }}</td>
-                    <td>{{ $payment->payment_channel ?? '-' }}</td>
-                    <td>Rp {{ number_format($payment->total_amount, 0, ',', '.') }}</td>
-                    <td>
-                        @switch($payment->status)
-                            @case('paid')
-                                <span class="badge badge-success">Dibayar</span>
-                                @break
-                            @case('pending')
-                                <span class="badge badge-warning">Menunggu</span>
-                                @break
-                            @case('expired')
-                                <span class="badge badge-secondary">Kedaluwarsa</span>
-                                @break
-                            @case('failed')
-                                <span class="badge badge-danger">Gagal</span>
-                                @break
-                        @endswitch
-                    </td>
-                    <td>{{ $payment->created_at->format('d M Y H:i') }}</td>
-                </tr>
-                @empty
-                <tr>
-                    <td colspan="6" class="text-center text-muted">Belum ada riwayat pembayaran</td>
-                </tr>
-                @endforelse
-            </tbody>
+            <tbody></tbody>
         </table>
     </div>
-    @if($payments->hasPages())
-    <div class="card-footer">
-        {{ $payments->links() }}
-    </div>
-    @endif
 </div>
+
+<script>
+(function () {
+    var dtTable = null;
+    var dtUrl = '{{ route("subscription.history-datatable") }}';
+
+    function init() {
+        if (!document.getElementById('dt-history')) return;
+        if (dtTable) { dtTable.destroy(); dtTable = null; }
+
+        dtTable = $('#dt-history').DataTable({
+            processing: true,
+            serverSide: true,
+            ajax: dtUrl,
+            columns: [
+                { data: 'payment_number' },
+                { data: 'plan' },
+                { data: 'payment_channel' },
+                { data: 'total_amount' },
+                { data: 'status', orderable: false },
+                { data: 'created_at' },
+            ],
+            language: { url: false, emptyTable: 'Belum ada riwayat pembayaran.', processing: 'Memuat...', search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ baris', info: 'Menampilkan _START_-_END_ dari _TOTAL_', paginate: { next: 'Berikutnya', previous: 'Sebelumnya' } },
+            pageLength: 20,
+            order: [],
+        });
+    }
+
+    document.addEventListener('turbo:before-cache', function () {
+        if (dtTable) { dtTable.destroy(); dtTable = null; }
+    });
+
+    document.addEventListener('turbo:load', init);
+    if (document.readyState !== 'loading') init();
+})();
+</script>
 @endsection

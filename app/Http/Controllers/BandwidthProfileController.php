@@ -18,9 +18,37 @@ class BandwidthProfileController extends Controller
      */
     public function index(): View
     {
-        $profiles = BandwidthProfile::query()->latest()->paginate(10);
+        return view('bandwidth_profiles.index');
+    }
 
-        return view('bandwidth_profiles.index', compact('profiles'));
+    public function datatable(Request $request): JsonResponse
+    {
+        $search = $request->input('search.value', '');
+
+        $query = BandwidthProfile::query()
+            ->when($search !== '', fn($q) => $q->where('name', 'like', "%{$search}%"))
+            ->latest();
+
+        $total    = BandwidthProfile::count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'id'          => $r->id,
+                'name'        => $r->name,
+                'upload'      => $r->upload_min_mbps.' | '.$r->upload_max_mbps,
+                'download'    => $r->download_min_mbps.' | '.$r->download_max_mbps,
+                'owner'       => $r->owner ?? '-',
+                'edit_url'    => route('bandwidth-profiles.edit', $r->id),
+                'destroy_url' => route('bandwidth-profiles.destroy', $r->id),
+            ]),
+        ]);
     }
 
     /**

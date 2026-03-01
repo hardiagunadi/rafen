@@ -3,204 +3,169 @@
 @section('title', 'Profil Group')
 
 @section('content')
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <h4 class="mb-0">Profil Group</h4>
-                <small class="text-muted">Kelola group Hotspot/PPPoE</small>
-            </div>
-            <div class="btn-group">
-                <a href="{{ route('profile-groups.create') }}" class="btn btn-primary btn-sm">Tambah Group</a>
-                <button type="button" class="btn btn-success btn-sm" id="bulk-export-btn" data-toggle="modal" data-target="#bulk-export-modal">
-                    Ekspor Group Ke Router
-                </button>
-                <button type="button" class="btn btn-danger btn-sm" id="bulk-delete-btn">Hapus</button>
-            </div>
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-0">Profil Group</h4>
+            <small class="text-muted">Kelola group Hotspot/PPPoE</small>
         </div>
-        @if ($errors->any())
-            <div class="alert alert-danger m-3">
-                {{ $errors->first() }}
-            </div>
-        @endif
-        <form id="bulk-delete-form" action="{{ route('profile-groups.bulk-destroy') }}" method="POST">
-            @csrf
-            @method('DELETE')
-            <div class="card-body p-0">
-                <table class="table table-striped mb-0">
-                    <thead>
+        <div class="btn-group">
+            <a href="{{ route('profile-groups.create') }}" class="btn btn-primary btn-sm">Tambah Group</a>
+            <button type="button" class="btn btn-success btn-sm" id="bulk-export-btn" data-toggle="modal" data-target="#bulk-export-modal">Ekspor Group Ke Router</button>
+            <button type="button" class="btn btn-danger btn-sm" id="bulk-delete-btn"><i class="fas fa-trash mr-1"></i>Hapus</button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="profile-group-table" class="table table-hover table-sm mb-0">
+                <thead class="thead-light">
                     <tr>
-                        <th style="width:40px;"><input type="checkbox" id="select-all"></th>
+                        <th style="width:36px;"><input type="checkbox" id="select-all"></th>
                         <th>Nama Group</th>
-                        <th>Owner Data</th>
+                        <th>Owner</th>
                         <th>Router (NAS)</th>
                         <th>Tipe</th>
                         <th>Modul IP Pool</th>
-                        <th>IP Pool Mikrotik</th>
-                        <th>IP Pool SQL</th>
-                        <th class="text-right">Aksi</th>
+                        <th>Pool Info</th>
+                        <th class="text-right" style="width:130px;">Aksi</th>
                     </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($groups as $group)
-                        <tr>
-                            <td><input type="checkbox" name="ids[]" value="{{ $group->id }}"></td>
-                            <td>{{ $group->name }}</td>
-                            <td>{{ $group->owner ?? '-' }}</td>
-                            <td>{{ $group->mikrotikConnection?->name ?? 'Semua Router (NAS)' }}</td>
-                            <td>{{ strtoupper($group->type) }}</td>
-                            <td>{{ $group->ip_pool_mode === 'group_only' ? 'Group Only' : 'SQL IP Pool' }}</td>
-                            <td>
-                                @if($group->ip_pool_mode === 'group_only')
-                                    <div>Pool: {{ $group->ip_pool_name ?? '-' }}</div>
-                                    <div>Range: {{ $group->range_start ?? '-' }} - {{ $group->range_end ?? '-' }}</div>
-                                    <div>DNS: {{ $group->dns_servers ?? '-' }}</div>
-                                    <div>Parent: {{ $group->parent_queue ?? '-' }}</div>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td>
-                                @if($group->ip_pool_mode === 'sql')
-                                    <div>IP: {{ $group->ip_address ?? '-' }}</div>
-                                    <div>Netmask: {{ $group->netmask ?? '-' }}</div>
-                                    <div>HostMin-Max: {{ $group->host_min ?? '-' }} - {{ $group->host_max ?? '-' }}</div>
-                                    <div>DNS: {{ $group->dns_servers ?? '-' }}</div>
-                                    <div>Parent: {{ $group->parent_queue ?? '-' }}</div>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
-                            <td class="text-right">
-                                <a href="{{ route('profile-groups.edit', $group) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-                                <button type="button" class="btn btn-sm btn-outline-danger"
-                                    data-ajax-delete="{{ route('profile-groups.destroy', $group) }}"
-                                    data-confirm="Hapus group ini?">Delete</button>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="9" class="text-center p-4">Belum ada profil group.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table>
-            </div>
-            @if($groups->hasPages())
-                <div class="card-footer">
-                    {{ $groups->links() }}
-                </div>
-            @endif
-        </form>
-    </div>
-
-    <div class="modal fade" id="bulk-export-modal" tabindex="-1" aria-labelledby="bulk-export-modal-label" aria-hidden="true">
-        <div class="modal-dialog">
-            <form class="modal-content" id="bulk-export-form" action="{{ route('profile-groups.export-bulk') }}" method="POST" data-turbo="false">
-                @csrf
-                <div class="modal-header">
-                    <h5 class="modal-title" id="bulk-export-modal-label">Ekspor Profil Group ke Router</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted mb-2">Pilih router (NAS) yang akan menerima export.</p>
-                    <div class="form-group mb-2">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" class="custom-control-input" id="select-all-routers">
-                            <label class="custom-control-label" for="select-all-routers">Pilih semua router</label>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        @forelse($mikrotikConnections as $connection)
-                            <div class="custom-control custom-checkbox mb-1">
-                                <input type="checkbox"
-                                       class="custom-control-input router-checkbox"
-                                       id="router-{{ $connection->id }}"
-                                       name="mikrotik_connection_ids[]"
-                                       value="{{ $connection->id }}">
-                                <label class="custom-control-label" for="router-{{ $connection->id }}">
-                                    {{ $connection->name }}
-                                </label>
-                            </div>
-                        @empty
-                            <div class="text-muted">Belum ada router aktif.</div>
-                        @endforelse
-                    </div>
-                    <div id="bulk-export-group-ids"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-success">Ekspor</button>
-                </div>
-            </form>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
+</div>
 
-    <script>
-        document.getElementById('select-all').addEventListener('change', function (e) {
-            document.querySelectorAll('input[name="ids[]"]').forEach(cb => cb.checked = e.target.checked);
+<div class="modal fade" id="bulk-export-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="modal-content" id="bulk-export-form" action="{{ route('profile-groups.export-bulk') }}" method="POST" data-turbo="false">
+            @csrf
+            <div class="modal-header">
+                <h5 class="modal-title">Ekspor Profil Group ke Router</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-2">Pilih router (NAS) yang akan menerima export.</p>
+                <div class="form-group mb-2">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="select-all-routers">
+                        <label class="custom-control-label" for="select-all-routers">Pilih semua router</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    @forelse($mikrotikConnections as $connection)
+                        <div class="custom-control custom-checkbox mb-1">
+                            <input type="checkbox" class="custom-control-input router-checkbox" id="router-{{ $connection->id }}" name="mikrotik_connection_ids[]" value="{{ $connection->id }}">
+                            <label class="custom-control-label" for="router-{{ $connection->id }}">{{ $connection->name }}</label>
+                        </div>
+                    @empty
+                        <div class="text-muted">Belum ada router aktif.</div>
+                    @endforelse
+                </div>
+                <div id="bulk-export-group-ids"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                <button type="submit" class="btn btn-success">Ekspor</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+    var dtTable;
+
+    function init() {
+        if (!document.getElementById('profile-group-table')) return;
+        if ($.fn.DataTable.isDataTable('#profile-group-table')) return;
+
+        dtTable = $('#profile-group-table').DataTable({
+            processing: true, serverSide: true,
+            ajax: { url: '{{ route("profile-groups.datatable") }}' },
+            columns: [
+                { data: null, orderable: false, render: function(d, t, row) {
+                    return '<input type="checkbox" class="row-check" value="' + row.id + '">';
+                }},
+                { data: 'name' },
+                { data: 'owner', orderable: false },
+                { data: 'router', orderable: false },
+                { data: 'type', orderable: false },
+                { data: 'ip_pool_mode', orderable: false },
+                { data: 'pool_info', orderable: false },
+                { data: null, orderable: false, render: function(d, t, row) {
+                    return '<div class="text-right">'
+                        + '<a href="' + row.edit_url + '" class="btn btn-sm btn-warning text-white mr-1"><i class="fas fa-pen"></i></a>'
+                        + '<button class="btn btn-sm btn-success mr-1" onclick="exportSingle(\'' + row.export_url + '\')" title="Export ke Router"><i class="fas fa-upload"></i></button>'
+                        + '<button class="btn btn-sm btn-danger" data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus group ini?"><i class="fas fa-trash"></i></button>'
+                        + '</div>';
+                }},
+            ],
+            pageLength: 20, stateSave: false,
         });
-        document.getElementById('bulk-delete-btn').addEventListener('click', function () {
-            const any = Array.from(document.querySelectorAll('input[name="ids[]"]')).some(cb => cb.checked);
-            if (! any) {
-                alert('Pilih minimal satu group untuk dihapus.');
-                return;
-            }
-            if (confirm('Hapus group terpilih?')) {
-                const form = document.getElementById('bulk-delete-form');
-                const ids = Array.from(document.querySelectorAll('input[name="ids[]"]:checked')).map(cb => cb.value);
-                const params = new URLSearchParams();
-                params.append('_method', 'DELETE');
-                ids.forEach(id => params.append('ids[]', id));
-                fetch(form.action, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
-                    body: params,
-                }).then(r => r.json()).then(function(data) {
-                    AppAjax.showToast(data.message || data.status || 'Group dihapus.', 'success');
-                    document.querySelectorAll('input[name="ids[]"]:checked').forEach(cb => { const row = cb.closest('tr'); if (row) { row.style.opacity='0'; row.style.transition='opacity .3s'; setTimeout(()=>row.remove(),300); } });
-                    document.getElementById('select-all').checked = false;
-                }).catch(function(err) {
-                    AppAjax.showToast((err && err.error) || 'Gagal menghapus.', 'danger');
-                });
-            }
+
+        document.getElementById('select-all').addEventListener('change', function () {
+            document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
         });
+    }
 
-        document.getElementById('bulk-export-btn').addEventListener('click', function (event) {
-            const selected = Array.from(document.querySelectorAll('input[name="ids[]"]')).filter(cb => cb.checked);
-            if (! selected.length) {
-                event.preventDefault();
-                event.stopPropagation();
-                alert('Pilih minimal satu group untuk export.');
-                return;
-            }
+    window.exportSingle = function (url) {
+        if (!confirm('Export profil group ini ke router?')) return;
+        var form = document.createElement('form');
+        form.method = 'POST'; form.action = url;
+        var csrf = document.createElement('input');
+        csrf.type = 'hidden'; csrf.name = '_token';
+        csrf.value = document.querySelector('meta[name=csrf-token]').content;
+        form.appendChild(csrf);
+        document.body.appendChild(form);
+        form.submit();
+    };
 
-            const container = document.getElementById('bulk-export-group-ids');
-            container.innerHTML = '';
-            selected.forEach(cb => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'profile_group_ids[]';
-                input.value = cb.value;
-                container.appendChild(input);
-            });
+    document.getElementById('bulk-delete-btn').addEventListener('click', function () {
+        var ids = Array.from(document.querySelectorAll('.row-check:checked')).map(cb => cb.value);
+        if (!ids.length) { alert('Pilih minimal satu group.'); return; }
+        if (!confirm('Hapus ' + ids.length + ' group terpilih?')) return;
+        var params = new URLSearchParams({ _method: 'DELETE' });
+        ids.forEach(id => params.append('ids[]', id));
+        fetch('{{ route("profile-groups.bulk-destroy") }}', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
+            body: params,
+        }).then(r => r.json()).then(function (data) {
+            AppAjax.showToast(data.status || 'Group dihapus.', 'success');
+            if (dtTable) dtTable.ajax.reload(null, false);
+        }).catch(function () { AppAjax.showToast('Gagal menghapus.', 'danger'); });
+    });
+
+    document.getElementById('bulk-export-btn').addEventListener('click', function (event) {
+        var selected = Array.from(document.querySelectorAll('.row-check:checked'));
+        if (!selected.length) { event.preventDefault(); event.stopPropagation(); alert('Pilih minimal satu group untuk export.'); return; }
+        var container = document.getElementById('bulk-export-group-ids');
+        container.innerHTML = '';
+        selected.forEach(cb => {
+            var input = document.createElement('input');
+            input.type = 'hidden'; input.name = 'profile_group_ids[]'; input.value = cb.value;
+            container.appendChild(input);
         });
+    });
 
-        const selectAllRouters = document.getElementById('select-all-routers');
-        if (selectAllRouters) {
-            selectAllRouters.addEventListener('change', function (e) {
-                document.querySelectorAll('.router-checkbox').forEach(cb => cb.checked = e.target.checked);
-            });
+    var selectAllRouters = document.getElementById('select-all-routers');
+    if (selectAllRouters) selectAllRouters.addEventListener('change', function () {
+        document.querySelectorAll('.router-checkbox').forEach(cb => cb.checked = this.checked);
+    });
+
+    var bulkExportForm = document.getElementById('bulk-export-form');
+    if (bulkExportForm) bulkExportForm.addEventListener('submit', function (event) {
+        if (!Array.from(document.querySelectorAll('.router-checkbox')).some(cb => cb.checked)) {
+            event.preventDefault(); alert('Pilih minimal satu router (NAS) untuk export.');
         }
+    });
 
-        const bulkExportForm = document.getElementById('bulk-export-form');
-        if (bulkExportForm) {
-            bulkExportForm.addEventListener('submit', function (event) {
-                const anyRouter = Array.from(document.querySelectorAll('.router-checkbox')).some(cb => cb.checked);
-                if (! anyRouter) {
-                    event.preventDefault();
-                    alert('Pilih minimal satu router (NAS) untuk export.');
-                }
-            });
-        }
-    </script>
+    document.addEventListener('turbo:before-cache', function () {
+        if ($.fn.DataTable.isDataTable('#profile-group-table')) $('#profile-group-table').DataTable().destroy();
+    });
+    document.addEventListener('turbo:load', init);
+    if (document.readyState !== 'loading') init();
+})();
+</script>
 @endsection

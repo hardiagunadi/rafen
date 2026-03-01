@@ -94,8 +94,8 @@
             <div class="card-header">
                 <h3 class="card-title">Riwayat Langganan</h3>
             </div>
-            <div class="card-body table-responsive p-0">
-                <table class="table table-hover text-nowrap">
+            <div class="card-body p-0">
+                <table id="dt-subscriptions" class="table table-hover text-nowrap mb-0 w-100">
                     <thead>
                         <tr>
                             <th>Paket</th>
@@ -105,44 +105,45 @@
                             <th>Jumlah</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        @forelse($subscriptions as $subscription)
-                        <tr>
-                            <td>{{ $subscription->plan->name ?? '-' }}</td>
-                            <td>{{ $subscription->start_date->format('d M Y') }}</td>
-                            <td>{{ $subscription->end_date->format('d M Y') }}</td>
-                            <td>
-                                @switch($subscription->status)
-                                    @case('active')
-                                        <span class="badge badge-success">Aktif</span>
-                                        @break
-                                    @case('pending')
-                                        <span class="badge badge-warning">Menunggu Pembayaran</span>
-                                        @break
-                                    @case('expired')
-                                        <span class="badge badge-secondary">Berakhir</span>
-                                        @break
-                                    @case('cancelled')
-                                        <span class="badge badge-danger">Dibatalkan</span>
-                                        @break
-                                @endswitch
-                            </td>
-                            <td>Rp {{ number_format($subscription->amount_paid, 0, ',', '.') }}</td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="5" class="text-center text-muted">Belum ada riwayat langganan</td>
-                        </tr>
-                        @endforelse
-                    </tbody>
+                    <tbody></tbody>
                 </table>
             </div>
-            @if($subscriptions->hasPages())
-            <div class="card-footer">
-                {{ $subscriptions->links() }}
-            </div>
-            @endif
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    var dtTable = null;
+    var dtUrl = '{{ route("subscription.subscriptions-datatable") }}';
+
+    function init() {
+        if (!document.getElementById('dt-subscriptions')) return;
+        if (dtTable) { dtTable.destroy(); dtTable = null; }
+
+        dtTable = $('#dt-subscriptions').DataTable({
+            processing: true,
+            serverSide: true,
+            ajax: dtUrl,
+            columns: [
+                { data: 'plan' },
+                { data: 'start_date' },
+                { data: 'end_date' },
+                { data: 'status', orderable: false },
+                { data: 'amount' },
+            ],
+            language: { url: false, emptyTable: 'Belum ada riwayat langganan.', processing: 'Memuat...', search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ baris', info: 'Menampilkan _START_-_END_ dari _TOTAL_', paginate: { next: 'Berikutnya', previous: 'Sebelumnya' } },
+            pageLength: 10,
+            order: [],
+        });
+    }
+
+    document.addEventListener('turbo:before-cache', function () {
+        if (dtTable) { dtTable.destroy(); dtTable = null; }
+    });
+
+    document.addEventListener('turbo:load', init);
+    if (document.readyState !== 'loading') init();
+})();
+</script>
 @endsection

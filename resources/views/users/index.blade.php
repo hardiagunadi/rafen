@@ -3,49 +3,62 @@
 @section('title', 'Manajemen Pengguna')
 
 @section('content')
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <h4 class="mb-0">Manajemen Pengguna</h4>
-                <small class="text-muted">Level: Administrator, IT Support, NOC, Keuangan, Mitra</small>
-            </div>
-            <a href="{{ route('users.create') }}" class="btn btn-primary btn-sm">Tambah Pengguna</a>
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-0">Manajemen Pengguna</h4>
+            <small class="text-muted">Level: Administrator, IT Support, NOC, Keuangan, Mitra</small>
         </div>
-        <div class="card-body p-0">
-            <table class="table table-striped mb-0">
-                <thead>
-                <tr>
-                    <th>Nama</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Terakhir Login</th>
-                    <th class="text-right">Aksi</th>
-                </tr>
-                </thead>
-                <tbody>
-                @forelse($users as $user)
+        <a href="{{ route('users.create') }}" class="btn btn-primary btn-sm">Tambah Pengguna</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="user-table" class="table table-hover table-sm mb-0">
+                <thead class="thead-light">
                     <tr>
-                        <td>{{ $user->name }}</td>
-                        <td>{{ $user->email }}</td>
-                        <td>{{ strtoupper(str_replace('_', ' ', $user->role)) }}</td>
-                        <td>{{ $user->last_login_at?->format('Y-m-d H:i:s') ?? '-' }}</td>
-                        <td class="text-right">
-                            <a href="{{ route('users.edit', $user) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-                            <button type="button" class="btn btn-sm btn-outline-danger"
-                                data-ajax-delete="{{ route('users.destroy', $user) }}"
-                                data-confirm="Hapus pengguna ini?">Delete</button>
-                        </td>
+                        <th>Nama</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Terakhir Login</th>
+                        <th class="text-right" style="width:110px;">Aksi</th>
                     </tr>
-                @empty
-                    <tr><td colspan="5" class="text-center p-4">Belum ada pengguna.</td></tr>
-                @endforelse
-                </tbody>
+                </thead>
+                <tbody></tbody>
             </table>
         </div>
-        @if($users->hasPages())
-            <div class="card-footer">
-                {{ $users->links() }}
-            </div>
-        @endif
     </div>
+</div>
+
+<script>
+(function () {
+    function init() {
+        if (!document.getElementById('user-table')) return;
+        if ($.fn.DataTable.isDataTable('#user-table')) return;
+
+        $('#user-table').DataTable({
+            processing: true, serverSide: true,
+            ajax: { url: '{{ route("users.datatable") }}' },
+            columns: [
+                { data: 'name' },
+                { data: 'email' },
+                { data: 'role', orderable: false },
+                { data: 'last_login_at', orderable: false },
+                { data: null, orderable: false, render: function(d, t, row) {
+                    return '<div class="text-right">'
+                        + '<a href="' + row.edit_url + '" class="btn btn-sm btn-warning text-white mr-1"><i class="fas fa-pen"></i></a>'
+                        + '<button class="btn btn-sm btn-danger" data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus pengguna ini?"><i class="fas fa-trash"></i></button>'
+                        + '</div>';
+                }},
+            ],
+            pageLength: 20, stateSave: false,
+        });
+    }
+
+    document.addEventListener('turbo:before-cache', function () {
+        if ($.fn.DataTable.isDataTable('#user-table')) $('#user-table').DataTable().destroy();
+    });
+    document.addEventListener('turbo:load', init);
+    if (document.readyState !== 'loading') init();
+})();
+</script>
 @endsection

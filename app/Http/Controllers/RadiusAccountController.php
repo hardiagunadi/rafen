@@ -8,6 +8,7 @@ use App\Models\MikrotikConnection;
 use App\Models\RadiusAccount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class RadiusAccountController extends Controller
@@ -17,12 +18,43 @@ class RadiusAccountController extends Controller
      */
     public function index(): View
     {
-        $accounts = RadiusAccount::query()
-            ->with('mikrotikConnection')
-            ->latest()
-            ->paginate(10);
+        return view('radius_accounts.index');
+    }
 
-        return view('radius_accounts.index', compact('accounts'));
+    public function datatable(Request $request): JsonResponse
+    {
+        $search = $request->input('search.value', '');
+
+        $query = RadiusAccount::query()
+            ->with('mikrotikConnection')
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('username', 'like', "%{$search}%")
+                   ->orWhere('service', 'like', "%{$search}%");
+            }))
+            ->latest();
+
+        $total    = RadiusAccount::count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'id'          => $r->id,
+                'username'    => $r->username,
+                'service'     => strtoupper($r->service),
+                'ip_address'  => $r->service === 'pppoe' ? ($r->ipv4_address ?? '-') : '-',
+                'rate_limit'  => $r->rate_limit ?? '-',
+                'router'      => $r->mikrotikConnection?->name ?? '-',
+                'is_active'   => (bool) $r->is_active,
+                'edit_url'    => route('radius-accounts.edit', $r->id),
+                'destroy_url' => route('radius-accounts.destroy', $r->id),
+            ]),
+        ]);
     }
 
     /**

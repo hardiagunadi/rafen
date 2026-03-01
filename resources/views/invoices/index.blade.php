@@ -3,80 +3,97 @@
 @section('title', 'Data Tagihan')
 
 @section('content')
-    <div class="card">
-        <div class="card-header">
-            <h4 class="mb-0">Rekap Tagihan</h4>
-        </div>
-        <div class="card-body p-0">
-            @if (session('status'))
-                <div class="alert alert-success m-3">{{ session('status') }}</div>
-            @endif
-            <div class="table-responsive">
-                <table class="table table-striped mb-0">
-                    <thead class="thead-light">
-                    <tr>
-                        <th>ID Transaksi</th>
-                        <th>Nomor Invoice</th>
-                        <th>ID Pelanggan</th>
-                        <th>Nama</th>
-                        <th>Tipe Service</th>
-                        <th>Paket Langganan</th>
-                        <th>Tagihan (+PPN)</th>
-                        <th>Jatuh Tempo</th>
-                        <th>Owner Data</th>
-                        <th>Renew | Print</th>
-                        <th class="text-right">Aksi</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($invoices as $invoice)
-                        <tr id="invoice-{{ $invoice->id }}">
-                            <td>{{ $invoice->id }}</td>
-                            <td>{{ $invoice->invoice_number }}</td>
-                            <td>{{ $invoice->customer_id ?? '-' }}</td>
-                            <td>{{ $invoice->customer_name ?? '-' }}</td>
-                            <td>{{ strtoupper(str_replace('_', '/', $invoice->tipe_service ?? '')) }}</td>
-                            <td>{{ $invoice->paket_langganan ?? '-' }}</td>
-                            <td>Rp {{ number_format($invoice->total, 2, ',', '.') }}</td>
-                            <td>{{ optional($invoice->due_date)->format('Y-m-d') ?? '-' }}</td>
-                            <td>{{ $invoice->owner?->name ?? '-' }}</td>
-                            <td>
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <form action="{{ route('invoices.pay', $invoice) }}" method="POST" class="d-inline">
-                                        @csrf
-                                        @method('PATCH')
-                                        <button type="submit" class="btn btn-light" title="Renew / Pay"><i class="fas fa-bolt"></i></button>
-                                    </form>
-                                    <a href="{{ route('invoices.index') }}#invoice-{{ $invoice->id }}" class="btn btn-success" title="Print"><i class="fas fa-print"></i></a>
-                                </div>
-                            </td>
-                            <td class="text-right">
-                                <div class="btn-group btn-group-sm" role="group">
-                                    @php $canPay = $invoice->status === 'unpaid'; $canRenew = $invoice->status === 'unpaid' && $invoice->created_at->equalTo($invoice->updated_at); @endphp
-                                    <form action="{{ route('invoices.pay', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Bayar dan perpanjang layanan sekarang?');">
-                                        @csrf
-                                        @method('PATCH')
-                                        <button type="submit" class="btn btn-success" title="Bayar" @disabled(! $canPay)><i class="fas fa-check"></i></button>
-                                    </form>
-                                    <form action="{{ route('invoices.destroy', $invoice) }}" method="POST" class="d-inline" onsubmit="return confirm('Hapus data pembayaran?');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-danger" title="Hapus Pembayaran"><i class="fas fa-trash"></i></button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="11" class="text-center p-4">Belum ada tagihan.</td></tr>
-                    @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        @if($invoices->hasPages())
-            <div class="card-footer">
-                {{ $invoices->links() }}
-            </div>
-        @endif
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:.5rem;">
+        <h4 class="mb-0">Rekap Tagihan</h4>
+        <select id="filter-status" class="form-control form-control-sm" style="width:160px;">
+            <option value="">Semua Status</option>
+            <option value="unpaid">Belum Bayar</option>
+            <option value="paid">Lunas</option>
+        </select>
     </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="invoice-table" class="table table-hover table-sm mb-0">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Pelanggan</th>
+                        <th>Tipe / Paket</th>
+                        <th>Tagihan</th>
+                        <th>Jatuh Tempo</th>
+                        <th style="width:80px;">Status</th>
+                        <th class="text-right" style="width:160px;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    function statusBadge(status) {
+        return status === 'paid'
+            ? '<span class="badge badge-success">Lunas</span>'
+            : '<span class="badge badge-warning">Belum Bayar</span>';
+    }
+
+    function renderAksi(d, type, row) {
+        var renew = '<button class="btn btn-primary btn-sm mr-1"'
+            + (row.can_renew ? ' data-ajax-post="' + row.renew_url + '" data-confirm="Perpanjang layanan tanpa pembayaran?"' : ' disabled')
+            + '><i class="fas fa-bolt"></i></button>';
+        var pay = '<button class="btn btn-success btn-sm mr-1"'
+            + (row.can_pay ? ' data-ajax-post="' + row.pay_url + '" data-confirm="Bayar dan perpanjang layanan sekarang?"' : ' disabled')
+            + '><i class="fas fa-check"></i></button>';
+        var print = '<a href="' + row.show_url + '" class="btn btn-info btn-sm mr-1" title="Lihat Invoice"><i class="fas fa-print"></i></a>';
+        var del = '<button class="btn btn-danger btn-sm"'
+            + ' data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus invoice ini?"'
+            + '><i class="fas fa-trash"></i></button>';
+        return '<div class="text-right d-flex justify-content-end" style="gap:2px;">' + renew + pay + print + del + '</div>';
+    }
+
+    function init() {
+        if (!document.getElementById('invoice-table')) return;
+        if ($.fn.DataTable.isDataTable('#invoice-table')) return;
+
+        var table = $('#invoice-table').DataTable({
+            processing: true, serverSide: true,
+            ajax: {
+                url: '{{ route("invoices.datatable") }}',
+                data: function (d) { d.status = $('#filter-status').val(); }
+            },
+            columns: [
+                { data: 'invoice_number', render: function(d, t, row) {
+                    return '<div class="font-weight-bold">' + d + '</div>'
+                         + '<div class="text-muted small">' + row.owner_name + '</div>';
+                }},
+                { data: 'customer_name', render: function(d, t, row) {
+                    return '<div>' + $.fn.dataTable.render.text().display(d) + '</div>'
+                         + '<div class="text-muted small">' + (row.customer_id || '') + '</div>';
+                }},
+                { data: 'tipe_service', render: function(d, t, row) {
+                    return d + '<br><small class="text-muted">' + $.fn.dataTable.render.text().display(row.paket_langganan) + '</small>';
+                }},
+                { data: 'total', render: function(d) { return 'Rp ' + d; }},
+                { data: 'due_date' },
+                { data: 'status', render: statusBadge, orderable: false },
+                { data: null, render: renderAksi, orderable: false },
+            ],
+            pageLength: 20, stateSave: false,
+        });
+
+        $('#filter-status').on('change', function () { table.ajax.reload(); });
+
+        $(document).on('ajax:success', function () { table.ajax.reload(null, false); });
+    }
+
+    document.addEventListener('turbo:before-cache', function () {
+        if ($.fn.DataTable.isDataTable('#invoice-table')) $('#invoice-table').DataTable().destroy();
+    });
+    document.addEventListener('turbo:load', init);
+    if (document.readyState !== 'loading') init();
+})();
+</script>
 @endsection
