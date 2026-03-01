@@ -13,6 +13,12 @@ Schedule::command('mikrotik:ping-once')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+// Sync active PPPoE & Hotspot sessions dari semua router setiap 5 menit
+Schedule::command('sessions:sync')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Reset status_bayar ke belum_bayar untuk user yang jatuh temponya sudah tiba (setiap hari jam 06:55)
 Schedule::command('billing:reset-status')
     ->dailyAt('06:55')

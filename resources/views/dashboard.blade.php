@@ -36,9 +36,7 @@
                     <h3 id="stat-ppp-online">{{ $stats['ppp_online'] }} Users</h3>
                     <p>PPP Online</p>
                 </div>
-                <div class="icon">
-                    <i class="fas fa-exchange-alt"></i>
-                </div>
+                <div class="icon"><i class="fas fa-exchange-alt"></i></div>
                 <a href="{{ route('sessions.pppoe') }}" class="small-box-footer">Lihat Detil <i class="fas fa-arrow-circle-right"></i></a>
             </div>
         </div>
@@ -48,9 +46,7 @@
                     <h3 id="stat-hotspot-online">{{ $stats['hotspot_online'] }} Users</h3>
                     <p>Hotspot Online</p>
                 </div>
-                <div class="icon">
-                    <i class="fas fa-signal"></i>
-                </div>
+                <div class="icon"><i class="fas fa-signal"></i></div>
                 <a href="{{ route('sessions.hotspot') }}" class="small-box-footer">Lihat Detil <i class="fas fa-arrow-circle-right"></i></a>
             </div>
         </div>

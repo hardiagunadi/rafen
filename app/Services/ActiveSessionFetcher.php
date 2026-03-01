@@ -13,6 +13,7 @@ class ActiveSessionFetcher
     /**
      * Sync active PPPoE sessions from MikroTik to radius_accounts.
      * Returns the number of active sessions found.
+     * Throws RuntimeException if router is unreachable — caller must handle.
      */
     public function syncPpp(MikrotikConnection $conn): int
     {
@@ -24,12 +25,12 @@ class ActiveSessionFetcher
 
         $this->upsertSessions($conn, 'pppoe', $sessions, function (array $row): array {
             return [
-                'username'    => $row['name'] ?? '',
+                'username'     => $row['name'] ?? '',
                 'ipv4_address' => $row['address'] ?? null,
-                'uptime'      => $row['uptime'] ?? null,
-                'caller_id'   => $row['caller-id'] ?? null,
-                'server_name' => null,
-                'profile'     => $row['service'] ?? null,
+                'uptime'       => $row['uptime'] ?? null,
+                'caller_id'    => $row['caller-id'] ?? null,
+                'server_name'  => null,
+                'profile'      => $row['service'] ?? null,
             ];
         });
 
@@ -39,6 +40,7 @@ class ActiveSessionFetcher
     /**
      * Sync active Hotspot sessions from MikroTik to radius_accounts.
      * Returns the number of active sessions found.
+     * Throws RuntimeException if router is unreachable — caller must handle.
      */
     public function syncHotspot(MikrotikConnection $conn): int
     {
@@ -50,14 +52,14 @@ class ActiveSessionFetcher
 
         $this->upsertSessions($conn, 'hotspot', $sessions, function (array $row): array {
             return [
-                'username'    => $row['user'] ?? ($row['name'] ?? ''),
+                'username'     => $row['user'] ?? ($row['name'] ?? ''),
                 'ipv4_address' => $row['address'] ?? null,
-                'uptime'      => $row['uptime'] ?? null,
-                'caller_id'   => $row['mac-address'] ?? null,
-                'server_name' => $row['server'] ?? null,
-                'profile'     => null,
-                'bytes_in'    => isset($row['bytes-in']) ? (int) $row['bytes-in'] : null,
-                'bytes_out'   => isset($row['bytes-out']) ? (int) $row['bytes-out'] : null,
+                'uptime'       => $row['uptime'] ?? null,
+                'caller_id'    => $row['mac-address'] ?? null,
+                'server_name'  => $row['server'] ?? null,
+                'profile'      => null,
+                'bytes_in'     => isset($row['bytes-in']) ? (int) $row['bytes-in'] : null,
+                'bytes_out'    => isset($row['bytes-out']) ? (int) $row['bytes-out'] : null,
             ];
         });
 
