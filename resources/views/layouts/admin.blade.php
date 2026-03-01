@@ -124,8 +124,10 @@
                             </li>
                         </ul>
                     </li>
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    @php $isSuperAdmin = auth()->user()->isSuperAdmin(); $isAdminOrAbove = $isSuperAdmin || (auth()->user()->isAdmin() && !auth()->user()->isSubUser()); @endphp
+                    @if($isAdminOrAbove)
+                    <li class="nav-item has-treeview {{ request()->is('tools*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->is('tools*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-wrench"></i>
                             <p>
                                 Tool Sistem
@@ -134,49 +136,52 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('tools.usage') }}" class="nav-link {{ request()->is('tools/usage*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Cek Pemakaian</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('tools.import') }}" class="nav-link {{ request()->is('tools/import*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Impor User</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('tools.export-users') }}" class="nav-link {{ request()->is('tools/export-users*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Ekspor User</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('tools.export-transactions') }}" class="nav-link {{ request()->is('tools/export-transactions*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Ekspor Transaksi</p>
                                 </a>
                             </li>
+                            @if($isSuperAdmin)
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('tools.backup') }}" class="nav-link {{ request()->is('tools/backup*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Backup Restore DB</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link text-danger">
+                                <a href="{{ route('tools.reset-report') }}" class="nav-link text-danger {{ request()->is('tools/reset-report*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Reset Laporan</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link text-danger">
+                                <a href="{{ route('tools.reset-database') }}" class="nav-link text-danger {{ request()->is('tools/reset-database*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Reset Database</p>
                                 </a>
                             </li>
+                            @endif
                         </ul>
                     </li>
+                    @endif
                     <li class="nav-item has-treeview">
                         <a href="#" class="nav-link">
                             <i class="nav-icon far fa-file-alt"></i>

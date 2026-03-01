@@ -22,6 +22,7 @@ use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\TenantSettingsController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\SystemToolController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('login', [LoginController::class, 'show'])->name('login');
@@ -159,6 +160,41 @@ Route::middleware('auth')->group(function () {
         Route::delete('/bank-accounts/{bankAccount}', [TenantSettingsController::class, 'destroyBankAccount'])->name('bank-accounts.destroy');
         Route::post('/bank-accounts/{bankAccount}/primary', [TenantSettingsController::class, 'setPrimaryBankAccount'])->name('bank-accounts.set-primary');
     });
+});
+
+// Tool Sistem (auth required, fitur sensitif dibatasi di controller)
+Route::middleware('auth')->prefix('tools')->name('tools.')->group(function () {
+    // Cek Pemakaian — semua user terotentikasi
+    Route::get('usage', [SystemToolController::class, 'usageIndex'])->name('usage');
+    Route::get('usage/data', [SystemToolController::class, 'usageData'])->name('usage.data');
+
+    // Impor User — tenant admin & super admin
+    Route::get('import', [SystemToolController::class, 'importIndex'])->name('import');
+    Route::post('import', [SystemToolController::class, 'importStore'])->name('import.store');
+    Route::get('import/template/{type}', [SystemToolController::class, 'importTemplate'])->name('import.template');
+
+    // Ekspor User — tenant admin & super admin
+    Route::get('export-users', [SystemToolController::class, 'exportUsersIndex'])->name('export-users');
+    Route::get('export-users/download', [SystemToolController::class, 'exportUsersDownload'])->name('export-users.download');
+
+    // Ekspor Transaksi — tenant admin & super admin
+    Route::get('export-transactions', [SystemToolController::class, 'exportTransactionsIndex'])->name('export-transactions');
+    Route::get('export-transactions/download', [SystemToolController::class, 'exportTransactionsDownload'])->name('export-transactions.download');
+
+    // Backup & Restore — super admin only (dibatasi di controller)
+    Route::get('backup', [SystemToolController::class, 'backupIndex'])->name('backup');
+    Route::post('backup/create', [SystemToolController::class, 'backupCreate'])->name('backup.create');
+    Route::get('backup/download', [SystemToolController::class, 'backupDownload'])->name('backup.download');
+    Route::post('backup/restore', [SystemToolController::class, 'backupRestore'])->name('backup.restore');
+    Route::delete('backup/delete', [SystemToolController::class, 'backupDelete'])->name('backup.delete');
+
+    // Reset Laporan — super admin only
+    Route::get('reset-report', [SystemToolController::class, 'resetReportIndex'])->name('reset-report');
+    Route::post('reset-report', [SystemToolController::class, 'resetReportExecute'])->name('reset-report.execute');
+
+    // Reset Database — super admin only
+    Route::get('reset-database', [SystemToolController::class, 'resetDatabaseIndex'])->name('reset-database');
+    Route::post('reset-database', [SystemToolController::class, 'resetDatabaseExecute'])->name('reset-database.execute');
 });
 
 // Payment Callbacks (no auth required)
