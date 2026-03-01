@@ -5,14 +5,22 @@
 @section('content')
     <div class="card mb-4">
         <div class="card-header">
-            <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
                 <h4 class="mb-0">Status Sinkronisasi</h4>
-                <form action="{{ route('settings.freeradius.sync') }}" method="POST">
-                    @csrf
-                    <button type="submit" class="btn btn-success btn-sm">
-                        Sync FreeRADIUS
-                    </button>
-                </form>
+                <div class="d-flex gap-2 mt-1 mt-md-0">
+                    <form action="{{ route('settings.freeradius.sync') }}" method="POST" class="mr-2">
+                        @csrf
+                        <button type="submit" class="btn btn-success btn-sm">
+                            <i class="fas fa-sync-alt"></i> Sync NAS Clients
+                        </button>
+                    </form>
+                    <form action="{{ route('settings.freeradius.sync-replies') }}" method="POST">
+                        @csrf
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="fas fa-sync-alt"></i> Sync Radcheck/Radreply
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
         <div class="card-body">

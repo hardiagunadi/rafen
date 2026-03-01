@@ -6,7 +6,6 @@ use App\Models\HotspotProfile;
 use App\Models\User;
 use App\Models\Voucher;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 class VoucherGeneratorService
 {
@@ -34,7 +33,7 @@ class VoucherGeneratorService
             }
 
             $voucher = Voucher::create([
-                'owner_id'           => $owner->id,
+                'owner_id'           => $owner->effectiveOwnerId(),
                 'hotspot_profile_id' => $profile->id,
                 'profile_group_id'   => $profile->profile_group_id,
                 'batch_name'         => $batchName,

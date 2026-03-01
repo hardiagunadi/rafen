@@ -83,6 +83,7 @@ Route::middleware('auth')->group(function () {
     Route::get('ppp-profiles/datatable', [\App\Http\Controllers\PppProfileController::class, 'datatable'])->name('ppp-profiles.datatable');
     Route::get('settings/freeradius', [FreeRadiusSettingsController::class, 'index'])->name('settings.freeradius');
     Route::post('settings/freeradius/sync', [FreeRadiusSettingsController::class, 'sync'])->name('settings.freeradius.sync');
+    Route::post('settings/freeradius/sync-replies', [FreeRadiusSettingsController::class, 'syncReplies'])->name('settings.freeradius.sync-replies');
     Route::get('settings/wg', [WgSettingsController::class, 'index'])->name('settings.wg');
     Route::post('settings/wg/peers', [WgSettingsController::class, 'store'])->name('settings.wg.peers.store');
     Route::patch('settings/wg/peers/{wgPeer}', [WgSettingsController::class, 'update'])->name('settings.wg.peers.update');

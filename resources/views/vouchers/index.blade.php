@@ -105,10 +105,13 @@
 
     <script>
     (function () {
+        var dtTable = null;
+
         function init() {
             if (!document.getElementById('vouchers-table')) return;
-            if ($.fn.DataTable.isDataTable('#vouchers-table')) return;
-            var table = $('#vouchers-table').DataTable({
+            if (dtTable) { dtTable.destroy(); dtTable = null; }
+
+            dtTable = $('#vouchers-table').DataTable({
                 processing: true,
                 serverSide: true,
                 ajax: {
@@ -155,31 +158,35 @@
                                 body: new URLSearchParams({ _method: 'DELETE' }),
                             }).then(function (r) { return r.json(); }).then(function (data) {
                                 if (typeof AppAjax !== 'undefined') AppAjax.showToast(data.status || 'Dihapus.', 'success');
-                                if ($.fn.DataTable.isDataTable('#vouchers-table')) $('#vouchers-table').DataTable().ajax.reload(null, false);
+                                if (dtTable) dtTable.ajax.reload(null, false);
                             });
                         });
                     });
                 },
             });
 
-            $('#filter-status, #filter-batch').on('change', function () {
-                var batchVal = $('#filter-batch').val();
+            $('#filter-status').off('change.voucher').on('change.voucher', function () {
+                if (dtTable) dtTable.ajax.reload(null, true);
+            });
+
+            $('#filter-batch').off('change.voucher').on('change.voucher', function () {
+                var batchVal = $(this).val();
                 if (batchVal) {
                     $('#print-batch-btn').show();
                     $('#print-batch-link')
                         .attr('href', '{{ url("vouchers") }}/' + encodeURIComponent(batchVal) + '/print')
-                        .text(' Print Batch "' + batchVal + '"');
+                        .html('<i class="fas fa-print"></i> Print Batch "' + $('<span>').text(batchVal).html() + '"');
                 } else {
                     $('#print-batch-btn').hide();
                 }
-                if ($.fn.DataTable.isDataTable('#vouchers-table')) $('#vouchers-table').DataTable().ajax.reload();
+                if (dtTable) dtTable.ajax.reload(null, true);
             });
 
-            $('#select-all').on('change', function () {
+            $('#select-all').off('change.voucher').on('change.voucher', function () {
                 $('#vouchers-table tbody input[type="checkbox"]:not(:disabled)').prop('checked', this.checked);
             });
 
-            $('.bulk-delete-action').on('click', function (e) {
+            $('.bulk-delete-action').off('click.voucher').on('click.voucher', function (e) {
                 e.preventDefault();
                 var ids = $('#vouchers-table tbody input[name="ids[]"]:checked').map(function () { return this.value; }).get();
                 if (!ids.length) { alert('Pilih voucher unused terlebih dahulu.'); return; }
@@ -195,9 +202,7 @@
         }
 
         document.addEventListener('turbo:before-cache', function () {
-            if ($.fn.DataTable.isDataTable('#vouchers-table')) {
-                $('#vouchers-table').DataTable().destroy();
-            }
+            if (dtTable) { dtTable.destroy(); dtTable = null; }
         });
         document.addEventListener('turbo:load', init);
         if (document.readyState !== 'loading') init();

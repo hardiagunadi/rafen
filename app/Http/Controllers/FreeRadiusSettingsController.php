@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\HotspotRadiusSynchronizer;
 use App\Services\RadiusClientsSynchronizer;
+use App\Services\RadiusReplySynchronizer;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\RedirectResponse;
@@ -42,6 +44,22 @@ class FreeRadiusSettingsController extends Controller
             return redirect()
                 ->route('settings.freeradius')
                 ->with('error', 'Sinkronisasi FreeRADIUS gagal: '.$exception->getMessage());
+        }
+    }
+
+    public function syncReplies(RadiusReplySynchronizer $ppSynchronizer, HotspotRadiusSynchronizer $hotspotSynchronizer): RedirectResponse
+    {
+        try {
+            $pppCount     = $ppSynchronizer->sync();
+            $hotspotCount = $hotspotSynchronizer->sync();
+
+            return redirect()
+                ->route('settings.freeradius')
+                ->with('status', "Sync radcheck/radreply berhasil: {$pppCount} PPP + {$hotspotCount} Hotspot/Voucher.");
+        } catch (Throwable $exception) {
+            return redirect()
+                ->route('settings.freeradius')
+                ->with('error', 'Sync radcheck/radreply gagal: '.$exception->getMessage());
         }
     }
 

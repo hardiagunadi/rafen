@@ -27,8 +27,6 @@ class VoucherController extends Controller
 
         $query = Voucher::query()->with(['hotspotProfile'])->accessibleBy($currentUser);
 
-        $total = (clone $query)->count();
-
         if ($search !== '') {
             $query->where('code', 'like', "%{$search}%");
         }
@@ -42,6 +40,7 @@ class VoucherController extends Controller
         }
 
         $filtered = (clone $query)->count();
+        $total    = $filtered;
 
         $vouchers = $query->latest()->skip($start)->take($length > 0 ? $length : 20)->get();
 
@@ -82,27 +81,7 @@ class VoucherController extends Controller
 
     public function index(Request $request): View
     {
-        $perPage = (int) $request->input('per_page', 20);
-        $search = $request->input('search');
-        $status = $request->input('status');
-        $batch = $request->input('batch');
         $currentUser = $request->user();
-
-        $query = Voucher::query()->with(['hotspotProfile'])->accessibleBy($currentUser);
-
-        if ($search) {
-            $query->where('code', 'like', "%{$search}%");
-        }
-
-        if ($status && in_array($status, ['unused', 'used', 'expired'])) {
-            $query->where('status', $status);
-        }
-
-        if ($batch) {
-            $query->where('batch_name', $batch);
-        }
-
-        $vouchers = $query->latest()->paginate($perPage > 0 ? $perPage : 20)->withQueryString();
 
         $stats = [
             'unused'  => Voucher::query()->accessibleBy($currentUser)->where('status', 'unused')->count(),
@@ -111,14 +90,14 @@ class VoucherController extends Controller
         ];
 
         $batches = Voucher::query()->accessibleBy($currentUser)->whereNotNull('batch_name')->distinct()->pluck('batch_name');
-        $profiles = HotspotProfile::query()->orderBy('name')->get();
 
-        return view('vouchers.index', compact('vouchers', 'stats', 'batches', 'profiles', 'perPage', 'search', 'status', 'batch'));
+        return view('vouchers.index', compact('stats', 'batches'));
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
-        $profiles = HotspotProfile::query()->orderBy('name')->get();
+        $currentUser = $request->user();
+        $profiles = HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get();
 
         return view('vouchers.create', compact('profiles'));
     }
@@ -126,8 +105,9 @@ class VoucherController extends Controller
     public function store(StoreVoucherBatchRequest $request): RedirectResponse
     {
         $validated = $request->validated();
-        $profile = HotspotProfile::findOrFail($validated['hotspot_profile_id']);
         $currentUser = $request->user();
+
+        $profile = HotspotProfile::query()->accessibleBy($currentUser)->findOrFail($validated['hotspot_profile_id']);
 
         $this->generator->generateBatch(
             profile: $profile,
@@ -153,6 +133,12 @@ class VoucherController extends Controller
 
     public function destroy(Voucher $voucher): JsonResponse|RedirectResponse
     {
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $voucher->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
         if ($voucher->status !== 'unused') {
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Hanya voucher unused yang dapat dihapus.'], 422);

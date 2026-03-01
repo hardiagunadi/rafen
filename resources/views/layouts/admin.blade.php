@@ -6,6 +6,16 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Radius Manager</title>
     <script src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.4/dist/turbo.es2017-umd.js" data-turbo-track="reload"></script>
+    <script>
+        // Disable Turbo form handling — all forms use standard browser submit/redirect
+        function disableTurboForms() {
+            document.querySelectorAll('form:not([data-turbo="true"])').forEach(function (f) {
+                f.setAttribute('data-turbo', 'false');
+            });
+        }
+        document.addEventListener('DOMContentLoaded', disableTurboForms);
+        document.addEventListener('turbo:load', disableTurboForms);
+    </script>
     <style>
         .turbo-loading .content-wrapper {
             opacity: 0.85;
@@ -182,8 +192,8 @@
                         </ul>
                     </li>
                     @endif
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    <li class="nav-item has-treeview {{ request()->routeIs('logs.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('logs.*') ? 'active' : '' }}">
                             <i class="nav-icon far fa-file-alt"></i>
                             <p>
                                 Log Aplikasi
@@ -192,25 +202,25 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="{{ route('logs.login') }}" class="nav-link">
+                                <a href="{{ route('logs.login') }}" class="nav-link {{ request()->routeIs('logs.login') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log Login</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('logs.activity') }}" class="nav-link">
+                                <a href="{{ route('logs.activity') }}" class="nav-link {{ request()->routeIs('logs.activity') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log Aktivitas</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('logs.bg-process') }}" class="nav-link">
+                                <a href="{{ route('logs.bg-process') }}" class="nav-link {{ request()->routeIs('logs.bg-process') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log BG Process</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('logs.radius-auth') }}" class="nav-link">
+                                <a href="{{ route('logs.radius-auth') }}" class="nav-link {{ request()->routeIs('logs.radius-auth') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log Auth Radius</p>
                                 </a>
@@ -219,7 +229,7 @@
                                 <hr class="mt-1 mb-1">
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('logs.wa-blast') }}" class="nav-link">
+                                <a href="{{ route('logs.wa-blast') }}" class="nav-link {{ request()->routeIs('logs.wa-blast') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log WA Blast</p>
                                 </a>
@@ -267,8 +277,8 @@
                             <p>Router (NAS)</p>
                         </a>
                     </li>
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    <li class="nav-item has-treeview {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-box"></i>
                             <p>
                                 Profil Paket
@@ -277,33 +287,33 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link">
+                                <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link {{ request()->routeIs('bandwidth-profiles.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Bandwidth</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('profile-groups.index') }}" class="nav-link">
+                                <a href="{{ route('profile-groups.index') }}" class="nav-link {{ request()->routeIs('profile-groups.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Profil Group</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('hotspot-profiles.index') }}" class="nav-link">
+                                <a href="{{ route('hotspot-profiles.index') }}" class="nav-link {{ request()->routeIs('hotspot-profiles.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Profil Hotspot</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('ppp-profiles.index') }}" class="nav-link">
+                                <a href="{{ route('ppp-profiles.index') }}" class="nav-link {{ request()->routeIs('ppp-profiles.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Profil PPP</p>
                                 </a>
                             </li>
                         </ul>
                     </li>
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    <li class="nav-item has-treeview {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-users"></i>
                             <p>
                                 List Pelanggan
@@ -312,19 +322,19 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="{{ route('hotspot-users.index') }}" class="nav-link">
+                                <a href="{{ route('hotspot-users.index') }}" class="nav-link {{ request()->routeIs('hotspot-users.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>User Hotspot</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('ppp-users.index') }}" class="nav-link">
+                                <a href="{{ route('ppp-users.index') }}" class="nav-link {{ request()->routeIs('ppp-users.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>User PPP</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('vouchers.index') }}" class="nav-link">
+                                <a href="{{ route('vouchers.index') }}" class="nav-link {{ request()->routeIs('vouchers.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Voucher</p>
                                 </a>
@@ -343,8 +353,8 @@
                             </li>
                         </ul>
                     </li>
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-cog"></i>
                             <p>
                                 Pengaturan
@@ -354,34 +364,34 @@
                         <ul class="nav nav-treeview">
                             @if(auth()->user()->isSuperAdmin() || (auth()->user()->isAdmin() && !auth()->user()->isSubUser()))
                             <li class="nav-item">
-                                <a href="{{ route('users.index') }}" class="nav-link">
+                                <a href="{{ route('users.index') }}" class="nav-link {{ request()->routeIs('users.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Manajemen Pengguna</p>
                                 </a>
                             </li>
                             @endif
                             <li class="nav-item">
-                                <a href="{{ route('tenant-settings.index') }}" class="nav-link">
+                                <a href="{{ route('tenant-settings.index') }}" class="nav-link {{ request()->routeIs('tenant-settings.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Pengaturan Bisnis</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('settings.freeradius') }}" class="nav-link">
+                                <a href="{{ route('settings.freeradius') }}" class="nav-link {{ request()->routeIs('settings.freeradius') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>FreeRADIUS</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('settings.wg') }}" class="nav-link">
+                                <a href="{{ route('settings.wg') }}" class="nav-link {{ request()->routeIs('settings.wg') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>WireGuard</p>
                                 </a>
                             </li>
                         </ul>
                     </li>
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    <li class="nav-item has-treeview {{ request()->routeIs('subscription.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('subscription.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-credit-card"></i>
                             <p>
                                 Langganan
@@ -390,19 +400,19 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="{{ route('subscription.index') }}" class="nav-link">
+                                <a href="{{ route('subscription.index') }}" class="nav-link {{ request()->routeIs('subscription.index') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Status Langganan</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('subscription.plans') }}" class="nav-link">
+                                <a href="{{ route('subscription.plans') }}" class="nav-link {{ request()->routeIs('subscription.plans') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Paket Tersedia</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('subscription.history') }}" class="nav-link">
+                                <a href="{{ route('subscription.history') }}" class="nav-link {{ request()->routeIs('subscription.history') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Riwayat Pembayaran</p>
                                 </a>
@@ -455,20 +465,16 @@
                         <h1>@yield('title')</h1>
                     </div>
                 </div>
-                @if (session('status'))
-                    <div class="alert alert-success">
-                        {{ session('status') }}
-                    </div>
-                @endif
-                @if (session('error'))
-                    <div class="alert alert-danger">
-                        {{ session('error') }}
-                    </div>
-                @endif
             </div>
         </section>
 
         <turbo-frame id="main-content">
+            @if (session('status'))
+                <script>window.__flashStatus = {{ Js::from(session('status')) }};</script>
+            @endif
+            @if (session('error'))
+                <script>window.__flashError = {{ Js::from(session('error')) }};</script>
+            @endif
             <section class="content">
                 <div class="container-fluid">
                     @yield('content')
@@ -741,7 +747,8 @@ window.AppAjax = (function () {
     });
     // Juga jalankan ulang saat Turbo navigasi
     document.addEventListener('turbo:load', function () {
-        // Event delegation sudah terpasang, tidak perlu re-bind
+        if (window.__flashStatus) { showToast(window.__flashStatus, 'success'); window.__flashStatus = null; }
+        if (window.__flashError)  { showToast(window.__flashError,  'danger');  window.__flashError  = null; }
     });
 
     return { request: request, formRequest: formRequest, showToast: showToast };

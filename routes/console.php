@@ -19,6 +19,12 @@ Schedule::command('sessions:sync')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Sync radcheck/radreply dari ppp_users, hotspot_users, dan vouchers setiap 5 menit
+Schedule::command('radius:sync-replies')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Reset status_bayar ke belum_bayar untuk user yang jatuh temponya sudah tiba (setiap hari jam 06:55)
 Schedule::command('billing:reset-status')
     ->dailyAt('06:55')
