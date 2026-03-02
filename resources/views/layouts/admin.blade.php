@@ -359,6 +359,14 @@
                                     <p>Pengaturan Bisnis</p>
                                 </a>
                             </li>
+                            @if(auth()->user() && (auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'])))
+                            <li class="nav-item">
+                                <a href="{{ route('tenant-settings.index') }}#whatsapp" class="nav-link">
+                                    <i class="fab fa-whatsapp nav-icon text-success"></i>
+                                    <p>WA Gateway</p>
+                                </a>
+                            </li>
+                            @endif
                             <li class="nav-item">
                                 <a href="{{ route('settings.freeradius') }}" class="nav-link {{ request()->routeIs('settings.freeradius') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>

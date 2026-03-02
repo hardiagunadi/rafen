@@ -33,6 +33,21 @@ class TenantSettings extends Model
         'payment_expiry_hours',
         'auto_isolate_unpaid',
         'grace_period_days',
+        'wa_gateway_url',
+        'wa_gateway_token',
+        'wa_gateway_key',
+        'wa_webhook_secret',
+        'wa_notify_registration',
+        'wa_notify_invoice',
+        'wa_notify_payment',
+        'wa_broadcast_enabled',
+        'wa_antispam_enabled',
+        'wa_antispam_delay_ms',
+        'wa_antispam_max_per_minute',
+        'wa_msg_randomize',
+        'wa_template_registration',
+        'wa_template_invoice',
+        'wa_template_payment',
     ];
 
     protected function casts(): array
@@ -46,6 +61,14 @@ class TenantSettings extends Model
             'payment_expiry_hours' => 'integer',
             'auto_isolate_unpaid' => 'boolean',
             'grace_period_days' => 'integer',
+            'wa_notify_registration' => 'boolean',
+            'wa_notify_invoice' => 'boolean',
+            'wa_notify_payment' => 'boolean',
+            'wa_broadcast_enabled' => 'boolean',
+            'wa_antispam_enabled' => 'boolean',
+            'wa_antispam_delay_ms' => 'integer',
+            'wa_antispam_max_per_minute' => 'integer',
+            'wa_msg_randomize' => 'boolean',
         ];
     }
 
@@ -64,6 +87,40 @@ class TenantSettings extends Model
         return !empty($this->tripay_api_key)
             && !empty($this->tripay_private_key)
             && !empty($this->tripay_merchant_code);
+    }
+
+    public function hasWaConfigured(): bool
+    {
+        return ! empty($this->wa_gateway_url)
+            && (! empty($this->wa_gateway_token) || ! empty($this->wa_gateway_key));
+    }
+
+    /**
+     * Default template untuk tiap tipe notifikasi.
+     */
+    public function getDefaultTemplate(string $type): string
+    {
+        return match ($type) {
+            'registration' => "Halo {name}, akun {service} Anda telah berhasil didaftarkan.\nUsername: {username}\nPaket: {profile}\nJatuh Tempo: {due_date}\n\nTerima kasih.",
+            'invoice'      => "Halo {name}, tagihan Anda telah terbit.\nNo. Tagihan: {invoice_no}\nTotal: Rp {total}\nJatuh Tempo: {due_date}\n\nSilakan lakukan pembayaran sebelum jatuh tempo.",
+            'payment'      => "Halo {name}, pembayaran Anda telah dikonfirmasi.\nNo. Tagihan: {invoice_no}\nJumlah: Rp {total}\nTanggal: {paid_at}\n\nTerima kasih atas pembayaran Anda.",
+            default        => '',
+        };
+    }
+
+    /**
+     * Ambil template (custom jika ada, default jika tidak).
+     */
+    public function getTemplate(string $type): string
+    {
+        $custom = match ($type) {
+            'registration' => $this->wa_template_registration,
+            'invoice'      => $this->wa_template_invoice,
+            'payment'      => $this->wa_template_payment,
+            default        => null,
+        };
+
+        return ! empty($custom) ? $custom : $this->getDefaultTemplate($type);
     }
 
     public function hasPaymentGateway(): bool

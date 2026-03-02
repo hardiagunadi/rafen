@@ -7,7 +7,9 @@ use App\Http\Requests\UpdateHotspotUserRequest;
 use App\Models\HotspotProfile;
 use App\Models\HotspotUser;
 use App\Models\ProfileGroup;
+use App\Models\TenantSettings;
 use App\Models\User;
+use App\Services\WaNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -128,7 +130,10 @@ class HotspotUserController extends Controller
     public function store(StoreHotspotUserRequest $request): RedirectResponse
     {
         $data = $this->prepareData($request->validated());
-        HotspotUser::create($data);
+        $user = HotspotUser::create($data);
+
+        $settings = TenantSettings::getOrCreate((int) ($user->owner_id ?? auth()->user()->effectiveOwnerId()));
+        WaNotificationService::notifyRegistration($settings, $user->load('hotspotProfile'));
 
         return redirect()->route('hotspot-users.index')->with('status', 'User Hotspot ditambahkan.');
     }

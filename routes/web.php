@@ -23,6 +23,8 @@ use App\Http\Controllers\TenantSettingsController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\SystemToolController;
+use App\Http\Controllers\WaBlastController;
+use App\Http\Controllers\WaWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('login', [LoginController::class, 'show'])->name('login');
@@ -164,6 +166,17 @@ Route::middleware('auth')->group(function () {
         Route::put('/bank-accounts/{bankAccount}', [TenantSettingsController::class, 'updateBankAccount'])->name('bank-accounts.update');
         Route::delete('/bank-accounts/{bankAccount}', [TenantSettingsController::class, 'destroyBankAccount'])->name('bank-accounts.destroy');
         Route::post('/bank-accounts/{bankAccount}/primary', [TenantSettingsController::class, 'setPrimaryBankAccount'])->name('bank-accounts.set-primary');
+
+        // WhatsApp settings
+        Route::put('/wa', [TenantSettingsController::class, 'updateWa'])->name('update-wa');
+        Route::post('/test-wa', [TenantSettingsController::class, 'testWa'])->name('test-wa');
+    });
+
+    // WA Blast
+    Route::prefix('wa-blast')->name('wa-blast.')->group(function () {
+        Route::get('/', [WaBlastController::class, 'index'])->name('index');
+        Route::get('/preview', [WaBlastController::class, 'preview'])->name('preview');
+        Route::post('/send', [WaBlastController::class, 'send'])->name('send');
     });
 });
 
@@ -205,6 +218,10 @@ Route::middleware('auth')->prefix('tools')->name('tools.')->group(function () {
 // Payment Callbacks (no auth required)
 Route::post('/payment/callback', [PaymentController::class, 'callback'])->name('payment.callback');
 Route::post('/subscription/payment/callback', [SubscriptionController::class, 'paymentCallback'])->name('subscription.payment.callback');
+
+// WA Gateway Webhooks (no auth required)
+Route::post('/webhook/wa/session', [WaWebhookController::class, 'session'])->name('wa.webhook.session');
+Route::post('/webhook/wa/message', [WaWebhookController::class, 'message'])->name('wa.webhook.message');
 
 // Super Admin Routes
 Route::middleware(['auth', \App\Http\Middleware\SuperAdminMiddleware::class])->prefix('super-admin')->name('super-admin.')->group(function () {

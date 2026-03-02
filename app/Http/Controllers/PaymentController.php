@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\TenantSettings;
 use App\Services\TripayService;
+use App\Services\WaNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -161,6 +162,11 @@ class PaymentController extends Controller
         if ($status === 'PAID') {
             $payment->markAsPaid($callbackData);
             Log::info('Payment marked as paid', ['payment_id' => $payment->id]);
+
+            if ($payment->payment_type === 'invoice' && $payment->invoice) {
+                $invSettings = TenantSettings::getOrCreate((int) $payment->invoice->owner_id);
+                WaNotificationService::notifyInvoicePaid($invSettings, $payment->invoice->fresh()->load('pppUser'));
+            }
         } elseif ($status === 'EXPIRED') {
             $payment->markAsExpired();
             Log::info('Payment marked as expired', ['payment_id' => $payment->id]);
@@ -267,6 +273,11 @@ class PaymentController extends Controller
             'confirmed_by' => $user->id,
             'confirmed_at' => now()->toIso8601String(),
         ]);
+
+        if ($payment->invoice) {
+            $invSettings = TenantSettings::getOrCreate((int) $payment->invoice->owner_id);
+            WaNotificationService::notifyInvoicePaid($invSettings, $payment->invoice->fresh()->load('pppUser'));
+        }
 
         return back()->with('success', 'Pembayaran berhasil dikonfirmasi.');
     }

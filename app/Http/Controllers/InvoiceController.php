@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Invoice;
+use App\Models\TenantSettings;
+use App\Services\WaNotificationService;
 use App\Traits\LogsActivity;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -115,6 +117,9 @@ class InvoiceController extends Controller
         }
 
         $this->logActivity('paid', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
+
+        $settings = TenantSettings::getOrCreate((int) $invoice->owner_id);
+        WaNotificationService::notifyInvoicePaid($settings, $invoice->fresh()->load('pppUser'));
 
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Invoice dibayar.']);

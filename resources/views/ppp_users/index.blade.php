@@ -13,6 +13,12 @@
                     <div class="dropdown-menu dropdown-menu-left" aria-labelledby="managementDropdown" style="min-width: 260px;">
                         <a class="dropdown-item" href="{{ route('ppp-users.create') }}">Tambah Pelanggan</a>
                         <a class="dropdown-item" href="{{ route('ppp-users.index') }}">List Pelanggan</a>
+                        @if(auth()->user() && (auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'])))
+                        <div class="dropdown-divider"></div>
+                        <a class="dropdown-item text-success" href="{{ route('wa-blast.index') }}">
+                            <i class="fab fa-whatsapp"></i> Kirim Pesan Broadcast
+                        </a>
+                        @endif
                         <div class="dropdown-header text-danger text-uppercase">Aksi Checkbox (Massal)</div>
                         <a class="dropdown-item text-danger bulk-delete-action" href="#">Hapus Terpilih</a>
                     </div>

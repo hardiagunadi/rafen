@@ -11,6 +11,7 @@ use App\Models\ProfileGroup;
 use App\Models\TenantSettings;
 use App\Models\User;
 use App\Services\RadiusReplySynchronizer;
+use App\Services\WaNotificationService;
 use App\Traits\LogsActivity;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -177,6 +178,9 @@ class PppUserController extends Controller
         app(RadiusReplySynchronizer::class)->syncSingleUser($user);
 
         $this->logActivity('created', 'PppUser', $user->id, $user->customer_name, (int) $user->owner_id);
+
+        $settings = TenantSettings::getOrCreate((int) $user->owner_id);
+        WaNotificationService::notifyRegistration($settings, $user->load('profile'));
 
         return redirect()->route('ppp-users.index')->with('status', 'User PPP ditambahkan.');
     }

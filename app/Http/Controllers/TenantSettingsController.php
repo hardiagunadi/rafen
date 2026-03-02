@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BankAccount;
 use App\Models\TenantSettings;
 use App\Services\TripayService;
+use App\Services\WaGatewayService;
 use Illuminate\Http\Request;
 
 class TenantSettingsController extends Controller
@@ -201,6 +202,58 @@ class TenantSettingsController extends Controller
         $bankAccount->setAsPrimary();
 
         return back()->with('success', 'Rekening utama berhasil diubah.');
+    }
+
+    public function updateWa(Request $request)
+    {
+        $validated = $request->validate([
+            'wa_gateway_url'              => 'nullable|url|max:255',
+            'wa_gateway_token'            => 'nullable|string|max:500',
+            'wa_gateway_key'              => 'nullable|string|max:500',
+            'wa_webhook_secret'           => 'nullable|string|max:255',
+            'wa_notify_registration'      => 'boolean',
+            'wa_notify_invoice'           => 'boolean',
+            'wa_notify_payment'           => 'boolean',
+            'wa_broadcast_enabled'        => 'boolean',
+            'wa_antispam_enabled'         => 'boolean',
+            'wa_antispam_delay_ms'        => 'integer|min:500|max:10000',
+            'wa_antispam_max_per_minute'  => 'integer|min:1|max:20',
+            'wa_msg_randomize'            => 'boolean',
+            'wa_template_registration'    => 'nullable|string|max:2000',
+            'wa_template_invoice'         => 'nullable|string|max:2000',
+            'wa_template_payment'         => 'nullable|string|max:2000',
+        ]);
+
+        $user = $request->user();
+        $settings = $user->getSettings();
+        $settings->update($validated);
+
+        return back()->with('success', 'Pengaturan WhatsApp berhasil diperbarui.');
+    }
+
+    public function testWa(Request $request)
+    {
+        $request->validate([
+            'phone' => 'nullable|string|max:20',
+        ]);
+
+        $user = $request->user();
+        $settings = $user->getSettings();
+
+        if (! $settings->hasWaConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'URL Gateway dan Token WhatsApp belum dikonfigurasi.',
+            ]);
+        }
+
+        $service = WaGatewayService::forTenant($settings);
+        $result = $service->testConnection();
+
+        return response()->json([
+            'success' => $result['status'],
+            'message' => $result['message'],
+        ]);
     }
 
     public function uploadLogo(Request $request)

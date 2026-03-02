@@ -233,6 +233,137 @@
                 </div>
             </form>
         </div>
+        <!-- WhatsApp Settings -->
+        <div class="card" id="whatsapp">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fab fa-whatsapp text-success"></i> Integrasi WhatsApp Gateway</h3>
+            </div>
+            <form action="{{ route('tenant-settings.update-wa') }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="card-body">
+                    <div class="form-group">
+                        <label>URL Gateway <span class="text-muted small">(contoh: https://gateway.watumalang.online)</span></label>
+                        <input type="url" name="wa_gateway_url" class="form-control" value="{{ old('wa_gateway_url', $settings->wa_gateway_url) }}" placeholder="https://gateway.watumalang.online">
+                    </div>
+                    <div class="form-group">
+                        <label>Token <span class="text-muted small">(header: Authorization)</span></label>
+                        <input type="password" name="wa_gateway_token" class="form-control" value="{{ old('wa_gateway_token', $settings->wa_gateway_token) }}" placeholder="Masukkan token perangkat">
+                    </div>
+                    <div class="form-group">
+                        <label>Key <span class="text-muted small">(header: KEY — master key, opsional)</span></label>
+                        <input type="password" name="wa_gateway_key" class="form-control" value="{{ old('wa_gateway_key', $settings->wa_gateway_key) }}" placeholder="Masukkan master key (jika ada)">
+                        <small class="text-muted">Isi Token <strong>atau</strong> Key, atau keduanya sesuai konfigurasi gateway Anda.</small>
+                    </div>
+
+                    <button type="button" class="btn btn-info btn-sm mb-3" onclick="testWaGateway()">
+                        <i class="fas fa-plug"></i> Test Koneksi
+                    </button>
+                    <div id="wa-test-result"></div>
+
+                    <hr>
+                    <h6>Webhook <span class="text-muted small">(untuk menerima pesan masuk dari pelanggan)</span></h6>
+                    <div class="alert alert-light border">
+                        <p class="mb-1 small"><strong>Konfigurasi di WA Gateway:</strong> set <code>webhookBaseUrl</code> pada <code>session-config.json</code> gateway Anda:</p>
+                        <div class="input-group input-group-sm mb-1">
+                            <div class="input-group-prepend"><span class="input-group-text">Session</span></div>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_session" value="{{ url('/webhook/wa/session') }}" readonly>
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_session')"><i class="fas fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <div class="input-group-prepend"><span class="input-group-text">Message</span></div>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_message" value="{{ url('/webhook/wa/message') }}" readonly>
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_message')"><i class="fas fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <p class="text-muted small mt-2 mb-0">Log pesan masuk tersedia di menu <strong>Log → Log WA Blast</strong>.</p>
+                    </div>
+
+                    <hr>
+                    <h6>Notifikasi Otomatis</h6>
+
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="wa_notify_registration" name="wa_notify_registration" value="1" {{ $settings->wa_notify_registration ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="wa_notify_registration">Notifikasi Registrasi Pelanggan Baru</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="wa_notify_invoice" name="wa_notify_invoice" value="1" {{ $settings->wa_notify_invoice ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="wa_notify_invoice">Notifikasi Tagihan Baru</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="wa_notify_payment" name="wa_notify_payment" value="1" {{ $settings->wa_notify_payment ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="wa_notify_payment">Notifikasi Konfirmasi Pembayaran</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="wa_broadcast_enabled" name="wa_broadcast_enabled" value="1" {{ $settings->wa_broadcast_enabled ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="wa_broadcast_enabled">Aktifkan Fitur WA Blast</label>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h6>Anti-Spam <span class="text-muted small">(mencegah akun WA diblokir saat blast)</span></h6>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="wa_antispam_enabled" name="wa_antispam_enabled" value="1" {{ ($settings->wa_antispam_enabled ?? true) ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="wa_antispam_enabled">Aktifkan Anti-Spam</label>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Delay Antar Pesan (ms) <span class="text-muted small">min 500ms</span></label>
+                            <input type="number" name="wa_antispam_delay_ms" class="form-control" value="{{ old('wa_antispam_delay_ms', $settings->wa_antispam_delay_ms ?? 2000) }}" min="500" max="10000" step="100">
+                            <small class="text-muted">Jeda antar pengiriman pesan. Rekomendasi: 2000ms (2 detik).</small>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Maks Pesan per Menit <span class="text-muted small">max 20</span></label>
+                            <input type="number" name="wa_antispam_max_per_minute" class="form-control" value="{{ old('wa_antispam_max_per_minute', $settings->wa_antispam_max_per_minute ?? 10) }}" min="1" max="20">
+                            <small class="text-muted">Batas pengiriman per menit. Rekomendasi: 10.</small>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="wa_msg_randomize" name="wa_msg_randomize" value="1" {{ ($settings->wa_msg_randomize ?? true) ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="wa_msg_randomize">Randomisasi Ref Pesan</label>
+                        </div>
+                        <small class="text-muted">Menambahkan karakter acak tak terlihat di akhir setiap pesan agar konten tidak identik antar penerima, membantu menghindari deteksi pengiriman massal oleh WhatsApp.</small>
+                    </div>
+
+                    <hr>
+                    <h6>Template Pesan <span class="text-muted small">— placeholder: <code>{name}</code>, <code>{username}</code>, <code>{service}</code>, <code>{profile}</code>, <code>{due_date}</code>, <code>{invoice_no}</code>, <code>{total}</code>, <code>{paid_at}</code></span></h6>
+
+                    <div class="form-group">
+                        <label>Template Registrasi</label>
+                        <textarea name="wa_template_registration" class="form-control" rows="4" placeholder="{{ $settings->getDefaultTemplate('registration') }}">{{ old('wa_template_registration', $settings->wa_template_registration) }}</textarea>
+                        <small class="text-muted">Kosongkan untuk menggunakan template default</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Template Tagihan</label>
+                        <textarea name="wa_template_invoice" class="form-control" rows="4" placeholder="{{ $settings->getDefaultTemplate('invoice') }}">{{ old('wa_template_invoice', $settings->wa_template_invoice) }}</textarea>
+                        <small class="text-muted">Kosongkan untuk menggunakan template default</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Template Pembayaran</label>
+                        <textarea name="wa_template_payment" class="form-control" rows="4" placeholder="{{ $settings->getDefaultTemplate('payment') }}">{{ old('wa_template_payment', $settings->wa_template_payment) }}</textarea>
+                        <small class="text-muted">Kosongkan untuk menggunakan template default</small>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Simpan Pengaturan WhatsApp
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -293,6 +424,38 @@
 
 @push('scripts')
 <script>
+function copyText(elementId) {
+    var el = document.getElementById(elementId);
+    el.select();
+    el.setSelectionRange(0, 99999);
+    document.execCommand('copy');
+    window.getSelection && window.getSelection().removeAllRanges();
+}
+
+function testWaGateway() {
+    var resultDiv = document.getElementById('wa-test-result');
+    resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Menguji koneksi...</div>';
+
+    fetch('{{ route("tenant-settings.test-wa") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> ' + data.message + '</div>';
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times"></i> ' + data.message + '</div>';
+        }
+    })
+    .catch(error => {
+        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times"></i> Gagal menguji koneksi</div>';
+    });
+}
+
 function testTripay() {
     var resultDiv = document.getElementById('tripay-test-result');
     resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Menguji koneksi...</div>';

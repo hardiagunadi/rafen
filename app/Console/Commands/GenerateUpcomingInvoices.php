@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Invoice;
 use App\Models\PppUser;
 use App\Models\TenantSettings;
+use App\Services\WaNotificationService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 
@@ -59,9 +60,12 @@ class GenerateUpcomingInvoices extends Command
                 continue;
             }
 
-            $this->createInvoice($user);
+            $invoice = $this->createInvoice($user);
             $generated++;
             $this->info("  [OK] Invoice dibuat untuk: {$user->username} (jatuh_tempo: {$user->jatuh_tempo})");
+
+            $settings = TenantSettings::getOrCreate((int) $user->owner_id);
+            WaNotificationService::notifyInvoiceCreated($settings, $invoice, $user);
         }
 
         $this->newLine();
@@ -70,7 +74,7 @@ class GenerateUpcomingInvoices extends Command
         return self::SUCCESS;
     }
 
-    private function createInvoice(PppUser $user): void
+    private function createInvoice(PppUser $user): Invoice
     {
         $profile = $user->profile;
 
@@ -88,7 +92,7 @@ class GenerateUpcomingInvoices extends Command
 
         $prefix = TenantSettings::getOrCreate($user->owner_id)->invoice_prefix ?? 'INV';
 
-        Invoice::create([
+        return Invoice::create([
             'invoice_number'  => Invoice::generateNumber($user->owner_id, $prefix),
             'ppp_user_id'     => $user->id,
             'ppp_profile_id'  => $user->ppp_profile_id,
