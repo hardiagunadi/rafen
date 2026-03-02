@@ -98,11 +98,7 @@
 
         $('#filter-action, #filter-subject').on('change', function () { table.ajax.reload(); });
     }
-
-    document.addEventListener('turbo:before-cache', function () {
-        if ($.fn.DataTable.isDataTable('#activity-log-table')) $('#activity-log-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

@@ -204,12 +204,7 @@
                 .finally(function () { btn.disabled = false; });
         });
 
-        document.addEventListener('turbo:before-cache', function () {
-            if (dtTable) { dtTable.destroy(); dtTable = null; }
-            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-        });
-
-        document.addEventListener('turbo:load', init);
+        document.addEventListener('DOMContentLoaded', init);
         if (document.readyState !== 'loading') init();
     })();
     </script>

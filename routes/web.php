@@ -94,11 +94,11 @@ Route::middleware('auth')->group(function () {
     Route::post('settings/wg/save-server-keys', [WgSettingsController::class, 'saveServerKeys'])->name('settings.wg.save-server-keys');
     Route::post('settings/wg/save-host', [WgSettingsController::class, 'saveHost'])->name('settings.wg.save-host');
     Route::get('settings/wg/ping', [WgSettingsController::class, 'ping'])->name('settings.wg.ping');
-    Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
+    Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::get('ppp-users/datatable', [\App\Http\Controllers\PppUserController::class, 'datatable'])->name('ppp-users.datatable');
-    Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::delete('ppp-users/bulk-destroy', [\App\Http\Controllers\PppUserController::class, 'bulkDestroy'])->name('ppp-users.bulk-destroy');
+    Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::get('hotspot-users/datatable', [HotspotUserController::class, 'datatable'])->name('hotspot-users.datatable');
     Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');
     Route::resource('hotspot-users', HotspotUserController::class);

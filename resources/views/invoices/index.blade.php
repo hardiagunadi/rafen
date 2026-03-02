@@ -89,11 +89,7 @@
 
         $(document).on('ajax:success', function () { table.ajax.reload(null, false); });
     }
-
-    document.addEventListener('turbo:before-cache', function () {
-        if ($.fn.DataTable.isDataTable('#invoice-table')) $('#invoice-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

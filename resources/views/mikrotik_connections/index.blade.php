@@ -85,12 +85,7 @@
             if (dtTable) dtTable.ajax.reload(null, false);
         }, 60000);
     }
-
-    document.addEventListener('turbo:before-cache', function () {
-        clearInterval(refreshTimer);
-        if ($.fn.DataTable.isDataTable('#router-table')) $('#router-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

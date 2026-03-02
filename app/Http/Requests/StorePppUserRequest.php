@@ -42,7 +42,7 @@ class StorePppUserRequest extends FormRequest
             'odp_pop' => ['nullable', 'string', 'max:120'],
             'customer_id' => ['required', 'string', 'max:120'],
             'customer_name' => ['required', 'string', 'max:150'],
-            'nik' => ['required', 'string', 'max:50'],
+            'nik' => ['required', 'string', 'max:191'],
             'nomor_hp' => ['required', 'string', 'max:30'],
             'email' => ['required', 'email', 'max:191'],
             'alamat' => ['required', 'string'],

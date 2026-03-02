@@ -56,11 +56,7 @@
 
         $('#filter-reply').on('change', function () { table.ajax.reload(); });
     }
-
-    document.addEventListener('turbo:before-cache', function () {
-        if ($.fn.DataTable.isDataTable('#radius-auth-table')) $('#radius-auth-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

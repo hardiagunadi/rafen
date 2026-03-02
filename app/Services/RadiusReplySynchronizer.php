@@ -74,9 +74,35 @@ class RadiusReplySynchronizer
         return null;
     }
 
+    /**
+     * Sync a single user's radcheck + radreply. Used after save/update in controller.
+     */
+    public function syncSingleUser(PppUser $user): void
+    {
+        $user->refresh();
+
+        if ($user->status_akun !== 'enable' || ! $user->username || ! $user->ppp_password) {
+            // User disabled or incomplete — remove from RADIUS
+            DB::table('radcheck')->where('username', $user->username)->delete();
+            DB::table('radreply')->where('username', $user->username)->delete();
+            return;
+        }
+
+        $this->syncUser($user);
+    }
+
     private function syncIpReply(PppUser $user, ?ProfileGroup $group): void
     {
         $username = $user->username;
+
+        // DHCP user — remove any stale static IP entries and stop
+        if ($user->tipe_ip === 'dhcp') {
+            DB::table('radreply')
+                ->where('username', $username)
+                ->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask'])
+                ->delete();
+            return;
+        }
 
         // Static IP assigned
         $ip = $user->ip_static;
@@ -97,6 +123,12 @@ class RadiusReplySynchronizer
                 ->delete();
             return;
         }
+
+        // No static IP → remove any stale Framed-IP-Address / Framed-IP-Netmask
+        DB::table('radreply')
+            ->where('username', $username)
+            ->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask'])
+            ->delete();
 
         if (! $group) {
             return;

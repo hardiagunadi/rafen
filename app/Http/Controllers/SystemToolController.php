@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\HotspotUser;
 use App\Models\Invoice;
+use App\Models\PppProfile;
 use App\Models\PppUser;
 use App\Models\Transaction;
 use App\Traits\LogsActivity;
@@ -120,15 +121,23 @@ class SystemToolController extends Controller
     {
         $request->validate([
             'type' => 'required|in:ppp,hotspot',
-            'file' => 'required|file|mimes:csv,txt|max:5120',
+            'file' => 'required|file|max:5120',
         ]);
 
         $user = $request->user();
         $type = $request->input('type');
         $file = $request->file('file');
 
+        $ext = strtolower($file->getClientOriginalExtension());
+        if (! in_array($ext, ['csv', 'txt'])) {
+            return response()->json(['error' => 'File harus berformat CSV atau TXT.'], 422);
+        }
+
         $handle  = fopen($file->getRealPath(), 'r');
         $headers = array_map('trim', fgetcsv($handle) ?: []);
+
+        // Deteksi format: MixRadius jika ada kolom 'Login' dan 'FullName'
+        $isMixRadius = in_array('Login', $headers) && in_array('FullName', $headers);
 
         $inserted = 0;
         $errors   = [];
@@ -149,7 +158,9 @@ class SystemToolController extends Controller
             $data['owner_id'] = $user->effectiveOwnerId();
 
             try {
-                if ($type === 'ppp') {
+                if ($isMixRadius && $type === 'ppp') {
+                    $this->importPppRowMixRadius($data);
+                } elseif ($type === 'ppp') {
                     $this->importPppRow($data);
                 } else {
                     $this->importHotspotRow($data);
@@ -162,9 +173,13 @@ class SystemToolController extends Controller
 
         fclose($handle);
 
-        $this->logActivity('imported', ucfirst($type) . 'User', 0, "{$inserted} records", $user->effectiveOwnerId());
+        try {
+            $this->logActivity('imported', ucfirst($type) . 'User', 0, "{$inserted} records", $user->effectiveOwnerId());
+        } catch (\Throwable $e) {
+            \Log::warning('logActivity failed on import: ' . $e->getMessage());
+        }
 
-        if ($request->wantsJson()) {
+        if ($request->isXmlHttpRequest() || $request->wantsJson()) {
             return response()->json([
                 'inserted' => $inserted,
                 'errors'   => $errors,
@@ -508,6 +523,100 @@ class SystemToolController extends Controller
         HotspotUser::where('owner_id', $tenantId)->delete();
         Invoice::where('owner_id', $tenantId)->delete();
         DB::table('transactions')->where('owner_id', $tenantId)->delete();
+    }
+
+    /**
+     * Import satu baris dari format export MixRadius.
+     * Kolom: Login, Password, FullName, CustomerId, Email, IdCard, Phone, Address,
+     *        Latitude, Longitude, ExpiredAction, Plan, PaymentStatus, AuthStatus,
+     *        Expired, Note
+     */
+    private function importPppRowMixRadius(array $data): void
+    {
+        $username = $data['Login'] ?? '';
+        $name     = $data['FullName'] ?? '';
+
+        if (empty($username) || empty($name)) {
+            throw new \InvalidArgumentException("Kolom 'Login' dan 'FullName' wajib diisi.");
+        }
+
+        // Jatuh tempo: kolom Expired, format "YYYY-MM-DD HH:mm:ss" atau "0000-00-00 ..."
+        $jatuhTempo = null;
+        $expiredRaw = $data['Expired'] ?? '';
+        if ($expiredRaw && ! str_starts_with($expiredRaw, '0000')) {
+            try {
+                $jatuhTempo = Carbon::parse($expiredRaw)->endOfDay();
+            } catch (\Throwable) {
+                $jatuhTempo = null;
+            }
+        }
+
+        // status_akun: AuthStatus 1=enable, 0=disable
+        $authStatus = (string) ($data['AuthStatus'] ?? '1');
+        $statusAkun = $authStatus === '1' ? 'enable' : 'disable';
+
+        // status_bayar: PaymentStatus 1=sudah_bayar, 0=belum_bayar (atau kosong)
+        $payStatus  = (string) ($data['PaymentStatus'] ?? '');
+        $statusBayar = $payStatus === '1' ? 'sudah_bayar' : 'belum_bayar';
+
+        // aksi_jatuh_tempo: ExpiredAction isolir → isolir, lainnya → tetap_terhubung
+        $expiredAction   = strtolower($data['ExpiredAction'] ?? '');
+        $aksiJatuhTempo  = $expiredAction === 'isolir' ? 'isolir' : 'tetap_terhubung';
+
+        // Cari ppp_profile_id berdasarkan nama Plan (owner_id atau global)
+        $planName   = $data['Plan'] ?? '';
+        $ownerId    = (int) $data['owner_id'];
+        $profileId  = null;
+        if ($planName) {
+            $profile = PppProfile::query()
+                ->where('name', $planName)
+                ->where(fn ($q) => $q->where('owner_id', $ownerId)->orWhereNull('owner_id'))
+                ->first();
+            $profileId = $profile?->id;
+        }
+
+        // NIK: biarkan apa adanya (tidak dienkripsi ulang)
+        $nik = $data['IdCard'] ?? null;
+        if ($nik === '0000000000000000' || $nik === '') {
+            $nik = null;
+        }
+
+        // Nomor HP normalisasi
+        $nomor = $data['Phone'] ?? null;
+        if ($nomor) {
+            $nomor = preg_replace('/\D+/', '', $nomor) ?? '';
+            if (str_starts_with($nomor, '0')) {
+                $nomor = '62' . substr($nomor, 1);
+            } elseif (! str_starts_with($nomor, '62')) {
+                $nomor = $nomor !== '' ? '62' . $nomor : null;
+            }
+            if ($nomor === '' || $nomor === '62') {
+                $nomor = null;
+            }
+        }
+
+        PppUser::create([
+            'owner_id'         => $ownerId,
+            'username'         => $username,
+            'ppp_password'     => $data['Password'] ?? $username,
+            'customer_name'    => $name,
+            'customer_id'      => $data['CustomerId'] ?? null,
+            'nik'              => $nik,
+            'nomor_hp'         => $nomor,
+            'email'            => $data['Email'] ?? null,
+            'alamat'           => $data['Address'] ?? null,
+            'latitude'         => ($data['Latitude'] ?? '') !== '' ? $data['Latitude'] : null,
+            'longitude'        => ($data['Longitude'] ?? '') !== '' ? $data['Longitude'] : null,
+            'ppp_profile_id'   => $profileId,
+            'status_akun'      => $statusAkun,
+            'status_bayar'     => $statusBayar,
+            'aksi_jatuh_tempo' => $aksiJatuhTempo,
+            'tipe_service'     => 'pppoe',
+            'tipe_ip'          => 'dhcp',
+            'metode_login'     => 'username_password',
+            'jatuh_tempo'      => $jatuhTempo,
+            'catatan'          => $data['Note'] ?? null,
+        ]);
     }
 
     private function importPppRow(array $data): void

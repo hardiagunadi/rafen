@@ -53,11 +53,7 @@
             pageLength: 20, stateSave: false,
         });
     }
-
-    document.addEventListener('turbo:before-cache', function () {
-        if ($.fn.DataTable.isDataTable('#user-table')) $('#user-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

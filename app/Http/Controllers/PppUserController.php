@@ -10,6 +10,7 @@ use App\Models\PppUser;
 use App\Models\ProfileGroup;
 use App\Models\TenantSettings;
 use App\Models\User;
+use App\Services\RadiusReplySynchronizer;
 use App\Traits\LogsActivity;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -173,6 +174,8 @@ class PppUserController extends Controller
             $this->createInvoiceForUser($user);
         }
 
+        app(RadiusReplySynchronizer::class)->syncSingleUser($user);
+
         $this->logActivity('created', 'PppUser', $user->id, $user->customer_name, (int) $user->owner_id);
 
         return redirect()->route('ppp-users.index')->with('status', 'User PPP ditambahkan.');
@@ -228,6 +231,8 @@ class PppUserController extends Controller
         if ($data['status_bayar'] === 'sudah_bayar' && $originalStatus !== 'sudah_bayar') {
             $this->markInvoicePaid($pppUser);
         }
+
+        app(RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
 
         $this->logActivity('updated', 'PppUser', $pppUser->id, $pppUser->customer_name, (int) $pppUser->owner_id);
 

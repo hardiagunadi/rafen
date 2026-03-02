@@ -38,7 +38,7 @@
 
 <div class="modal fade" id="bulk-export-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
-        <form class="modal-content" id="bulk-export-form" action="{{ route('profile-groups.export-bulk') }}" method="POST" data-turbo="false">
+        <form class="modal-content" id="bulk-export-form" action="{{ route('profile-groups.export-bulk') }}" method="POST">
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Ekspor Profil Group ke Router</h5>
@@ -160,11 +160,7 @@
             event.preventDefault(); alert('Pilih minimal satu router (NAS) untuk export.');
         }
     });
-
-    document.addEventListener('turbo:before-cache', function () {
-        if ($.fn.DataTable.isDataTable('#profile-group-table')) $('#profile-group-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

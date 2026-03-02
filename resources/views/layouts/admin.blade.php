@@ -5,23 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Radius Manager</title>
-    <script src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.4/dist/turbo.es2017-umd.js" data-turbo-track="reload"></script>
-    <script>
-        // Disable Turbo form handling — all forms use standard browser submit/redirect
-        function disableTurboForms() {
-            document.querySelectorAll('form:not([data-turbo="true"])').forEach(function (f) {
-                f.setAttribute('data-turbo', 'false');
-            });
-        }
-        document.addEventListener('DOMContentLoaded', disableTurboForms);
-        document.addEventListener('turbo:load', disableTurboForms);
-    </script>
-    <style>
-        .turbo-loading .content-wrapper {
-            opacity: 0.85;
-            transition: opacity 150ms ease-in-out;
-        }
-    </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs4@1.13.8/css/dataTables.bootstrap4.min.css">
@@ -36,7 +19,7 @@
                 <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
             </li>
             <li class="nav-item d-none d-sm-inline-block">
-                <a href="{{ route('dashboard') }}" class="nav-link" data-turbo="false">Dashboard</a>
+                <a href="{{ route('dashboard') }}" class="nav-link">Dashboard</a>
             </li>
         </ul>
         <ul class="navbar-nav ml-auto">
@@ -58,14 +41,14 @@
     @endauth
 
     <aside class="main-sidebar sidebar-dark-primary elevation-4">
-        <a href="{{ route('dashboard') }}" class="brand-link text-center" data-turbo="false">
+        <a href="{{ route('dashboard') }}" class="brand-link text-center">
             <span class="brand-text font-weight-light">Radius Admin</span>
         </a>
         <div class="sidebar">
             <nav class="mt-2">
                 <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
                     <li class="nav-item">
-                        <a href="{{ route('dashboard') }}" class="nav-link" data-turbo="false">
+                        <a href="{{ route('dashboard') }}" class="nav-link">
                             <i class="nav-icon fas fa-tachometer-alt"></i>
                             <p>Dashboard</p>
                         </a>
@@ -468,19 +451,17 @@
             </div>
         </section>
 
-        <turbo-frame id="main-content">
-            @if (session('status'))
-                <script>window.__flashStatus = {{ Js::from(session('status')) }};</script>
-            @endif
-            @if (session('error'))
-                <script>window.__flashError = {{ Js::from(session('error')) }};</script>
-            @endif
-            <section class="content">
-                <div class="container-fluid">
-                    @yield('content')
-                </div>
-            </section>
-        </turbo-frame>
+        @if (session('status'))
+            <script>window.__flashStatus = {{ Js::from(session('status')) }};</script>
+        @endif
+        @if (session('error'))
+            <script>window.__flashError = {{ Js::from(session('error')) }};</script>
+        @endif
+        <section class="content">
+            <div class="container-fluid">
+                @yield('content')
+            </div>
+        </section>
     </div>
 
     <footer class="main-footer">
@@ -627,17 +608,6 @@
 <script src="https://cdn.jsdelivr.net/npm/datatables.net-responsive@2.5.0/js/dataTables.responsive.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/datatables.net-responsive-bs4@2.5.0/js/responsive.bootstrap4.min.js"></script>
 <script>
-    document.addEventListener('turbo:visit', () => document.body.classList.add('turbo-loading'));
-    document.addEventListener('turbo:load', () => {
-        document.body.classList.remove('turbo-loading');
-        document.querySelectorAll('.nav-link[href]').forEach(link => {
-            if (!link.dataset.turboFrame) {
-                link.dataset.turboFrame = 'main-content';
-            }
-        });
-    });
-</script>
-<script>
 // ── Global AJAX helpers ────────────────────────────────────────────────────
 window.AppAjax = (function () {
     function getCsrf() {
@@ -744,9 +714,6 @@ window.AppAjax = (function () {
     document.addEventListener('DOMContentLoaded', function () {
         initDeleteButtons();
         initPostButtons();
-    });
-    // Juga jalankan ulang saat Turbo navigasi
-    document.addEventListener('turbo:load', function () {
         if (window.__flashStatus) { showToast(window.__flashStatus, 'success'); window.__flashStatus = null; }
         if (window.__flashError)  { showToast(window.__flashError,  'danger');  window.__flashError  = null; }
     });

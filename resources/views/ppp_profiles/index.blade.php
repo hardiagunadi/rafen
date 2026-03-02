@@ -91,11 +91,7 @@
             AppAjax.showToast('Gagal menghapus.', 'danger');
         });
     });
-
-    document.addEventListener('turbo:before-cache', function () {
-        if ($.fn.DataTable.isDataTable('#ppp-profile-table')) $('#ppp-profile-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

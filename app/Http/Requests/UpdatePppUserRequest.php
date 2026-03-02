@@ -42,7 +42,7 @@ class UpdatePppUserRequest extends FormRequest
             'odp_pop' => ['nullable', 'string', 'max:120'],
             'customer_id' => ['sometimes', 'required', 'string', 'max:120'],
             'customer_name' => ['sometimes', 'required', 'string', 'max:150'],
-            'nik' => ['sometimes', 'required', 'string', 'max:50'],
+            'nik' => ['sometimes', 'required', 'string', 'max:191'],
             'nomor_hp' => ['sometimes', 'required', 'string', 'max:30'],
             'email' => ['sometimes', 'required', 'email', 'max:191'],
             'alamat' => ['sometimes', 'required', 'string'],

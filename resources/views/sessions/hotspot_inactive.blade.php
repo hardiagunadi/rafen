@@ -109,11 +109,7 @@
             });
         }
 
-        document.addEventListener('turbo:before-cache', function () {
-            if (dtTable) { dtTable.destroy(); dtTable = null; }
-        });
-
-        document.addEventListener('turbo:load', init);
+        document.addEventListener('DOMContentLoaded', init);
         if (document.readyState !== 'loading') init();
     })();
     </script>

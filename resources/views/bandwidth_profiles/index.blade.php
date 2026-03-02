@@ -79,11 +79,7 @@
             if (dtTable) dtTable.ajax.reload(null, false);
         }).catch(function () { AppAjax.showToast('Gagal menghapus.', 'danger'); });
     });
-
-    document.addEventListener('turbo:before-cache', function () {
-        if ($.fn.DataTable.isDataTable('#bandwidth-profile-table')) $('#bandwidth-profile-table').DataTable().destroy();
-    });
-    document.addEventListener('turbo:load', init);
+    document.addEventListener('DOMContentLoaded', init);
     if (document.readyState !== 'loading') init();
 })();
 </script>

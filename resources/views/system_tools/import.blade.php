@@ -48,11 +48,22 @@
                 <p class="text-muted small">Gunakan kolom berikut di baris pertama (header). Kolom <strong>username</strong> dan <strong>customer_name</strong> wajib diisi.</p>
 
                 <div id="template-ppp">
-                    <strong>PPP Users:</strong>
+                    <strong>PPP Users (Format Rafen):</strong>
                     <pre class="bg-light p-2 small mt-1">customer_id,customer_name,nik,nomor_hp,email,alamat,username,ppp_password,status_akun,status_bayar,jatuh_tempo,tipe_service,catatan</pre>
-                    <a href="{{ route('tools.import.template', 'ppp') }}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{{ route('tools.import.template', 'ppp') }}" class="btn btn-sm btn-outline-secondary mb-3">
                         <i class="fas fa-download mr-1"></i>Download Template PPP
                     </a>
+
+                    <hr>
+                    <strong>PPP Users (Format Export MixRadius):</strong>
+                    <p class="text-muted small mb-1">Upload langsung file CSV hasil export dari MixRadius. Sistem akan mendeteksi otomatis berdasarkan header <code>Login</code> dan <code>FullName</code>.</p>
+                    <p class="text-muted small mb-0">Kolom yang digunakan: <code>Login, Password, FullName, CustomerId, Email, IdCard, Phone, Address, Latitude, Longitude, ExpiredAction, Plan, PaymentStatus, AuthStatus, Expired, Note</code></p>
+                    <ul class="text-muted small mt-1 mb-0 pl-3">
+                        <li>Kolom <strong>Plan</strong> akan dicocokkan dengan nama Paket PPP yang ada di sistem</li>
+                        <li>Kolom <strong>AuthStatus</strong>: 1=enable, 0=disable</li>
+                        <li>Kolom <strong>PaymentStatus</strong>: 1=sudah bayar, 0/kosong=belum bayar</li>
+                        <li>Kolom <strong>ExpiredAction</strong>: isolir → isolir, lainnya → tetap terhubung</li>
+                    </ul>
                 </div>
 
                 <div id="template-hotspot" style="display:none;">
@@ -97,30 +108,45 @@
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': fd.get('_token') },
             body: fd,
         })
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+            return r.json().then(function (data) {
+                return { ok: r.ok, status: r.status, data: data };
+            });
+        })
         .then(function (res) {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-upload mr-1"></i>Impor';
             result.style.display = '';
 
-            if (res.error) {
-                result.innerHTML = '<div class="alert alert-danger">' + res.error + '</div>';
+            if (!res.ok) {
+                // Handle validation errors (422) or other server errors
+                var msg = res.data.message || res.data.error || 'Terjadi kesalahan server.';
+                if (res.data.errors) {
+                    var errs = Object.values(res.data.errors).flat();
+                    msg = errs.join('<br>');
+                }
+                result.innerHTML = '<div class="alert alert-danger">' + msg + '</div>';
                 return;
             }
 
-            var html = '<div class="alert alert-success">Berhasil mengimpor <strong>' + res.inserted + '</strong> data.</div>';
-            if (res.errors && res.errors.length > 0) {
-                html += '<div class="alert alert-warning"><strong>' + res.errors.length + ' baris gagal:</strong><ul class="mb-0 mt-1">';
-                res.errors.forEach(function (e) { html += '<li>' + e + '</li>'; });
+            if (res.data.error) {
+                result.innerHTML = '<div class="alert alert-danger">' + res.data.error + '</div>';
+                return;
+            }
+
+            var html = '<div class="alert alert-success">Berhasil mengimpor <strong>' + res.data.inserted + '</strong> data.</div>';
+            if (res.data.errors && res.data.errors.length > 0) {
+                html += '<div class="alert alert-warning"><strong>' + res.data.errors.length + ' baris gagal:</strong><ul class="mb-0 mt-1">';
+                res.data.errors.forEach(function (e) { html += '<li>' + e + '</li>'; });
                 html += '</ul></div>';
             }
             result.innerHTML = html;
         })
-        .catch(function () {
+        .catch(function (err) {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-upload mr-1"></i>Impor';
             result.style.display = '';
-            result.innerHTML = '<div class="alert alert-danger">Terjadi kesalahan. Coba lagi.</div>';
+            result.innerHTML = '<div class="alert alert-danger">Terjadi kesalahan koneksi. Coba lagi.</div>';
         });
     });
 })();

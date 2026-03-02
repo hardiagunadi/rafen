@@ -150,11 +150,7 @@
             }
         });
 
-        document.addEventListener('turbo:before-cache', function () {
-            if (table) { table.destroy(); table = null; }
-        });
-
-        document.addEventListener('turbo:load', initDataTable);
+        document.addEventListener('DOMContentLoaded', initDataTable);
         if (document.readyState !== 'loading') initDataTable();
     })();
     </script>

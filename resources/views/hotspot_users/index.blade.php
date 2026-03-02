@@ -143,7 +143,7 @@
                 form.submit();
             });
         }
-        document.addEventListener('turbo:load', init);
+        document.addEventListener('DOMContentLoaded', init);
         if (document.readyState !== 'loading') init();
     })();
     </script>
