@@ -99,12 +99,12 @@
                         @error('dns_servers')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="form-group col-md-6">
-                        <label>Parent Queue</label>
+                        <label>Parent Queue <small class="text-muted">(opsional)</small></label>
                         <select name="parent_queue" id="parent_queue_select" class="form-control @error('parent_queue') is-invalid @enderror">
                             <option value="">Memuat dari Mikrotik...</option>
                         </select>
                         @error('parent_queue')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
-                        <small class="text-muted" id="queue-fetch-status"></small>
+                        <small class="text-muted" id="queue-fetch-status">Kosongkan untuk menggunakan parent queue dari Profil PPP.</small>
                     </div>
                 </div>
             </div>
@@ -166,14 +166,14 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.error) { status.textContent = data.error; return; }
-                sel.innerHTML = '<option value="">- tidak ada -</option>';
+                sel.innerHTML = '<option value="">- tidak ada / dari Profil PPP -</option>';
                 (data.queues || []).forEach(function (q) {
                     var opt = document.createElement('option');
                     opt.value = q; opt.textContent = q;
                     if (q === current) opt.selected = true;
                     sel.appendChild(opt);
                 });
-                status.textContent = '';
+                status.textContent = 'Kosongkan untuk menggunakan parent queue dari Profil PPP.';
             })
             .catch(function () { status.textContent = 'Gagal mengambil queue dari Mikrotik.'; });
         })();

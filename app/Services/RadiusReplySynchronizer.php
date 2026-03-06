@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BandwidthProfile;
 use App\Models\ProfileGroup;
+use App\Models\PppProfile;
 use App\Models\PppUser;
 use Illuminate\Support\Facades\DB;
 
@@ -20,50 +21,122 @@ class RadiusReplySynchronizer
     {
         $this->reservedIps = [];
 
-        // Sync user enable (normal)
+        // Load all relevant data upfront
         $enabledUsers = PppUser::query()
             ->where('status_akun', 'enable')
             ->whereNotNull('username')
             ->whereNotNull('ppp_password')
-            ->with('profile')
+            ->with(['profile.bandwidthProfile', 'profile.profileGroup'])
             ->get();
 
-        $count = 0;
-
-        foreach ($enabledUsers as $user) {
-            // Hapus Mikrotik-Group isolir jika masih ada
-            DB::table('radreply')
-                ->where('username', $user->username)
-                ->where('attribute', 'Mikrotik-Group')
-                ->delete();
-            $this->syncUser($user);
-            $count++;
-        }
-
-        // Sync user isolir: pastikan radcheck ada, jangan hapus radreply isolir
         $isolirUsers = PppUser::query()
             ->where('status_akun', 'isolir')
             ->whereNotNull('username')
             ->whereNotNull('ppp_password')
             ->get();
 
+        // Bulk radcheck for enabled users
+        $radcheckRows = [];
+        foreach ($enabledUsers as $user) {
+            $radcheckRows[] = ['username' => $user->username, 'attribute' => 'Cleartext-Password', 'op' => ':=', 'value' => $user->ppp_password];
+        }
+        // Bulk radcheck for isolir users
         foreach ($isolirUsers as $user) {
-            DB::table('radcheck')->updateOrInsert(
-                ['username' => $user->username, 'attribute' => 'Cleartext-Password'],
-                ['op' => ':=', 'value' => $user->ppp_password]
-            );
+            $radcheckRows[] = ['username' => $user->username, 'attribute' => 'Cleartext-Password', 'op' => ':=', 'value' => $user->ppp_password];
         }
 
-        // Hapus radcheck/radreply untuk user yang bukan enable maupun isolir
+        if ($radcheckRows) {
+            DB::table('radcheck')->upsert($radcheckRows, ['username', 'attribute'], ['op', 'value']);
+        }
+
+        // Build radreply rows for enabled users
+        $radreplyRows    = [];
+        $deleteIpFor     = []; // usernames where Framed-IP should be cleared
+        $deletePoolFor   = []; // usernames where Framed-Pool should be cleared
+        $deleteGroupFor  = []; // usernames where Mikrotik-Group should be cleared
+        $deleteQueueFor  = []; // usernames where Mikrotik-Queue-Parent-Name should be cleared
+        $deleteRateFor   = []; // usernames where Mikrotik-Rate-Limit should be cleared
+
+        foreach ($enabledUsers as $user) {
+            $group     = $this->resolveProfileGroup($user);
+            $bandwidth = $this->resolveBandwidthProfile($user);
+            $username  = $user->username;
+
+            // Mikrotik-Group
+            if ($group && $group->name) {
+                $radreplyRows[] = ['username' => $username, 'attribute' => 'Mikrotik-Group', 'op' => ':=', 'value' => $group->name];
+            } else {
+                $deleteGroupFor[] = $username;
+            }
+
+            // Framed-Pool (group_only)
+            if ($group && $group->ip_pool_mode === 'group_only' && $group->ip_pool_name) {
+                $radreplyRows[] = ['username' => $username, 'attribute' => 'Framed-Pool', 'op' => ':=', 'value' => $group->ip_pool_name];
+            } else {
+                $deletePoolFor[] = $username;
+            }
+
+            // Rate-limit
+            if ($bandwidth) {
+                $radreplyRows[] = ['username' => $username, 'attribute' => 'Mikrotik-Rate-Limit', 'op' => ':=', 'value' => $this->buildRateLimit($bandwidth)];
+            } else {
+                $deleteRateFor[] = $username;
+            }
+
+            // Queue parent
+            $parentQueue = ($group && $group->parent_queue) ? $group->parent_queue : ($user->profile?->parent_queue ?: null);
+            if ($parentQueue) {
+                $radreplyRows[] = ['username' => $username, 'attribute' => 'Mikrotik-Queue-Parent-Name', 'op' => ':=', 'value' => $parentQueue];
+            } else {
+                $deleteQueueFor[] = $username;
+            }
+
+            // IP address
+            $ipRows = $this->buildIpReplyRows($user, $group);
+            if ($ipRows !== null) {
+                array_push($radreplyRows, ...$ipRows);
+            } else {
+                $deleteIpFor[] = $username;
+            }
+        }
+
+        // Bulk upsert radreply
+        foreach (array_chunk($radreplyRows, 500) as $chunk) {
+            DB::table('radreply')->upsert($chunk, ['username', 'attribute'], ['op', 'value']);
+        }
+
+        // Clean up stale attributes for enabled users
+        if ($deleteGroupFor) {
+            DB::table('radreply')->whereIn('username', $deleteGroupFor)->where('attribute', 'Mikrotik-Group')->delete();
+        }
+        if ($deletePoolFor) {
+            DB::table('radreply')->whereIn('username', $deletePoolFor)->where('attribute', 'Framed-Pool')->delete();
+        }
+        if ($deleteRateFor) {
+            DB::table('radreply')->whereIn('username', $deleteRateFor)->where('attribute', 'Mikrotik-Rate-Limit')->delete();
+        }
+        if ($deleteQueueFor) {
+            DB::table('radreply')->whereIn('username', $deleteQueueFor)->where('attribute', 'Mikrotik-Queue-Parent-Name')->delete();
+        }
+        if ($deleteIpFor) {
+            DB::table('radreply')->whereIn('username', $deleteIpFor)->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask'])->delete();
+        }
+
+        // Remove radcheck/radreply for users that are neither enable nor isolir
         $keepUsernames = $enabledUsers->pluck('username')
             ->merge($isolirUsers->pluck('username'))
             ->unique()
             ->all();
 
-        DB::table('radcheck')->whereNotIn('username', $keepUsernames)->delete();
-        DB::table('radreply')->whereNotIn('username', $keepUsernames)->delete();
+        if ($keepUsernames) {
+            DB::table('radcheck')->whereNotIn('username', $keepUsernames)->delete();
+            DB::table('radreply')->whereNotIn('username', $keepUsernames)->delete();
+        } else {
+            DB::table('radcheck')->delete();
+            DB::table('radreply')->delete();
+        }
 
-        return $count;
+        return $enabledUsers->count();
     }
 
     private function syncUser(PppUser $user): void
@@ -84,7 +157,7 @@ class RadiusReplySynchronizer
         $this->syncIpReply($user, $group);
 
         // --- radreply: rate-limit + queue parent ---
-        $this->syncProfileReply($user, $group, $bandwidth);
+        $this->syncProfileReply($user, $group, $bandwidth, $user->profile);
     }
 
     private function resolveProfileGroup(PppUser $user): ?ProfileGroup
@@ -250,7 +323,7 @@ class RadiusReplySynchronizer
         }
     }
 
-    private function syncProfileReply(PppUser $user, ?ProfileGroup $group, ?BandwidthProfile $bandwidth): void
+    private function syncProfileReply(PppUser $user, ?ProfileGroup $group, ?BandwidthProfile $bandwidth, ?PppProfile $profile): void
     {
         $username = $user->username;
 
@@ -293,12 +366,17 @@ class RadiusReplySynchronizer
                 ->delete();
         }
 
-        // Mikrotik-Queue-Parent-Name: dari ProfileGroup.parent_queue
-        // Agar queue masuk ke parent yang benar (mis: "0. PPPOe Pelanggan")
-        if ($group && $group->parent_queue) {
+        // Mikrotik-Queue-Parent-Name: prioritas ProfileGroup.parent_queue,
+        // fallback ke PppProfile.parent_queue jika ProfileGroup tidak set.
+        // Jika keduanya kosong, hapus attribute.
+        $parentQueue = ($group && $group->parent_queue)
+            ? $group->parent_queue
+            : ($profile?->parent_queue ?: null);
+
+        if ($parentQueue) {
             DB::table('radreply')->updateOrInsert(
                 ['username' => $username, 'attribute' => 'Mikrotik-Queue-Parent-Name'],
-                ['op' => ':=', 'value' => $group->parent_queue]
+                ['op' => ':=', 'value' => $parentQueue]
             );
         } else {
             DB::table('radreply')

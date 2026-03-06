@@ -7,6 +7,8 @@ use App\Models\Invoice;
 use App\Models\PppProfile;
 use App\Models\PppUser;
 use App\Models\Transaction;
+use App\Services\HotspotRadiusSynchronizer;
+use App\Services\RadiusReplySynchronizer;
 use App\Traits\LogsActivity;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -117,7 +119,10 @@ class SystemToolController extends Controller
         ]);
     }
 
-    public function importStore(Request $request): JsonResponse|RedirectResponse
+    /**
+     * Preview CSV: kembalikan daftar new, conflict, identical.
+     */
+    public function importPreview(Request $request): JsonResponse
     {
         $request->validate([
             'type' => 'required|in:ppp,hotspot',
@@ -133,65 +138,163 @@ class SystemToolController extends Controller
             return response()->json(['error' => 'File harus berformat CSV atau TXT.'], 422);
         }
 
-        $handle  = fopen($file->getRealPath(), 'r');
-        $headers = array_map('trim', fgetcsv($handle) ?: []);
-
-        // Deteksi format: MixRadius jika ada kolom 'Login' dan 'FullName'
+        $handle      = fopen($file->getRealPath(), 'r');
+        $headers     = array_map('trim', fgetcsv($handle) ?: []);
         $isMixRadius = in_array('Login', $headers) && in_array('FullName', $headers);
 
-        $inserted = 0;
-        $errors   = [];
-        $row      = 1;
+        $ownerId     = $user->effectiveOwnerId();
+        $newRows     = [];
+        $conflicts   = [];
+        $identical   = 0;
+        $parseErrors = [];
+        $rowNum      = 1;
 
         while (($line = fgetcsv($handle)) !== false) {
-            $row++;
+            $rowNum++;
             if (empty(array_filter($line))) {
                 continue;
             }
 
-            $data = array_combine($headers, array_map('trim', $line));
-            if ($data === false) {
-                $errors[] = "Baris {$row}: kolom tidak sesuai.";
+            $raw = array_combine($headers, array_map('trim', $line));
+            if ($raw === false) {
+                $parseErrors[] = "Baris {$rowNum}: kolom tidak sesuai.";
                 continue;
             }
 
-            $data['owner_id'] = $user->effectiveOwnerId();
+            $raw['owner_id'] = $ownerId;
 
             try {
                 if ($isMixRadius && $type === 'ppp') {
-                    $this->importPppRowMixRadius($data);
+                    $normalized = $this->normalizePppRowMixRadius($raw);
                 } elseif ($type === 'ppp') {
-                    $this->importPppRow($data);
+                    $normalized = $this->normalizePppRow($raw);
                 } else {
-                    $this->importHotspotRow($data);
+                    $normalized = $this->normalizeHotspotRow($raw);
                 }
-                $inserted++;
             } catch (\Throwable $e) {
-                $errors[] = "Baris {$row}: " . $e->getMessage();
+                $parseErrors[] = "Baris {$rowNum}: " . $e->getMessage();
+                continue;
+            }
+
+            $username = $normalized['username'];
+
+            if ($type === 'ppp') {
+                $existing = PppUser::where('username', $username)->where('owner_id', $ownerId)->first();
+            } else {
+                $existing = HotspotUser::where('username', $username)->where('owner_id', $ownerId)->first();
+            }
+
+            if (! $existing) {
+                $newRows[] = $normalized;
+            } else {
+                $diff = $this->diffUserData($existing, $normalized, $type);
+                if (empty($diff)) {
+                    $identical++;
+                } else {
+                    $conflicts[] = [
+                        'username' => $username,
+                        'existing' => $this->summarizeUser($existing, $type),
+                        'incoming' => $this->summarizeNormalized($normalized, $type),
+                        'diff'     => $diff,
+                        '_data'    => $normalized,
+                    ];
+                }
             }
         }
 
         fclose($handle);
 
+        return response()->json([
+            'type'         => $type,
+            'is_mixradius' => $isMixRadius,
+            'new'          => $newRows,
+            'conflicts'    => $conflicts,
+            'identical'    => $identical,
+            'parse_errors' => $parseErrors,
+        ]);
+    }
+
+    /**
+     * Confirm import: insert new rows + update selected conflicts.
+     */
+    public function importConfirm(Request $request): JsonResponse
+    {
+        $request->validate([
+            'type'    => 'required|in:ppp,hotspot',
+            'new'     => 'nullable|array',
+            'updates' => 'nullable|array',
+        ]);
+
+        $user    = $request->user();
+        $type    = $request->input('type');
+        $ownerId = $user->effectiveOwnerId();
+        $newRows = $request->input('new', []);
+        $updates = $request->input('updates', []);
+
+        $inserted      = 0;
+        $updated       = 0;
+        $errors        = [];
+        $syncUsernames = [];
+
+        foreach ($newRows as $row) {
+            try {
+                $row['owner_id'] = $ownerId;
+                if ($type === 'ppp') {
+                    PppUser::create($row);
+                } else {
+                    HotspotUser::create($row);
+                }
+                $syncUsernames[] = $row['username'];
+                $inserted++;
+            } catch (\Throwable $e) {
+                $errors[] = "Insert '{$row['username']}': " . $e->getMessage();
+            }
+        }
+
+        foreach ($updates as $row) {
+            try {
+                $row['owner_id'] = $ownerId;
+                $username = $row['username'] ?? '';
+                if (! $username) {
+                    continue;
+                }
+
+                if ($type === 'ppp') {
+                    PppUser::where('username', $username)->where('owner_id', $ownerId)->update($row);
+                } else {
+                    HotspotUser::where('username', $username)->where('owner_id', $ownerId)->update($row);
+                }
+                $syncUsernames[] = $username;
+                $updated++;
+            } catch (\Throwable $e) {
+                $errors[] = "Update '{$row['username']}': " . $e->getMessage();
+            }
+        }
+
+        // Sync imported users to RADIUS
+        if (! empty($syncUsernames)) {
+            if ($type === 'ppp') {
+                $pppSynchronizer = app(RadiusReplySynchronizer::class);
+                PppUser::whereIn('username', $syncUsernames)->where('owner_id', $ownerId)->get()
+                    ->each(fn ($u) => $pppSynchronizer->syncSingleUser($u));
+            } else {
+                $hotspotSynchronizer = app(HotspotRadiusSynchronizer::class);
+                HotspotUser::whereIn('username', $syncUsernames)->where('owner_id', $ownerId)->get()
+                    ->each(fn ($u) => $hotspotSynchronizer->syncSingleUser($u));
+            }
+        }
+
         try {
-            $this->logActivity('imported', ucfirst($type) . 'User', 0, "{$inserted} records", $user->effectiveOwnerId());
+            $this->logActivity('imported', ucfirst($type) . 'User', 0, "{$inserted} inserted, {$updated} updated", $ownerId);
         } catch (\Throwable $e) {
             \Log::warning('logActivity failed on import: ' . $e->getMessage());
         }
 
-        if ($request->isXmlHttpRequest() || $request->wantsJson()) {
-            return response()->json([
-                'inserted' => $inserted,
-                'errors'   => $errors,
-            ]);
-        }
-
-        $msg = "Berhasil mengimpor {$inserted} data.";
-        if (count($errors)) {
-            $msg .= ' ' . count($errors) . ' baris gagal.';
-        }
-
-        return redirect()->route('tools.import')->with('status', $msg);
+        return response()->json([
+            'inserted' => $inserted,
+            'updated'  => $updated,
+            'errors'   => $errors,
+        ]);
     }
 
     // ─── Ekspor User ─────────────────────────────────────────────────────────
@@ -525,13 +628,8 @@ class SystemToolController extends Controller
         DB::table('transactions')->where('owner_id', $tenantId)->delete();
     }
 
-    /**
-     * Import satu baris dari format export MixRadius.
-     * Kolom: Login, Password, FullName, CustomerId, Email, IdCard, Phone, Address,
-     *        Latitude, Longitude, ExpiredAction, Plan, PaymentStatus, AuthStatus,
-     *        Expired, Note
-     */
-    private function importPppRowMixRadius(array $data): void
+    /** Normalize baris MixRadius → array siap insert (tidak create). */
+    private function normalizePppRowMixRadius(array $data): array
     {
         $username = $data['Login'] ?? '';
         $name     = $data['FullName'] ?? '';
@@ -540,48 +638,35 @@ class SystemToolController extends Controller
             throw new \InvalidArgumentException("Kolom 'Login' dan 'FullName' wajib diisi.");
         }
 
-        // Jatuh tempo: kolom Expired, format "YYYY-MM-DD HH:mm:ss" atau "0000-00-00 ..."
         $jatuhTempo = null;
         $expiredRaw = $data['Expired'] ?? '';
         if ($expiredRaw && ! str_starts_with($expiredRaw, '0000')) {
             try {
-                $jatuhTempo = Carbon::parse($expiredRaw)->endOfDay();
+                $jatuhTempo = Carbon::parse($expiredRaw)->endOfDay()->toDateTimeString();
             } catch (\Throwable) {
-                $jatuhTempo = null;
             }
         }
 
-        // status_akun: AuthStatus 1=enable, 0=disable
-        $authStatus = (string) ($data['AuthStatus'] ?? '1');
-        $statusAkun = $authStatus === '1' ? 'enable' : 'disable';
+        $statusAkun     = ((string) ($data['AuthStatus'] ?? '1')) === '1' ? 'enable' : 'disable';
+        $statusBayar    = ((string) ($data['PaymentStatus'] ?? '')) === '1' ? 'sudah_bayar' : 'belum_bayar';
+        $aksiJatuhTempo = strtolower($data['ExpiredAction'] ?? '') === 'isolir' ? 'isolir' : 'tetap_terhubung';
 
-        // status_bayar: PaymentStatus 1=sudah_bayar, 0=belum_bayar (atau kosong)
-        $payStatus  = (string) ($data['PaymentStatus'] ?? '');
-        $statusBayar = $payStatus === '1' ? 'sudah_bayar' : 'belum_bayar';
-
-        // aksi_jatuh_tempo: ExpiredAction isolir → isolir, lainnya → tetap_terhubung
-        $expiredAction   = strtolower($data['ExpiredAction'] ?? '');
-        $aksiJatuhTempo  = $expiredAction === 'isolir' ? 'isolir' : 'tetap_terhubung';
-
-        // Cari ppp_profile_id berdasarkan nama Plan (owner_id atau global)
-        $planName   = $data['Plan'] ?? '';
-        $ownerId    = (int) $data['owner_id'];
-        $profileId  = null;
+        $planName  = $data['Plan'] ?? '';
+        $ownerId   = (int) $data['owner_id'];
+        $profileId = null;
         if ($planName) {
-            $profile = PppProfile::query()
+            $profile   = PppProfile::query()
                 ->where('name', $planName)
                 ->where(fn ($q) => $q->where('owner_id', $ownerId)->orWhereNull('owner_id'))
                 ->first();
             $profileId = $profile?->id;
         }
 
-        // NIK: biarkan apa adanya (tidak dienkripsi ulang)
         $nik = $data['IdCard'] ?? null;
         if ($nik === '0000000000000000' || $nik === '') {
             $nik = null;
         }
 
-        // Nomor HP normalisasi
         $nomor = $data['Phone'] ?? null;
         if ($nomor) {
             $nomor = preg_replace('/\D+/', '', $nomor) ?? '';
@@ -595,7 +680,7 @@ class SystemToolController extends Controller
             }
         }
 
-        PppUser::create([
+        return [
             'owner_id'         => $ownerId,
             'username'         => $username,
             'ppp_password'     => $data['Password'] ?? $username,
@@ -616,61 +701,114 @@ class SystemToolController extends Controller
             'metode_login'     => 'username_password',
             'jatuh_tempo'      => $jatuhTempo,
             'catatan'          => $data['Note'] ?? null,
-        ]);
+        ];
     }
 
-    private function importPppRow(array $data): void
+    /** Normalize baris format Rafen PPP → array siap insert. */
+    private function normalizePppRow(array $data): array
     {
-        $required = ['username', 'customer_name'];
-        foreach ($required as $field) {
+        foreach (['username', 'customer_name'] as $field) {
             if (empty($data[$field])) {
                 throw new \InvalidArgumentException("Kolom '{$field}' wajib diisi.");
             }
         }
 
-        PppUser::create([
-            'owner_id'        => $data['owner_id'],
-            'username'        => $data['username'],
-            'ppp_password'    => $data['ppp_password'] ?? '',
-            'customer_name'   => $data['customer_name'],
-            'customer_id'     => $data['customer_id'] ?? null,
-            'nik'             => $data['nik'] ?? null,
-            'nomor_hp'        => $data['nomor_hp'] ?? null,
-            'email'           => $data['email'] ?? null,
-            'alamat'          => $data['alamat'] ?? null,
-            'status_akun'     => in_array($data['status_akun'] ?? '', ['enable', 'disable', 'isolir']) ? $data['status_akun'] : 'enable',
-            'status_bayar'    => in_array($data['status_bayar'] ?? '', ['sudah_bayar', 'belum_bayar']) ? $data['status_bayar'] : 'belum_bayar',
-            'tipe_service'    => $data['tipe_service'] ?? 'pppoe',
-            'jatuh_tempo'     => ! empty($data['jatuh_tempo']) ? Carbon::parse($data['jatuh_tempo'])->endOfDay() : null,
-            'catatan'         => $data['catatan'] ?? null,
-            'metode_login'    => 'pppoe',
-        ]);
+        return [
+            'owner_id'      => (int) $data['owner_id'],
+            'username'      => $data['username'],
+            'ppp_password'  => $data['ppp_password'] ?? '',
+            'customer_name' => $data['customer_name'],
+            'customer_id'   => $data['customer_id'] ?? null,
+            'nik'           => $data['nik'] ?? null,
+            'nomor_hp'      => $data['nomor_hp'] ?? null,
+            'email'         => $data['email'] ?? null,
+            'alamat'        => $data['alamat'] ?? null,
+            'status_akun'   => in_array($data['status_akun'] ?? '', ['enable', 'disable', 'isolir']) ? $data['status_akun'] : 'enable',
+            'status_bayar'  => in_array($data['status_bayar'] ?? '', ['sudah_bayar', 'belum_bayar']) ? $data['status_bayar'] : 'belum_bayar',
+            'tipe_service'  => $data['tipe_service'] ?? 'pppoe',
+            'jatuh_tempo'   => ! empty($data['jatuh_tempo']) ? Carbon::parse($data['jatuh_tempo'])->endOfDay()->toDateTimeString() : null,
+            'catatan'       => $data['catatan'] ?? null,
+            'metode_login'  => 'pppoe',
+        ];
     }
 
-    private function importHotspotRow(array $data): void
+    /** Normalize baris format Rafen Hotspot → array siap insert. */
+    private function normalizeHotspotRow(array $data): array
     {
-        $required = ['username', 'customer_name'];
-        foreach ($required as $field) {
+        foreach (['username', 'customer_name'] as $field) {
             if (empty($data[$field])) {
                 throw new \InvalidArgumentException("Kolom '{$field}' wajib diisi.");
             }
         }
 
-        HotspotUser::create([
-            'owner_id'          => $data['owner_id'],
-            'username'          => $data['username'],
-            'hotspot_password'  => $data['hotspot_password'] ?? '',
-            'customer_name'     => $data['customer_name'],
-            'customer_id'       => $data['customer_id'] ?? null,
-            'nik'               => $data['nik'] ?? null,
-            'nomor_hp'          => $data['nomor_hp'] ?? null,
-            'email'             => $data['email'] ?? null,
-            'alamat'            => $data['alamat'] ?? null,
-            'status_akun'       => in_array($data['status_akun'] ?? '', ['enable', 'disable', 'isolir']) ? $data['status_akun'] : 'enable',
-            'status_bayar'      => in_array($data['status_bayar'] ?? '', ['sudah_bayar', 'belum_bayar']) ? $data['status_bayar'] : 'belum_bayar',
-            'jatuh_tempo'       => ! empty($data['jatuh_tempo']) ? Carbon::parse($data['jatuh_tempo'])->endOfDay() : null,
-            'catatan'           => $data['catatan'] ?? null,
-        ]);
+        return [
+            'owner_id'         => (int) $data['owner_id'],
+            'username'         => $data['username'],
+            'hotspot_password' => $data['hotspot_password'] ?? '',
+            'customer_name'    => $data['customer_name'],
+            'customer_id'      => $data['customer_id'] ?? null,
+            'nik'              => $data['nik'] ?? null,
+            'nomor_hp'         => $data['nomor_hp'] ?? null,
+            'email'            => $data['email'] ?? null,
+            'alamat'           => $data['alamat'] ?? null,
+            'status_akun'      => in_array($data['status_akun'] ?? '', ['enable', 'disable', 'isolir']) ? $data['status_akun'] : 'enable',
+            'status_bayar'     => in_array($data['status_bayar'] ?? '', ['sudah_bayar', 'belum_bayar']) ? $data['status_bayar'] : 'belum_bayar',
+            'jatuh_tempo'      => ! empty($data['jatuh_tempo']) ? Carbon::parse($data['jatuh_tempo'])->endOfDay()->toDateTimeString() : null,
+            'catatan'          => $data['catatan'] ?? null,
+        ];
+    }
+
+    /** Bandingkan field yang relevan antara existing model dan normalized data. */
+    private function diffUserData(PppUser|HotspotUser $existing, array $normalized, string $type): array
+    {
+        $fields = $type === 'ppp'
+            ? ['customer_name', 'ppp_password', 'customer_id', 'nik', 'nomor_hp', 'email', 'alamat', 'status_akun', 'status_bayar', 'jatuh_tempo', 'catatan']
+            : ['customer_name', 'hotspot_password', 'customer_id', 'nik', 'nomor_hp', 'email', 'alamat', 'status_akun', 'status_bayar', 'jatuh_tempo', 'catatan'];
+
+        $diff = [];
+        foreach ($fields as $field) {
+            $existingVal = (string) ($existing->$field ?? '');
+            // Normalize date for comparison
+            if ($field === 'jatuh_tempo' && $existing->$field) {
+                $existingVal = Carbon::parse($existing->$field)->format('Y-m-d');
+            }
+            $incomingVal = (string) ($normalized[$field] ?? '');
+            if ($field === 'jatuh_tempo' && $incomingVal) {
+                $incomingVal = Carbon::parse($incomingVal)->format('Y-m-d');
+            }
+            if ($existingVal !== $incomingVal) {
+                $diff[$field] = ['existing' => $existingVal, 'incoming' => $incomingVal];
+            }
+        }
+        return $diff;
+    }
+
+    private function summarizeUser(PppUser|HotspotUser $u, string $type): array
+    {
+        $pwField = $type === 'ppp' ? 'ppp_password' : 'hotspot_password';
+        return [
+            'customer_name' => $u->customer_name,
+            'password'      => $u->$pwField,
+            'status_akun'   => $u->status_akun,
+            'status_bayar'  => $u->status_bayar,
+            'jatuh_tempo'   => $u->jatuh_tempo ? Carbon::parse($u->jatuh_tempo)->format('Y-m-d') : '',
+            'nomor_hp'      => $u->nomor_hp,
+            'email'         => $u->email,
+        ];
+    }
+
+    private function summarizeNormalized(array $n, string $type): array
+    {
+        $pwField = $type === 'ppp' ? 'ppp_password' : 'hotspot_password';
+        return [
+            'customer_name' => $n['customer_name'] ?? '',
+            'password'      => $n[$pwField] ?? '',
+            'status_akun'   => $n['status_akun'] ?? '',
+            'status_bayar'  => $n['status_bayar'] ?? '',
+            'jatuh_tempo'   => ! empty($n['jatuh_tempo']) ? Carbon::parse($n['jatuh_tempo'])->format('Y-m-d') : '',
+            'nomor_hp'      => $n['nomor_hp'] ?? '',
+            'email'         => $n['email'] ?? '',
+        ];
     }
 
     private function formatBytes(int $bytes): string

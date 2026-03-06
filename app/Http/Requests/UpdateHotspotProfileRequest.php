@@ -37,6 +37,7 @@ class UpdateHotspotProfileRequest extends FormRequest
             'masa_aktif_value' => ['nullable', 'required_if:profile_type,unlimited', 'integer', 'min:1'],
             'masa_aktif_unit' => ['nullable', 'required_if:profile_type,unlimited', 'string', 'in:menit,jam,hari,bulan'],
             'profile_group_id' => ['nullable', 'integer', 'exists:profile_groups,id'],
+            'parent_queue' => ['nullable', 'string', 'max:200'],
             'shared_users' => ['sometimes', 'required', 'integer', 'min:1'],
             'prioritas' => ['sometimes', 'required', 'string', 'in:default,prioritas1,prioritas2,prioritas3,prioritas4,prioritas5,prioritas6,prioritas7,prioritas8'],
         ];

@@ -22,6 +22,72 @@ class HotspotRadiusSynchronizer
         return $count;
     }
 
+    /**
+     * Sync a single hotspot user's radcheck + radreply. Used after save/update in controller.
+     */
+    public function syncSingleUser(HotspotUser $user): void
+    {
+        $user->refresh();
+
+        if (! $user->username) {
+            return;
+        }
+
+        if ($user->status_akun !== 'enable' || ! $user->hotspot_password) {
+            DB::table('radcheck')->where('username', $user->username)->delete();
+            DB::table('radreply')->where('username', $user->username)->delete();
+            return;
+        }
+
+        $user->load(['hotspotProfile.bandwidthProfile', 'hotspotProfile.profileGroup']);
+
+        DB::table('radcheck')->updateOrInsert(
+            ['username' => $user->username, 'attribute' => 'Cleartext-Password'],
+            ['op' => ':=', 'value' => $user->hotspot_password]
+        );
+
+        $sharedUsers = $user->hotspotProfile?->shared_users ?? 1;
+        DB::table('radcheck')->updateOrInsert(
+            ['username' => $user->username, 'attribute' => 'Simultaneous-Use'],
+            ['op' => ':=', 'value' => (string) $sharedUsers]
+        );
+
+        $rateLimit = $this->resolveRateLimit($user->hotspotProfile?->bandwidthProfile);
+        if ($rateLimit) {
+            DB::table('radreply')->updateOrInsert(
+                ['username' => $user->username, 'attribute' => 'Mikrotik-Rate-Limit'],
+                ['op' => ':=', 'value' => $rateLimit]
+            );
+        } else {
+            DB::table('radreply')->where('username', $user->username)->where('attribute', 'Mikrotik-Rate-Limit')->delete();
+        }
+
+        $group = $user->hotspotProfile?->profileGroup
+            ?? ($user->profile_group_id ? \App\Models\ProfileGroup::find($user->profile_group_id) : null);
+
+        if ($group && $group->ip_pool_mode === 'group_only' && $group->ip_pool_name) {
+            DB::table('radreply')->updateOrInsert(
+                ['username' => $user->username, 'attribute' => 'Framed-Pool'],
+                ['op' => ':=', 'value' => $group->ip_pool_name]
+            );
+        } else {
+            DB::table('radreply')->where('username', $user->username)->where('attribute', 'Framed-Pool')->delete();
+        }
+
+        $parentQueue = ($group && $group->parent_queue)
+            ? $group->parent_queue
+            : ($user->hotspotProfile?->parent_queue ?: null);
+
+        if ($parentQueue) {
+            DB::table('radreply')->updateOrInsert(
+                ['username' => $user->username, 'attribute' => 'Mikrotik-Queue-Parent-Name'],
+                ['op' => ':=', 'value' => $parentQueue]
+            );
+        } else {
+            DB::table('radreply')->where('username', $user->username)->where('attribute', 'Mikrotik-Queue-Parent-Name')->delete();
+        }
+    }
+
     private function syncHotspotUsers(): int
     {
         $users = HotspotUser::query()
@@ -67,6 +133,23 @@ class HotspotRadiusSynchronizer
                 DB::table('radreply')
                     ->where('username', $user->username)
                     ->where('attribute', 'Framed-Pool')
+                    ->delete();
+            }
+
+            // radreply: Mikrotik-Queue-Parent-Name — dari ProfileGroup, fallback ke HotspotProfile
+            $parentQueue = ($group && $group->parent_queue)
+                ? $group->parent_queue
+                : ($user->hotspotProfile?->parent_queue ?: null);
+
+            if ($parentQueue) {
+                DB::table('radreply')->updateOrInsert(
+                    ['username' => $user->username, 'attribute' => 'Mikrotik-Queue-Parent-Name'],
+                    ['op' => ':=', 'value' => $parentQueue]
+                );
+            } else {
+                DB::table('radreply')
+                    ->where('username', $user->username)
+                    ->where('attribute', 'Mikrotik-Queue-Parent-Name')
                     ->delete();
             }
         }
@@ -132,6 +215,23 @@ class HotspotRadiusSynchronizer
                 DB::table('radreply')
                     ->where('username', $voucher->username)
                     ->where('attribute', 'Framed-Pool')
+                    ->delete();
+            }
+
+            // radreply: Mikrotik-Queue-Parent-Name — dari ProfileGroup, fallback ke HotspotProfile
+            $parentQueue = ($group && $group->parent_queue)
+                ? $group->parent_queue
+                : ($voucher->hotspotProfile?->parent_queue ?: null);
+
+            if ($parentQueue) {
+                DB::table('radreply')->updateOrInsert(
+                    ['username' => $voucher->username, 'attribute' => 'Mikrotik-Queue-Parent-Name'],
+                    ['op' => ':=', 'value' => $parentQueue]
+                );
+            } else {
+                DB::table('radreply')
+                    ->where('username', $voucher->username)
+                    ->where('attribute', 'Mikrotik-Queue-Parent-Name')
                     ->delete();
             }
         }

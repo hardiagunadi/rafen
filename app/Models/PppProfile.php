@@ -23,6 +23,7 @@ class PppProfile extends Model
         'ppn',
         'profile_group_id',
         'bandwidth_profile_id',
+        'parent_queue',
         'masa_aktif',
         'satuan',
     ];

@@ -31,6 +31,7 @@ class HotspotProfile extends Model
         'masa_aktif_value',
         'masa_aktif_unit',
         'profile_group_id',
+        'parent_queue',
         'shared_users',
         'prioritas',
     ];

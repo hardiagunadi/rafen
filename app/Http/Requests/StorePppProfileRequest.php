@@ -29,6 +29,7 @@ class StorePppProfileRequest extends FormRequest
             'ppn' => ['required', 'numeric', 'min:0'],
             'profile_group_id' => ['nullable', 'integer', 'exists:profile_groups,id'],
             'bandwidth_profile_id' => ['nullable', 'integer', 'exists:bandwidth_profiles,id'],
+            'parent_queue' => ['nullable', 'string', 'max:200'],
             'masa_aktif' => ['required', 'integer', 'min:1'],
             'satuan' => ['required', 'string', 'in:bulan'],
         ];

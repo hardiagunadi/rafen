@@ -202,7 +202,8 @@ Route::middleware('auth')->prefix('tools')->name('tools.')->group(function () {
 
     // Impor User — tenant admin & super admin
     Route::get('import', [SystemToolController::class, 'importIndex'])->name('import');
-    Route::post('import', [SystemToolController::class, 'importStore'])->name('import.store');
+    Route::post('import/preview', [SystemToolController::class, 'importPreview'])->name('import.preview');
+    Route::post('import/confirm', [SystemToolController::class, 'importConfirm'])->name('import.confirm');
     Route::get('import/template/{type}', [SystemToolController::class, 'importTemplate'])->name('import.template');
 
     // Ekspor User — tenant admin & super admin
