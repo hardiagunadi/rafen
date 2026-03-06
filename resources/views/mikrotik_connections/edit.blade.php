@@ -147,11 +147,74 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label>URL Info Isolir (Optional)</label>
-                    <input type="text" name="isolir_url" value="{{ old('isolir_url', $mikrotikConnection->isolir_url) }}" class="form-control @error('isolir_url') is-invalid @enderror" placeholder="mydomain.com/expired.html">
-                    @error('isolir_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    <small class="text-muted">Path URL lengkap tanpa http:// atau https://</small>
+                {{-- ── Konfigurasi Isolir ──────────────────────────────────────── --}}
+                <div class="card card-outline card-danger mt-3 mb-3">
+                    <div class="card-header">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-ban text-danger mr-1"></i> Pengaturan Isolir
+                            @if($mikrotikConnection->isolir_setup_done)
+                                <span class="badge badge-success ml-2"><i class="fas fa-check mr-1"></i>Setup selesai {{ $mikrotikConnection->isolir_setup_at?->format('d/m/Y H:i') }}</span>
+                            @else
+                                <span class="badge badge-warning ml-2"><i class="fas fa-exclamation-triangle mr-1"></i>Belum di-setup</span>
+                            @endif
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            Setup Mikrotik untuk isolir dilakukan <strong>otomatis</strong> saat user pertama diisolir.
+                            Konfigurasi di bawah akan diterapkan ke router ini.
+                        </p>
+                        <div class="form-group">
+                            <label>URL Halaman Isolir (Override)</label>
+                            <input type="text" name="isolir_url" value="{{ old('isolir_url', $mikrotikConnection->isolir_url) }}" class="form-control @error('isolir_url') is-invalid @enderror" placeholder="Kosongkan untuk menggunakan halaman bawaan Rafen">
+                            @error('isolir_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            <small class="text-muted">
+                                Kosongkan = pakai halaman Rafen otomatis (<code>{{ parse_url(config('app.url'), PHP_URL_HOST) }}</code>).
+                                Isi jika ingin redirect ke halaman lain (format: <code>host</code> atau <code>host:port</code>).
+                            </small>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label>Nama IP Pool Isolir</label>
+                                <input type="text" name="isolir_pool_name" value="{{ old('isolir_pool_name', $mikrotikConnection->isolir_pool_name ?: 'pool-isolir') }}" class="form-control" placeholder="pool-isolir">
+                                <small class="text-muted">Nama pool di Mikrotik</small>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>Range IP Pool</label>
+                                <input type="text" name="isolir_pool_range" value="{{ old('isolir_pool_range', $mikrotikConnection->isolir_pool_range ?: '10.99.0.2-10.99.0.254') }}" class="form-control" placeholder="10.99.0.2-10.99.0.254">
+                                <small class="text-muted">Range IP untuk user isolir</small>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>Gateway Pool Isolir</label>
+                                <input type="text" name="isolir_gateway" value="{{ old('isolir_gateway', $mikrotikConnection->isolir_gateway ?: '10.99.0.1') }}" class="form-control" placeholder="10.99.0.1">
+                                <small class="text-muted">Local address PPP profile</small>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Nama PPP Profile Isolir</label>
+                                <input type="text" name="isolir_profile_name" value="{{ old('isolir_profile_name', $mikrotikConnection->isolir_profile_name ?: 'isolir-pppoe') }}" class="form-control" placeholder="isolir-pppoe">
+                                <small class="text-muted">Nama profile PPP di Mikrotik untuk user isolir</small>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label>Batas Bandwidth</label>
+                                <input type="text" name="isolir_rate_limit" value="{{ old('isolir_rate_limit', $mikrotikConnection->isolir_rate_limit ?: '128k/128k') }}" class="form-control" placeholder="128k/128k">
+                                <small class="text-muted">Upload/Download</small>
+                            </div>
+                        </div>
+                        @if($mikrotikConnection->isolir_setup_done)
+                            <div class="alert alert-warning alert-sm py-2 mb-0">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Jika mengubah konfigurasi di atas, klik <strong>Update</strong> lalu setup akan dijalankan ulang saat user berikutnya diisolir.
+                                <form action="{{ route('mikrotik-connections.isolir-reset', $mikrotikConnection) }}" method="POST" class="d-inline ml-2">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-warning" onclick="return confirm('Reset status setup isolir? Mikrotik akan di-setup ulang saat user berikutnya diisolir.')">
+                                        <i class="fas fa-redo mr-1"></i> Reset Setup
+                                    </button>
+                                </form>
+                            </div>
+                        @endif
+                    </div>
                 </div>
 
                 <div class="form-row">

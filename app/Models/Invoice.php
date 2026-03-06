@@ -22,10 +22,12 @@ class Invoice extends Model
         'tipe_service',
         'paket_langganan',
         'harga_dasar',
+        'harga_asli',
         'ppn_percent',
         'ppn_amount',
         'total',
         'promo_applied',
+        'prorata_applied',
         'due_date',
         'status',
         'payment_method',
@@ -39,6 +41,8 @@ class Invoice extends Model
     {
         return [
             'promo_applied' => 'boolean',
+            'prorata_applied' => 'boolean',
+            'harga_asli' => 'decimal:2',
             'due_date' => 'date',
             'paid_at' => 'datetime',
         ];

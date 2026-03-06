@@ -85,7 +85,9 @@ class GenerateUpcomingInvoices extends Command
             && $user->created_at->diffInMonths(now()) < $promoMonths;
 
         $basePrice  = $promoActive ? $profile->harga_promo : $profile->harga_modal;
-        $ppnPercent = (float) $profile->ppn;
+
+        // Tagihkan PPN hanya jika flag aktif di user
+        $ppnPercent = $user->tagihkan_ppn ? (float) $profile->ppn : 0.0;
         $ppnAmount  = round($basePrice * ($ppnPercent / 100), 2);
         $total      = $basePrice + $ppnAmount;
         $dueDate    = Carbon::parse($user->jatuh_tempo)->endOfDay();

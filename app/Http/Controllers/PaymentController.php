@@ -55,19 +55,26 @@ class PaymentController extends Controller
         }
 
         // Get tenant settings
-        $settings = $invoice->owner->getSettings();
+        $settings      = $invoice->owner->getSettings();
+        $manualEnabled = (bool) $settings->enable_manual_payment;
+        $bankAccounts  = $invoice->owner->bankAccounts()->active()->get();
 
         if (!$settings->hasPaymentGateway()) {
-            return view('payments.manual', compact('invoice', 'settings'));
+            // No Tripay — only show manual transfer if enabled
+            if (!$manualEnabled || $bankAccounts->isEmpty()) {
+                return redirect()->route('invoices.show', $invoice)
+                    ->with('error', 'Tidak ada metode pembayaran yang tersedia. Hubungi admin.');
+            }
+            return view('payments.manual', compact('invoice', 'settings', 'bankAccounts'));
         }
 
         // Get available channels
-        $tripay = TripayService::forTenant($settings);
+        $tripay      = TripayService::forTenant($settings);
         $allChannels = $tripay->getPaymentChannels();
 
         // Filter to only enabled channels
         $enabledCodes = $settings->getEnabledChannels();
-        $channels = [];
+        $channels     = [];
 
         foreach ($allChannels as $channel) {
             if (in_array($channel['code'], $enabledCodes)) {
@@ -76,21 +83,21 @@ class PaymentController extends Controller
         }
 
         // Group channels
-        $channelGroups = TripayService::getChannelGroups();
+        $channelGroups  = TripayService::getChannelGroups();
         $groupedChannels = [];
 
         foreach ($channelGroups as $groupKey => $group) {
             $groupChannels = array_filter($channels, fn($ch) => in_array($ch['code'], $group['codes']));
             if (!empty($groupChannels)) {
                 $groupedChannels[$groupKey] = [
-                    'name' => $group['name'],
+                    'name'        => $group['name'],
                     'description' => $group['description'],
-                    'channels' => array_values($groupChannels),
+                    'channels'    => array_values($groupChannels),
                 ];
             }
         }
 
-        return view('payments.create', compact('invoice', 'channels', 'groupedChannels', 'settings'));
+        return view('payments.create', compact('invoice', 'channels', 'groupedChannels', 'settings', 'manualEnabled', 'bankAccounts'));
     }
 
     public function storeForInvoice(Request $request, Invoice $invoice)
@@ -219,6 +226,28 @@ class PaymentController extends Controller
         return view('payments.success');
     }
 
+    public function manualForm(Request $request, Invoice $invoice)
+    {
+        $user = auth()->user();
+
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        if ($invoice->isPaid()) {
+            return redirect()->route('invoices.show', $invoice)->with('error', 'Invoice sudah dibayar.');
+        }
+
+        $settings     = $invoice->owner->getSettings();
+        $bankAccounts = $invoice->owner->bankAccounts()->active()->get();
+
+        if (!$settings->enable_manual_payment || $bankAccounts->isEmpty()) {
+            return redirect()->route('invoices.show', $invoice)->with('error', 'Pembayaran manual tidak tersedia.');
+        }
+
+        return view('payments.manual', compact('invoice', 'settings', 'bankAccounts'));
+    }
+
     public function manualConfirmation(Request $request, Invoice $invoice)
     {
         $user = auth()->user();
@@ -227,12 +256,17 @@ class PaymentController extends Controller
             abort(403);
         }
 
+        $settings = $invoice->owner->getSettings();
+        if (!$settings->enable_manual_payment) {
+            return redirect()->route('invoices.show', $invoice)->with('error', 'Pembayaran manual tidak tersedia.');
+        }
+
         $request->validate([
-            'payment_proof' => 'required|image|max:5120',
-            'bank_account_id' => 'required|exists:bank_accounts,id',
+            'payment_proof'      => 'required|image|max:5120',
+            'bank_account_id'    => 'required|exists:bank_accounts,id',
             'amount_transferred' => 'required|numeric|min:0',
-            'transfer_date' => 'required|date',
-            'notes' => 'nullable|string|max:500',
+            'transfer_date'      => 'required|date',
+            'notes'              => 'nullable|string|max:500',
         ]);
 
         // Store proof

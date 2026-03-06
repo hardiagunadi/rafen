@@ -24,6 +24,7 @@ use App\Http\Controllers\HelpController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\SystemToolController;
 use App\Http\Controllers\WaBlastController;
+use App\Http\Controllers\IsolirPageController;
 use App\Http\Controllers\WaWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -56,6 +57,7 @@ Route::middleware('auth')->group(function () {
     });
     Route::post('mikrotik-connections/test', [MikrotikConnectionController::class, 'test'])->name('mikrotik-connections.test');
     Route::post('mikrotik-connections/{mikrotikConnection}/ping', [MikrotikConnectionController::class, 'pingNow'])->name('mikrotik-connections.ping-now');
+    Route::post('mikrotik-connections/{mikrotikConnection}/isolir-reset', [MikrotikConnectionController::class, 'isolirReset'])->name('mikrotik-connections.isolir-reset');
     Route::post('mikrotik-connections/radius-sync-clients', [MikrotikConnectionController::class, 'syncRadiusClients'])->name('mikrotik-connections.radius-sync-clients');
     Route::get('mikrotik-connections/datatable', [MikrotikConnectionController::class, 'datatable'])->name('mikrotik-connections.datatable');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
@@ -79,6 +81,7 @@ Route::middleware('auth')->group(function () {
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::patch('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
     Route::patch('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
+    Route::post('invoices/{invoice}/send-wa', [InvoiceController::class, 'sendWa'])->name('invoices.send-wa');
     Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
     Route::get('users/datatable', [UserManagementController::class, 'datatable'])->name('users.datatable');
     Route::resource('users', UserManagementController::class);
@@ -143,6 +146,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/invoice/{invoice}/create', [PaymentController::class, 'createForInvoice'])->name('create-for-invoice');
         Route::post('/invoice/{invoice}', [PaymentController::class, 'storeForInvoice'])->name('store-for-invoice');
         Route::get('/{payment}/check-status', [PaymentController::class, 'checkStatus'])->name('check-status');
+        Route::get('/invoice/{invoice}/manual', [PaymentController::class, 'manualForm'])->name('manual-form');
         Route::post('/invoice/{invoice}/manual', [PaymentController::class, 'manualConfirmation'])->name('manual-confirmation');
         Route::post('/{payment}/confirm', [PaymentController::class, 'confirmManual'])->name('confirm-manual');
         Route::post('/{payment}/reject', [PaymentController::class, 'rejectManual'])->name('reject-manual');
@@ -170,6 +174,15 @@ Route::middleware('auth')->group(function () {
         // WhatsApp settings
         Route::put('/wa', [TenantSettingsController::class, 'updateWa'])->name('update-wa');
         Route::post('/test-wa', [TenantSettingsController::class, 'testWa'])->name('test-wa');
+
+        // Isolir page settings
+        Route::put('/isolir', [TenantSettingsController::class, 'updateIsolir'])->name('update-isolir');
+        Route::get('/isolir-preview', [TenantSettingsController::class, 'isolirPreview'])->name('isolir-preview');
+    });
+
+    // WA Gateway (halaman tersendiri)
+    Route::prefix('settings/wa-gateway')->name('wa-gateway.')->group(function () {
+        Route::get('/', [TenantSettingsController::class, 'waGateway'])->name('index');
     });
 
     // WA Blast
@@ -215,13 +228,17 @@ Route::middleware('auth')->prefix('tools')->name('tools.')->group(function () {
     Route::post('reset-database', [SystemToolController::class, 'resetDatabaseExecute'])->name('reset-database.execute');
 });
 
+// Halaman isolir publik (no auth required) — diakses via DNAT Mikrotik
+Route::get('/isolir/{userId}', [IsolirPageController::class, 'show'])->name('isolir.show')->where('userId', '[0-9]+');
+
 // Payment Callbacks (no auth required)
 Route::post('/payment/callback', [PaymentController::class, 'callback'])->name('payment.callback');
 Route::post('/subscription/payment/callback', [SubscriptionController::class, 'paymentCallback'])->name('subscription.payment.callback');
 
 // WA Gateway Webhooks (no auth required)
-Route::post('/webhook/wa/session', [WaWebhookController::class, 'session'])->name('wa.webhook.session');
-Route::post('/webhook/wa/message', [WaWebhookController::class, 'message'])->name('wa.webhook.message');
+// GET = verification ping from gateway, POST = actual webhook payload
+Route::match(['GET', 'POST'], '/webhook/wa/session', [WaWebhookController::class, 'session'])->name('wa.webhook.session');
+Route::match(['GET', 'POST'], '/webhook/wa/message', [WaWebhookController::class, 'message'])->name('wa.webhook.message');
 
 // Super Admin Routes
 Route::middleware(['auth', \App\Http\Middleware\SuperAdminMiddleware::class])->prefix('super-admin')->name('super-admin.')->group(function () {

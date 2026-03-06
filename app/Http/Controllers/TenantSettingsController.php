@@ -31,6 +31,7 @@ class TenantSettingsController extends Controller
             'invoice_prefix' => 'nullable|string|max:10',
             'invoice_footer' => 'nullable|string|max:1000',
             'invoice_notes' => 'nullable|string|max:1000',
+            'billing_date' => 'nullable|integer|min:1|max:28',
         ]);
 
         $user = $request->user();
@@ -204,6 +205,14 @@ class TenantSettingsController extends Controller
         return back()->with('success', 'Rekening utama berhasil diubah.');
     }
 
+    public function waGateway(Request $request)
+    {
+        $user     = $request->user();
+        $settings = $user->getSettings();
+
+        return view('wa-gateway.index', compact('settings'));
+    }
+
     public function updateWa(Request $request)
     {
         $validated = $request->validate([
@@ -234,25 +243,43 @@ class TenantSettingsController extends Controller
     public function testWa(Request $request)
     {
         $request->validate([
-            'phone' => 'nullable|string|max:20',
+            'phone'            => 'nullable|string|max:20',
+            'wa_gateway_url'   => 'nullable|url|max:255',
+            'wa_gateway_token' => 'nullable|string|max:500',
+            'wa_gateway_key'   => 'nullable|string|max:500',
         ]);
 
-        $user = $request->user();
-        $settings = $user->getSettings();
+        // Use values from request if provided (form not yet saved), else fall back to DB
+        $url   = $request->input('wa_gateway_url');
+        $token = $request->input('wa_gateway_token');
+        $key   = $request->input('wa_gateway_key');
 
-        if (! $settings->hasWaConfigured()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'URL Gateway dan Token WhatsApp belum dikonfigurasi.',
-            ]);
+        if (! empty($url) && (! empty($token) || ! empty($key))) {
+            $service = new WaGatewayService(rtrim($url, '/'), $token ?? '', $key ?? '');
+        } else {
+            $user     = $request->user();
+            $settings = $user->getSettings();
+
+            if (! $settings->hasWaConfigured()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'URL Gateway dan Token WhatsApp belum dikonfigurasi.',
+                ]);
+            }
+
+            $service = WaGatewayService::forTenant($settings);
         }
 
-        $service = WaGatewayService::forTenant($settings);
         $result = $service->testConnection();
 
+        \Log::info('WA testConnection result', $result);
+
         return response()->json([
-            'success' => $result['status'],
-            'message' => $result['message'],
+            'success'          => $result['status'],
+            'message'          => $result['message'],
+            'http_status'      => $result['http_status'] ?? null,
+            'network_error'    => $result['network_error'] ?? false,
+            'gateway_response' => $result['data'] ?? null,
         ]);
     }
 
@@ -275,5 +302,27 @@ class TenantSettingsController extends Controller
         $settings->update(['business_logo' => $path]);
 
         return back()->with('success', 'Logo bisnis berhasil diunggah.');
+    }
+
+    public function updateIsolir(Request $request)
+    {
+        $validated = $request->validate([
+            'isolir_page_title'        => 'nullable|string|max:255',
+            'isolir_page_body'         => 'nullable|string|max:2000',
+            'isolir_page_contact'      => 'nullable|string|max:255',
+            'isolir_page_bg_color'     => ['nullable', 'string', 'max:20', 'regex:/^#[0-9a-fA-F]{3,6}$/'],
+            'isolir_page_accent_color' => ['nullable', 'string', 'max:20', 'regex:/^#[0-9a-fA-F]{3,6}$/'],
+        ]);
+
+        $user = $request->user();
+        $settings = $user->getSettings();
+        $settings->update($validated);
+
+        return back()->with('success', 'Pengaturan halaman isolir berhasil disimpan.');
+    }
+
+    public function isolirPreview(Request $request)
+    {
+        return app(\App\Http\Controllers\IsolirPageController::class)->preview($request);
     }
 }

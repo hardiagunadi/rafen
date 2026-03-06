@@ -336,8 +336,8 @@
                             </li>
                         </ul>
                     </li>
-                    <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*') ? 'active' : '' }}">
+                    <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-cog"></i>
                             <p>
                                 Pengaturan
@@ -361,7 +361,7 @@
                             </li>
                             @if(auth()->user() && (auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'])))
                             <li class="nav-item">
-                                <a href="{{ route('tenant-settings.index') }}#whatsapp" class="nav-link">
+                                <a href="{{ route('wa-gateway.index') }}" class="nav-link {{ request()->routeIs('wa-gateway.*') ? 'active' : '' }}">
                                     <i class="fab fa-whatsapp nav-icon text-success"></i>
                                     <p>WA Gateway</p>
                                 </a>
@@ -729,5 +729,6 @@ window.AppAjax = (function () {
     return { request: request, formRequest: formRequest, showToast: showToast };
 })();
 </script>
+@stack('scripts')
 </body>
 </html>

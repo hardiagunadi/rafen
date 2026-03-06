@@ -41,6 +41,13 @@ class MikrotikConnection extends Model
         'acct_port',
         'timezone',
         'isolir_url',
+        'isolir_setup_done',
+        'isolir_pool_name',
+        'isolir_pool_range',
+        'isolir_gateway',
+        'isolir_profile_name',
+        'isolir_rate_limit',
+        'isolir_setup_at',
     ];
 
     /**
@@ -61,6 +68,8 @@ class MikrotikConnection extends Model
             'last_port_open' => 'boolean',
             'auth_port' => 'integer',
             'acct_port' => 'integer',
+            'isolir_setup_done' => 'boolean',
+            'isolir_setup_at' => 'datetime',
         ];
     }
 

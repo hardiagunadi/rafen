@@ -78,6 +78,32 @@
                         </button>
                     </div>
                 </form>
+
+                @if($manualEnabled && $bankAccounts->count() > 0)
+                <hr>
+                <h5 class="mb-1">Transfer Bank Manual</h5>
+                <p class="text-muted small mb-3">Upload bukti transfer setelah melakukan pembayaran ke rekening berikut. Admin akan mengkonfirmasi dalam 1x24 jam.</p>
+
+                <div class="row mb-3">
+                    @foreach($bankAccounts as $bank)
+                    <div class="col-md-6 mb-2">
+                        <div class="card border">
+                            <div class="card-body py-2 px-3">
+                                <strong>{{ $bank->bank_name }}</strong>
+                                @if($bank->is_primary) <span class="badge badge-primary badge-sm">Utama</span> @endif
+                                <br>
+                                <span class="font-weight-bold">{{ $bank->account_number }}</span><br>
+                                <small class="text-muted">a.n. {{ $bank->account_name }}</small>
+                            </div>
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+
+                <a href="{{ route('payments.manual-form', $invoice) }}" class="btn btn-outline-success btn-block">
+                    <i class="fas fa-university mr-1"></i> Upload Bukti Transfer Bank
+                </a>
+                @endif
             </div>
         </div>
     </div>

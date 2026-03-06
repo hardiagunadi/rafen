@@ -243,21 +243,64 @@ class WaGatewayService
 
     /**
      * Test connectivity by checking device info.
+     * Tries several common endpoints; reports auth errors vs network errors distinctly.
      */
     public function testConnection(): array
     {
-        try {
-            $response = Http::timeout(10)
-                ->withHeaders($this->buildHeaders())
-                ->get($this->url . '/api/device/info');
+        $candidates = [
+            '/api/device/info',
+            '/api/v2/device/info',
+            '/api/devices',
+            '/status',
+        ];
 
-            if ($response->successful()) {
-                return ['status' => true, 'message' => 'Koneksi berhasil', 'data' => $response->json()];
+        $lastError = '';
+
+        foreach ($candidates as $path) {
+            try {
+                $response = Http::timeout(10)
+                    ->withHeaders($this->buildHeaders())
+                    ->get($this->url . $path);
+
+                if ($response->successful()) {
+                    return [
+                        'status'      => true,
+                        'message'     => 'Koneksi berhasil (endpoint: ' . $path . ')',
+                        'http_status' => $response->status(),
+                        'data'        => $response->json(),
+                    ];
+                }
+
+                // 401/403 = gateway reachable but token wrong
+                if (in_array($response->status(), [401, 403])) {
+                    return [
+                        'status'      => false,
+                        'message'     => 'Gateway dapat dijangkau tetapi token/key ditolak (HTTP ' . $response->status() . '). Periksa Token atau Key Anda.',
+                        'http_status' => $response->status(),
+                        'data'        => $response->body(),
+                    ];
+                }
+
+                $lastError = 'HTTP ' . $response->status() . ' pada ' . $path;
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                if (str_contains($e->getMessage(), 'Could not resolve') ||
+                    str_contains($e->getMessage(), 'Connection refused') ||
+                    str_contains($e->getMessage(), 'timed out')) {
+                    return [
+                        'status'        => false,
+                        'message'       => 'Tidak dapat terhubung ke gateway: ' . $e->getMessage(),
+                        'http_status'   => 0,
+                        'network_error' => true,
+                    ];
+                }
             }
-
-            return ['status' => false, 'message' => 'HTTP ' . $response->status() . ': ' . $response->body()];
-        } catch (\Throwable $e) {
-            return ['status' => false, 'message' => $e->getMessage()];
         }
+
+        return [
+            'status'      => false,
+            'message'     => 'Gateway tidak merespons pada endpoint yang diketahui. ' . $lastError,
+            'http_status' => 0,
+        ];
     }
 }

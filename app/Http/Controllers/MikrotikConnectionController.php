@@ -7,6 +7,7 @@ use App\Http\Requests\TestMikrotikConnectionRequest;
 use App\Http\Requests\UpdateMikrotikConnectionRequest;
 use App\Models\MikrotikConnection;
 use App\Services\MikrotikPingService;
+use App\Services\IsolirSynchronizer;
 use App\Services\RadiusClientsSynchronizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -217,6 +218,16 @@ class MikrotikConnectionController extends Controller
         $data['timezone'] = $data['timezone'] ?? $mikrotikConnection->timezone ?? '+07:00 Asia/Jakarta';
         $data['ros_version'] = $data['ros_version'] ?? $mikrotikConnection->ros_version ?? 'auto';
 
+        // Jika konfigurasi isolir berubah, reset setup agar diterapkan ulang
+        $isolirFields = ['isolir_pool_name', 'isolir_pool_range', 'isolir_gateway', 'isolir_profile_name', 'isolir_rate_limit', 'isolir_url'];
+        foreach ($isolirFields as $field) {
+            if (isset($data[$field]) && $data[$field] !== $mikrotikConnection->$field) {
+                $data['isolir_setup_done'] = false;
+                $data['isolir_setup_at'] = null;
+                break;
+            }
+        }
+
         $mikrotikConnection->update($data);
 
         return $this->syncAndRedirect('Koneksi Mikrotik berhasil diperbarui.');
@@ -286,6 +297,15 @@ class MikrotikConnectionController extends Controller
     private function generateApiSecret(): string
     {
         return Str::password(10);
+    }
+
+    public function isolirReset(MikrotikConnection $mikrotikConnection): RedirectResponse
+    {
+        $this->authorizeAccess($mikrotikConnection);
+
+        app(IsolirSynchronizer::class)->resetSetup($mikrotikConnection);
+
+        return back()->with('status', 'Status setup isolir direset. Akan disetup ulang saat user berikutnya diisolir.');
     }
 
     private function authorizeAccess(MikrotikConnection $connection): void

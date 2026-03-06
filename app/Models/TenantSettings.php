@@ -48,6 +48,12 @@ class TenantSettings extends Model
         'wa_template_registration',
         'wa_template_invoice',
         'wa_template_payment',
+        'billing_date',
+        'isolir_page_title',
+        'isolir_page_body',
+        'isolir_page_contact',
+        'isolir_page_bg_color',
+        'isolir_page_accent_color',
     ];
 
     protected function casts(): array
@@ -69,7 +75,24 @@ class TenantSettings extends Model
             'wa_antispam_delay_ms' => 'integer',
             'wa_antispam_max_per_minute' => 'integer',
             'wa_msg_randomize' => 'boolean',
+            'billing_date' => 'integer',
         ];
+    }
+
+    public function getIsolirPageTitle(): string
+    {
+        return $this->isolir_page_title ?: ($this->business_name ? 'Layanan '.$this->business_name.' Dinonaktifkan' : 'Layanan Internet Dinonaktifkan');
+    }
+
+    public function getIsolirPageBody(): string
+    {
+        return $this->isolir_page_body ?: "Layanan internet Anda telah dinonaktifkan sementara karena belum melakukan pembayaran.\n\nSilakan segera lakukan pembayaran untuk mengaktifkan kembali layanan Anda.";
+    }
+
+    public function getIsolirPageContact(): string
+    {
+        $parts = array_filter([$this->business_phone, $this->business_email]);
+        return $this->isolir_page_contact ?: implode(' | ', $parts);
     }
 
     protected $hidden = [

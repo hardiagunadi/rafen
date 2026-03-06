@@ -37,7 +37,12 @@ class UpdateMikrotikConnectionRequest extends FormRequest
             'auth_port' => ['sometimes', 'required', 'integer', 'between:1,65535'],
             'acct_port' => ['sometimes', 'required', 'integer', 'between:1,65535'],
             'timezone' => ['sometimes', 'required', 'string', 'max:120'],
-            'isolir_url' => ['nullable', 'string', 'max:255'],
+            'isolir_url'          => ['nullable', 'string', 'max:255'],
+            'isolir_pool_name'    => ['nullable', 'string', 'max:64'],
+            'isolir_pool_range'   => ['nullable', 'string', 'max:64'],
+            'isolir_gateway'      => ['nullable', 'ip'],
+            'isolir_profile_name' => ['nullable', 'string', 'max:64'],
+            'isolir_rate_limit'   => ['nullable', 'string', 'max:32'],
         ];
     }
 }

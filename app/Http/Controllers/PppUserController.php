@@ -10,6 +10,7 @@ use App\Models\PppUser;
 use App\Models\ProfileGroup;
 use App\Models\TenantSettings;
 use App\Models\User;
+use App\Services\IsolirSynchronizer;
 use App\Services\RadiusReplySynchronizer;
 use App\Services\WaNotificationService;
 use App\Traits\LogsActivity;
@@ -172,10 +173,14 @@ class PppUserController extends Controller
         $user = PppUser::create($data);
 
         if ($data['status_bayar'] === 'belum_bayar') {
-            $this->createInvoiceForUser($user);
+            $this->createInvoiceForUser($user, null, false, true);
         }
 
         app(RadiusReplySynchronizer::class)->syncSingleUser($user);
+
+        if ($user->status_akun === 'isolir') {
+            app(IsolirSynchronizer::class)->isolate($user);
+        }
 
         $this->logActivity('created', 'PppUser', $user->id, $user->customer_name, (int) $user->owner_id);
 
@@ -219,6 +224,7 @@ class PppUserController extends Controller
     {
         $originalStatus = $pppUser->status_bayar;
         $originalStatus = $pppUser->status_bayar;
+        $originalStatusAkun = $pppUser->status_akun;
         $originalDue = $pppUser->jatuh_tempo;
         $data = $this->prepareData($request->validated(), $pppUser);
 
@@ -237,6 +243,14 @@ class PppUserController extends Controller
         }
 
         app(RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
+
+        if ($pppUser->status_akun === 'isolir' && $originalStatusAkun !== 'isolir') {
+            // Baru masuk isolir: setup radreply isolir + kick sesi aktif
+            app(IsolirSynchronizer::class)->isolate($pppUser);
+        } elseif ($pppUser->status_akun !== 'isolir' && $originalStatusAkun === 'isolir') {
+            // Keluar dari isolir: kick sesi isolir agar reconnect normal
+            app(IsolirSynchronizer::class)->deisolate($pppUser);
+        }
 
         $this->logActivity('updated', 'PppUser', $pppUser->id, $pppUser->customer_name, (int) $pppUser->owner_id);
 
@@ -305,7 +319,8 @@ class PppUserController extends Controller
 
         $data['durasi_promo_bulan'] = $data['durasi_promo_bulan'] ?? 0;
         $data['biaya_instalasi'] = $data['biaya_instalasi'] ?? 0;
-        $data['jatuh_tempo'] = $this->resolveDueDate($data['jatuh_tempo'] ?? null, $existing);
+        $ownerId = $data['owner_id'] ?? $existing?->owner_id;
+        $data['jatuh_tempo'] = $this->resolveDueDate($data['jatuh_tempo'] ?? null, $existing, $ownerId ? (int) $ownerId : null);
         $data = $this->assignSqlPoolIp($data, $existing);
 
         return $data;
@@ -432,7 +447,7 @@ class PppUserController extends Controller
         return $phone;
     }
 
-    private function resolveDueDate(?string $input, ?PppUser $existing = null): ?Carbon
+    private function resolveDueDate(?string $input, ?PppUser $existing = null, ?int $ownerId = null): ?Carbon
     {
         if ($input) {
             return Carbon::parse($input)->endOfDay();
@@ -442,10 +457,28 @@ class PppUserController extends Controller
             return $existing->jatuh_tempo;
         }
 
+        // Jika tenant punya billing_date, hitung jatuh tempo berdasarkan itu
+        if ($ownerId) {
+            $settings = TenantSettings::getOrCreate($ownerId);
+            $billingDay = $settings->billing_date;
+
+            if ($billingDay) {
+                $billingDay = max(1, min(28, (int) $billingDay));
+                $candidate = now()->startOfDay()->setDay($billingDay)->endOfDay();
+
+                // Jika kandidat sudah sama dengan atau sebelum hari ini, pakai bulan depan
+                if ($candidate->lte(now())) {
+                    $candidate = $candidate->addMonthNoOverflow();
+                }
+
+                return $candidate;
+            }
+        }
+
         return now()->addMonthNoOverflow()->endOfDay();
     }
 
-    private function createInvoiceForUser(PppUser $user, ?Carbon $dueOverride = null, bool $forceNew = false): void
+    private function createInvoiceForUser(PppUser $user, ?Carbon $dueOverride = null, bool $forceNew = false, bool $applyProrata = false): void
     {
         if ($forceNew) {
             $user->invoices()->where('status', 'unpaid')->delete();
@@ -463,10 +496,32 @@ class PppUserController extends Controller
 
         $promoMonths = (int) ($user->durasi_promo_bulan ?? 0);
         $promoActive = $user->promo_aktif && $promoMonths > 0 && $user->created_at && $user->created_at->diffInMonths(now()) < $promoMonths;
-        $basePrice = $promoActive ? $profile->harga_promo : $profile->harga_modal;
-        $ppnPercent = (float) $profile->ppn;
-        $ppnAmount = round($basePrice * ($ppnPercent / 100), 2);
-        $total = $basePrice + $ppnAmount;
+        $hargaAsli  = $promoActive ? $profile->harga_promo : $profile->harga_modal;
+        $basePrice  = $hargaAsli;
+        $prorataApplied = false;
+
+        // Prorata otomatis: hanya berlaku untuk invoice pertama saat pendaftaran baru
+        if ($applyProrata && $user->prorata_otomatis && $user->jatuh_tempo) {
+            $dueDateForProrata = Carbon::parse($user->jatuh_tempo)->startOfDay();
+            $today             = now()->startOfDay();
+            $sisaHari          = $today->diffInDays($dueDateForProrata, false); // negatif jika sudah lewat
+
+            // Hitung total hari satu periode (mundur masa_aktif bulan dari jatuh_tempo)
+            $masaAktif    = max(1, (int) $profile->masa_aktif);
+            $periodeStart = $dueDateForProrata->copy()->subMonthsNoOverflow($masaAktif)->addDay();
+            $totalHari    = $periodeStart->diffInDays($dueDateForProrata) + 1;
+
+            // Prorata hanya berlaku jika sisa hari >= 3 dan lebih kecil dari total periode
+            if ($sisaHari >= 3 && $totalHari > 0 && $sisaHari < $totalHari) {
+                $basePrice      = round($hargaAsli * ($sisaHari / $totalHari), 2);
+                $prorataApplied = true;
+            }
+        }
+
+        // Tagihkan PPN hanya jika flag aktif di user
+        $ppnPercent = $user->tagihkan_ppn ? (float) $profile->ppn : 0.0;
+        $ppnAmount  = round($basePrice * ($ppnPercent / 100), 2);
+        $total      = $basePrice + $ppnAmount;
 
         $prefix = TenantSettings::getOrCreate($user->owner_id)->invoice_prefix ?? 'INV';
         $invoiceNumber = Invoice::generateNumber($user->owner_id, $prefix);
@@ -484,10 +539,12 @@ class PppUserController extends Controller
             'tipe_service' => $user->tipe_service,
             'paket_langganan' => $profile->name,
             'harga_dasar' => $basePrice,
+            'harga_asli' => $hargaAsli,
             'ppn_percent' => $ppnPercent,
             'ppn_amount' => $ppnAmount,
             'total' => $total,
             'promo_applied' => $promoActive,
+            'prorata_applied' => $prorataApplied,
             'due_date' => $dueDate,
             'status' => 'unpaid',
         ]);
@@ -531,6 +588,9 @@ class PppUserController extends Controller
         $due = Carbon::parse($user->jatuh_tempo)->endOfDay();
         if (now()->greaterThan($due) && $user->aksi_jatuh_tempo === 'isolir' && $user->status_akun !== 'isolir') {
             $user->update(['status_akun' => 'isolir']);
+            // Sync RADIUS + setup Mikrotik + kick sesi aktif
+            app(RadiusReplySynchronizer::class)->syncSingleUser($user);
+            app(IsolirSynchronizer::class)->isolate($user);
         }
     }
 }

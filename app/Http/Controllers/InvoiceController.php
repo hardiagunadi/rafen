@@ -195,6 +195,82 @@ class InvoiceController extends Controller
         return redirect()->back()->with('status', 'Invoice dihapus.');
     }
 
+    public function sendWa(Invoice $invoice): JsonResponse|RedirectResponse
+    {
+        $user = auth()->user();
+
+        $canSendWa = $user->isSuperAdmin() || $user->isAdmin() || $user->role === 'keuangan';
+        if (! $canSendWa) {
+            abort(403);
+        }
+
+        if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $settings = TenantSettings::getOrCreate((int) $invoice->owner_id);
+
+        if (! $settings->hasWaConfigured()) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'WhatsApp Gateway belum dikonfigurasi.'], 422);
+            }
+            return redirect()->back()->with('error', 'WhatsApp Gateway belum dikonfigurasi.');
+        }
+
+        $invoice->load('pppUser');
+
+        $pppUser = $invoice->pppUser;
+        $phone   = $pppUser->nomor_hp ?? '';
+
+        if (! $pppUser || empty(trim($phone))) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'Pelanggan tidak ditemukan atau nomor HP tidak tersedia.'], 422);
+            }
+            return redirect()->back()->with('error', 'Pelanggan tidak ditemukan atau nomor HP tidak tersedia.');
+        }
+
+        // Kirim langsung (bypass toggle notifikasi otomatis — ini pengiriman manual admin)
+        $waService = \App\Services\WaGatewayService::forTenant($settings);
+        if (! $waService) {
+            if (request()->wantsJson()) {
+                return response()->json(['error' => 'WA Gateway tidak dapat diinisialisasi.'], 422);
+            }
+            return redirect()->back()->with('error', 'WA Gateway tidak dapat diinisialisasi.');
+        }
+
+        if ($invoice->isPaid()) {
+            $template = $settings->getTemplate('payment');
+            $paidAt   = $invoice->paid_at ? $invoice->paid_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
+            $message  = str_replace(
+                ['{name}', '{invoice_no}', '{total}', '{paid_at}'],
+                [$invoice->customer_name, $invoice->invoice_number, number_format($invoice->total, 0, ',', '.'), $paidAt],
+                $template
+            );
+        } else {
+            $template = $settings->getTemplate('invoice');
+            $message  = str_replace(
+                ['{name}', '{invoice_no}', '{total}', '{due_date}'],
+                [
+                    $invoice->customer_name,
+                    $invoice->invoice_number,
+                    number_format($invoice->total, 0, ',', '.'),
+                    $invoice->due_date ? $invoice->due_date->format('d/m/Y') : '-',
+                ],
+                $template
+            );
+        }
+
+        $waService->sendMessage($phone, $message);
+
+        $this->logActivity('send_wa', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Notifikasi WhatsApp berhasil dikirim ke ' . $phone]);
+        }
+
+        return redirect()->back()->with('status', 'Notifikasi WhatsApp berhasil dikirim ke ' . $phone);
+    }
+
     private function extendDueDate(Invoice $invoice): Carbon
     {
         $base = $invoice->due_date ? Carbon::parse($invoice->due_date) : now();
