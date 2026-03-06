@@ -71,6 +71,7 @@ Route::middleware('auth')->group(function () {
     Route::post('profile-groups/export-bulk', [ProfileGroupController::class, 'bulkExport'])->name('profile-groups.export-bulk');
     Route::delete('profile-groups/bulk-destroy', [ProfileGroupController::class, 'bulkDestroy'])->name('profile-groups.bulk-destroy');
     Route::get('profile-groups/datatable', [ProfileGroupController::class, 'datatable'])->name('profile-groups.datatable');
+    Route::get('profile-groups/mikrotik-queues', [ProfileGroupController::class, 'mikrotikQueues'])->name('profile-groups.mikrotik-queues');
     Route::resource('profile-groups', ProfileGroupController::class);
     Route::get('hotspot-profiles/datatable', [HotspotProfileController::class, 'datatable'])->name('hotspot-profiles.datatable');
     Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');

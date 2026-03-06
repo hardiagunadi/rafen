@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateProfileGroupRequest;
 use App\Models\MikrotikConnection;
 use App\Models\ProfileGroup;
 use App\Models\User;
+use App\Services\MikrotikApiClient;
 use App\Services\ProfileGroupExporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -126,6 +127,46 @@ class ProfileGroupController extends Controller
         $profileGroup->update($data);
 
         return redirect()->route('profile-groups.index')->with('status', 'Profil group diperbarui.');
+    }
+
+    /**
+     * Fetch queue tree names from Mikrotik via API (AJAX).
+     */
+    public function mikrotikQueues(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $connections = MikrotikConnection::query()->accessibleBy($user)->get();
+
+        if ($connections->isEmpty()) {
+            return response()->json(['error' => 'Tidak ada koneksi Mikrotik.'], 404);
+        }
+
+        $allQueues = collect();
+        $lastError = null;
+
+        foreach ($connections as $conn) {
+            try {
+                $client = new MikrotikApiClient($conn);
+                $result = $client->command('/queue/simple/print');
+                $client->disconnect();
+
+                $allQueues = $allQueues->merge(
+                    collect($result['data'] ?? [])
+                        ->pluck('name')
+                        ->filter(fn ($n) => $n && ! str_starts_with($n, '<'))
+                );
+            } catch (Throwable $e) {
+                $lastError = $e->getMessage();
+            }
+        }
+
+        $queues = $allQueues->unique()->sort()->values()->all();
+
+        if (empty($queues) && $lastError) {
+            return response()->json(['error' => 'Gagal konek ke Mikrotik: '.$lastError], 500);
+        }
+
+        return response()->json(['queues' => $queues]);
     }
 
     /**

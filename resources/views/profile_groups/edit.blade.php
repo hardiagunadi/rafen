@@ -100,8 +100,11 @@
                     </div>
                     <div class="form-group col-md-6">
                         <label>Parent Queue</label>
-                        <input type="text" name="parent_queue" value="{{ old('parent_queue', $profileGroup->parent_queue) }}" class="form-control @error('parent_queue') is-invalid @enderror" placeholder="Parent Queue">
-                        @error('parent_queue')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <select name="parent_queue" id="parent_queue_select" class="form-control @error('parent_queue') is-invalid @enderror">
+                            <option value="">Memuat dari Mikrotik...</option>
+                        </select>
+                        @error('parent_queue')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                        <small class="text-muted" id="queue-fetch-status"></small>
                     </div>
                 </div>
             </div>
@@ -150,6 +153,29 @@
             } else {
                 sqlFields.style.display = poolMode === 'sql' ? '' : 'none';
             }
+        })();
+
+        // --- Parent Queue: fetch otomatis dari semua Mikrotik ---
+        (function fetchParentQueues() {
+            var sel = document.getElementById('parent_queue_select');
+            var status = document.getElementById('queue-fetch-status');
+            var current = '{{ old('parent_queue', $profileGroup->parent_queue) }}';
+            fetch('{{ route("profile-groups.mikrotik-queues") }}', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) { status.textContent = data.error; return; }
+                sel.innerHTML = '<option value="">- tidak ada -</option>';
+                (data.queues || []).forEach(function (q) {
+                    var opt = document.createElement('option');
+                    opt.value = q; opt.textContent = q;
+                    if (q === current) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                status.textContent = '';
+            })
+            .catch(function () { status.textContent = 'Gagal mengambil queue dari Mikrotik.'; });
         })();
     </script>
 @endsection

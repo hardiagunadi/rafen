@@ -254,6 +254,20 @@ class RadiusReplySynchronizer
     {
         $username = $user->username;
 
+        // Mikrotik-Group: nama PPP profile di Mikrotik = nama ProfileGroup
+        // Wajib dikirim agar Mikrotik pakai profile yang benar (local-address, dll)
+        if ($group && $group->name) {
+            DB::table('radreply')->updateOrInsert(
+                ['username' => $username, 'attribute' => 'Mikrotik-Group'],
+                ['op' => ':=', 'value' => $group->name]
+            );
+        } else {
+            DB::table('radreply')
+                ->where('username', $username)
+                ->where('attribute', 'Mikrotik-Group')
+                ->delete();
+        }
+
         // Framed-Pool: hanya untuk group_only mode
         if ($group && $group->ip_pool_mode === 'group_only' && $group->ip_pool_name) {
             DB::table('radreply')->updateOrInsert(
@@ -296,13 +310,15 @@ class RadiusReplySynchronizer
 
     /**
      * Build Mikrotik-Rate-Limit string dari BandwidthProfile.
-     * Format Mikrotik: rx/tx limit-at/limit-at max-limit/max-limit
-     * rx = upload pelanggan (dari perspektif router = upload)
-     * tx = download pelanggan
      *
-     * Format yang didukung:
-     * - Jika min > 0: "ul_minM/dl_minM ul_maxM/dl_maxM" (dengan burst/guaranteed)
-     * - Jika min = 0: "ul_maxM/dl_maxM" (simple max only)
+     * Format lengkap Mikrotik-Rate-Limit (RouterOS):
+     *   rx/tx [burst-rx/burst-tx [burst-threshold-rx/burst-threshold-tx
+     *          [burst-time-rx/burst-time-tx [priority [limit-at-rx/limit-at-tx]]]]]
+     *
+     * - Jika min > 0: kirim 6 field dengan limit-at di posisi ke-6
+     *   → "maxU/maxD 0/0 0/0 0/0 8 minU/minD"
+     * - Jika min = 0: kirim hanya max
+     *   → "maxU/maxD"
      */
     private function buildRateLimit(BandwidthProfile $bp): string
     {
@@ -311,10 +327,9 @@ class RadiusReplySynchronizer
         $ulMin = (int) $bp->upload_min_mbps;
         $dlMin = (int) $bp->download_min_mbps;
 
-        // Format dalam bps (Mikrotik default = bps, suffix M = Mbps)
         if ($ulMin > 0 || $dlMin > 0) {
-            // ul_max/dl_max ul_min/dl_min (max-limit/guaranteed)
-            return "{$ulMax}M/{$dlMax}M {$ulMin}M/{$dlMin}M";
+            // max / no-burst / no-burst-threshold / no-burst-time / priority=8 / limit-at
+            return "{$ulMax}M/{$dlMax}M 0/0 0/0 0/0 8 {$ulMin}M/{$dlMin}M";
         }
 
         return "{$ulMax}M/{$dlMax}M";
