@@ -12,45 +12,64 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
-use Yajra\DataTables\Facades\DataTables;
 
 class HotspotProfileController extends Controller
 {
     public function datatable(Request $request): JsonResponse
     {
-        $user  = $request->user();
+        $user   = $request->user();
+        $search = $request->input('search.value', '');
+
         $query = HotspotProfile::query()
             ->accessibleBy($user)
             ->with(['owner', 'profileGroup', 'bandwidthProfile'])
-            ->select('hotspot_profiles.*');
+            ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"))
+            ->latest();
 
-        return DataTables::of($query)
-            ->addColumn('owner_name', fn ($p) => $p->owner?->name ?? '-')
-            ->addColumn('bandwidth_name', fn ($p) => $p->bandwidthProfile?->name ?? '-')
-            ->addColumn('profile_group_name', fn ($p) => $p->profileGroup?->name ?? '-')
-            ->addColumn('tipe_profil', function ($p) {
+        $total    = HotspotProfile::query()->accessibleBy($user)->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 25)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(function ($p) {
                 if ($p->profile_type === 'unlimited') {
-                    return '<span class="badge badge-success">Unlimited</span><div class="small text-muted">'.$p->masa_aktif_value.' '.$p->masa_aktif_unit.'</div>';
+                    $tipe = '<span class="badge badge-success">Unlimited</span><div class="small text-muted">'.$p->masa_aktif_value.' '.$p->masa_aktif_unit.'</div>';
+                } elseif ($p->limit_type === 'time') {
+                    $tipe = '<span class="badge badge-info">Limited - Time</span><div class="small text-muted">'.$p->time_limit_value.' '.$p->time_limit_unit.'</div>';
+                } elseif ($p->limit_type === 'quota') {
+                    $tipe = '<span class="badge badge-info">Limited - Quota</span><div class="small text-muted">'.$p->quota_limit_value.' '.strtoupper($p->quota_limit_unit ?? '').'</div>';
+                } else {
+                    $tipe = '-';
                 }
-                if ($p->limit_type === 'time') {
-                    return '<span class="badge badge-info">Limited - Time</span><div class="small text-muted">'.$p->time_limit_value.' '.$p->time_limit_unit.'</div>';
-                }
-                if ($p->limit_type === 'quota') {
-                    return '<span class="badge badge-info">Limited - Quota</span><div class="small text-muted">'.$p->quota_limit_value.' '.strtoupper($p->quota_limit_unit ?? '').'</div>';
-                }
-                return '-';
-            })
-            ->addColumn('prioritas_label', function ($p) {
-                return $p->prioritas === 'default' ? 'Default' : 'Prioritas '.((int) str_replace('prioritas', '', $p->prioritas));
-            })
-            ->addColumn('aksi', function ($p) {
+
+                $prioritas = $p->prioritas === 'default' ? 'Default' : 'Prioritas '.((int) str_replace('prioritas', '', $p->prioritas));
+
                 $edit = route('hotspot-profiles.edit', $p);
                 $del  = route('hotspot-profiles.destroy', $p);
-                return '<a href="'.$edit.'" class="btn btn-sm btn-outline-primary">Edit</a> '
+                $aksi = '<a href="'.$edit.'" class="btn btn-sm btn-outline-primary">Edit</a> '
                     .'<button type="button" class="btn btn-sm btn-outline-danger" data-ajax-delete="'.$del.'" data-confirm="Hapus profil ini?">Delete</button>';
-            })
-            ->rawColumns(['tipe_profil', 'aksi'])
-            ->make(true);
+
+                return [
+                    'id'                 => $p->id,
+                    'name'               => $p->name,
+                    'owner_name'         => $p->owner?->name ?? '-',
+                    'harga_jual'         => $p->harga_jual,
+                    'harga_promo'        => $p->harga_promo,
+                    'ppn'                => $p->ppn,
+                    'bandwidth_name'     => $p->bandwidthProfile?->name ?? '-',
+                    'tipe_profil'        => $tipe,
+                    'profile_group_name' => $p->profileGroup?->name ?? '-',
+                    'shared_users'       => $p->shared_users,
+                    'prioritas_label'    => $prioritas,
+                    'aksi'               => $aksi,
+                ];
+            }),
+        ]);
     }
 
     /**
@@ -114,6 +133,10 @@ class HotspotProfileController extends Controller
      */
     public function update(UpdateHotspotProfileRequest $request, HotspotProfile $hotspotProfile): RedirectResponse
     {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && $hotspotProfile->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
         $hotspotProfile->update($this->sanitizeData($request->validated()));
 
         return redirect()->route('hotspot-profiles.index')->with('status', 'Profil Hotspot diperbarui.');

@@ -214,110 +214,81 @@ class RadiusReplySynchronizer
         $this->syncUser($user);
     }
 
+    /**
+     * Build radreply rows for IP-related attributes.
+     * Returns array of rows to upsert, or null if IP should be cleared.
+     * Side-effect: may update user.ip_static when assigning from SQL pool.
+     *
+     * @return array<int, array{username: string, attribute: string, op: string, value: string}>|null
+     */
+    private function buildIpReplyRows(PppUser $user, ?ProfileGroup $group): ?array
+    {
+        if ($user->tipe_ip === 'dhcp') {
+            if (! $group || $group->ip_pool_mode !== 'sql') {
+                return null; // Mikrotik assigns via PPP Profile lokal
+            }
+
+            $ip = $user->ip_static;
+            if (! $ip || $ip === 'Automatic') {
+                $ip = $this->assignNextIp($group, $user);
+                if ($ip) {
+                    $user->update(['ip_static' => $ip]);
+                }
+            }
+
+            return $ip ? [
+                ['username' => $user->username, 'attribute' => 'Framed-IP-Address', 'op' => ':=', 'value' => $ip],
+                ['username' => $user->username, 'attribute' => 'Framed-IP-Netmask', 'op' => ':=', 'value' => '255.255.255.255'],
+            ] : null;
+        }
+
+        // Static IP
+        $ip = $user->ip_static;
+        if ($ip && $ip !== 'Automatic') {
+            return [
+                ['username' => $user->username, 'attribute' => 'Framed-IP-Address', 'op' => ':=', 'value' => $ip],
+                ['username' => $user->username, 'attribute' => 'Framed-IP-Netmask', 'op' => ':=', 'value' => '255.255.255.255'],
+            ];
+        }
+
+        if ($group && $group->ip_pool_mode === 'sql') {
+            $ip = $this->assignNextIp($group, $user);
+            if ($ip) {
+                $user->update(['ip_static' => $ip]);
+                return [
+                    ['username' => $user->username, 'attribute' => 'Framed-IP-Address', 'op' => ':=', 'value' => $ip],
+                    ['username' => $user->username, 'attribute' => 'Framed-IP-Netmask', 'op' => ':=', 'value' => '255.255.255.255'],
+                ];
+            }
+        }
+
+        return null;
+    }
+
     private function syncIpReply(PppUser $user, ?ProfileGroup $group): void
     {
         $username = $user->username;
 
-        // User tipe_ip='dhcp' dengan SQL pool → assign IP dari pool (seperti static tanpa IP)
-        // User tipe_ip='dhcp' tanpa profile group → Mikrotik assign dari PPP Profile lokal,
-        //   tidak perlu Framed-IP-Address dari RADIUS.
-        if ($user->tipe_ip === 'dhcp') {
-            // Hapus Framed-IP-Address stale
-            DB::table('radreply')
-                ->where('username', $username)
-                ->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask'])
-                ->delete();
+        $rows = $this->buildIpReplyRows($user, $group);
 
-            if (! $group || $group->ip_pool_mode !== 'sql') {
-                // Tidak ada SQL pool — biarkan Mikrotik yang assign via PPP Profile lokal
-                return;
-            }
-
-            // Ada SQL pool: cek apakah user sudah punya ip_static yang tersimpan
-            $existingIp = $user->ip_static;
-            if ($existingIp && $existingIp !== 'Automatic') {
+        if ($rows) {
+            foreach ($rows as $row) {
                 DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Framed-IP-Address'],
-                    ['op' => ':=', 'value' => $existingIp]
-                );
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Framed-IP-Netmask'],
-                    ['op' => ':=', 'value' => '255.255.255.255']
-                );
-                return;
-            }
-
-            // Belum ada IP — assign dari SQL pool
-            $assignedIp = $this->assignNextIp($group, $user);
-            if ($assignedIp) {
-                $user->update(['ip_static' => $assignedIp]);
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Framed-IP-Address'],
-                    ['op' => ':=', 'value' => $assignedIp]
-                );
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Framed-IP-Netmask'],
-                    ['op' => ':=', 'value' => '255.255.255.255']
+                    ['username' => $row['username'], 'attribute' => $row['attribute']],
+                    ['op' => $row['op'], 'value' => $row['value']]
                 );
             }
-            return;
-        }
+            // Jika ada static IP atau SQL pool IP, hapus Framed-Pool
+            if ($user->tipe_ip !== 'dhcp' && $user->ip_static && $user->ip_static !== 'Automatic') {
+                DB::table('radreply')->where('username', $username)->where('attribute', 'Framed-Pool')->delete();
+            }
+        } else {
+            DB::table('radreply')->where('username', $username)->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask'])->delete();
 
-        // Static IP assigned
-        $ip = $user->ip_static;
-        if ($ip && $ip !== 'Automatic') {
-            DB::table('radreply')->updateOrInsert(
-                ['username' => $username, 'attribute' => 'Framed-IP-Address'],
-                ['op' => ':=', 'value' => $ip]
-            );
-            // Netmask standard PPPoE
-            DB::table('radreply')->updateOrInsert(
-                ['username' => $username, 'attribute' => 'Framed-IP-Netmask'],
-                ['op' => ':=', 'value' => '255.255.255.255']
-            );
-            // Remove Framed-Pool if static IP is set
-            DB::table('radreply')
-                ->where('username', $username)
-                ->where('attribute', 'Framed-Pool')
-                ->delete();
-            return;
-        }
-
-        // No static IP → remove any stale Framed-IP-Address / Framed-IP-Netmask
-        DB::table('radreply')
-            ->where('username', $username)
-            ->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask'])
-            ->delete();
-
-        if (! $group) {
-            return;
-        }
-
-        // Pool mode: group_only → send Framed-Pool name to Mikrotik
-        if ($group->ip_pool_mode === 'group_only' && $group->ip_pool_name) {
-            DB::table('radreply')->updateOrInsert(
-                ['username' => $username, 'attribute' => 'Framed-Pool'],
-                ['op' => ':=', 'value' => $group->ip_pool_name]
-            );
-            DB::table('radreply')
-                ->where('username', $username)
-                ->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask'])
-                ->delete();
-            return;
-        }
-
-        // ip_pool_mode = sql but ip_static not yet assigned — assign now
-        if ($group->ip_pool_mode === 'sql') {
-            $assignedIp = $this->assignNextIp($group, $user);
-            if ($assignedIp) {
-                $user->update(['ip_static' => $assignedIp]);
+            if ($group && $group->ip_pool_mode === 'group_only' && $group->ip_pool_name) {
                 DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Framed-IP-Address'],
-                    ['op' => ':=', 'value' => $assignedIp]
-                );
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Framed-IP-Netmask'],
-                    ['op' => ':=', 'value' => '255.255.255.255']
+                    ['username' => $username, 'attribute' => 'Framed-Pool'],
+                    ['op' => ':=', 'value' => $group->ip_pool_name]
                 );
             }
         }

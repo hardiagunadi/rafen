@@ -4,7 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Radius Manager</title>
+    @php
+        $tenantTitle = 'Radius Manager';
+        if (auth()->check()) {
+            $tenantSettings = \App\Models\TenantSettings::getOrCreate(auth()->user()->effectiveOwnerId());
+            if ($tenantSettings?->business_name) {
+                $tenantTitle = $tenantSettings->business_name;
+            }
+        }
+    @endphp
+    <title>{{ $tenantTitle }}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs4@1.13.8/css/dataTables.bootstrap4.min.css">
@@ -42,7 +51,7 @@
 
     <aside class="main-sidebar sidebar-dark-primary elevation-4">
         <a href="{{ route('dashboard') }}" class="brand-link text-center">
-            <span class="brand-text font-weight-light">Radius Admin</span>
+            <span class="brand-text font-weight-light">{{ $tenantTitle }}</span>
         </a>
         <div class="sidebar">
             <nav class="mt-2">

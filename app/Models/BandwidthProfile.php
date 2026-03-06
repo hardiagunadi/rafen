@@ -32,8 +32,6 @@ class BandwidthProfile extends Model
             return $query;
         }
 
-        return $query->where(function (Builder $q) use ($user) {
-            $q->whereNull('owner_id')->orWhere('owner_id', $user->effectiveOwnerId());
-        });
+        return $query->where('owner_id', $user->effectiveOwnerId());
     }
 }

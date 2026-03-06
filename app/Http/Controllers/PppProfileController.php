@@ -117,6 +117,10 @@ class PppProfileController extends Controller
      */
     public function update(UpdatePppProfileRequest $request, PppProfile $pppProfile): RedirectResponse
     {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && $pppProfile->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
         $pppProfile->update($request->validated());
 
         $this->logActivity('updated', 'PppProfile', $pppProfile->id, $pppProfile->name, (int) $pppProfile->owner_id);

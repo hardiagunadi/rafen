@@ -43,9 +43,6 @@ class ProfileGroup extends Model
             return $query;
         }
 
-        return $query->where(function (Builder $q) use ($user) {
-            $q->whereNull('mikrotik_connection_id')
-              ->orWhereHas('mikrotikConnection', fn (Builder $q2) => $q2->where('owner_id', $user->effectiveOwnerId()));
-        });
+        return $query->whereHas('mikrotikConnection', fn (Builder $q) => $q->where('owner_id', $user->effectiveOwnerId()));
     }
 }

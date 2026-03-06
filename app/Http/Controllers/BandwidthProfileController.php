@@ -90,7 +90,7 @@ class BandwidthProfileController extends Controller
     {
         $user = auth()->user();
 
-        if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== null && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -105,6 +105,10 @@ class BandwidthProfileController extends Controller
      */
     public function update(UpdateBandwidthProfileRequest $request, BandwidthProfile $bandwidthProfile): RedirectResponse
     {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
         $bandwidthProfile->update($request->validated());
 
         return redirect()->route('bandwidth-profiles.index')->with('status', 'Bandwidth profile diperbarui.');
@@ -117,7 +121,7 @@ class BandwidthProfileController extends Controller
     {
         $user = auth()->user();
 
-        if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== null && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 

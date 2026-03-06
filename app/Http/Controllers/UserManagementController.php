@@ -115,22 +115,22 @@ class UserManagementController extends Controller
         return redirect()->route('users.index')->with('status', 'Pengguna dibuat.');
     }
 
-    public function edit(User $targetUser): View
+    public function edit(User $user): View
     {
-        $user = auth()->user();
-        $this->authorizeAccess($user);
-        $this->authorizeTarget($user, $targetUser);
+        $authUser = auth()->user();
+        $this->authorizeAccess($authUser);
+        $this->authorizeTarget($authUser, $user);
 
-        $roles = $user->isSuperAdmin() ? $this->roles() : $this->subUserRoles();
+        $roles = $authUser->isSuperAdmin() ? $this->roles() : $this->subUserRoles();
 
-        return view('users.edit', ['user' => $targetUser, 'roles' => $roles]);
+        return view('users.edit', ['user' => $user, 'roles' => $roles]);
     }
 
-    public function update(UpdateUserRequest $request, User $targetUser): RedirectResponse
+    public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        $user = auth()->user();
-        $this->authorizeAccess($user);
-        $this->authorizeTarget($user, $targetUser);
+        $authUser = auth()->user();
+        $this->authorizeAccess($authUser);
+        $this->authorizeTarget($authUser, $user);
 
         $data = $request->validated();
         if (! empty($data['password'])) {
@@ -139,7 +139,7 @@ class UserManagementController extends Controller
             unset($data['password']);
         }
 
-        if (! $user->isSuperAdmin()) {
+        if (! $authUser->isSuperAdmin()) {
             // Tenant admin cannot change parent_id or promote to administrator
             unset($data['parent_id'], $data['is_super_admin']);
             if (($data['role'] ?? '') === 'administrator') {
@@ -147,18 +147,18 @@ class UserManagementController extends Controller
             }
         }
 
-        $targetUser->update($data);
+        $user->update($data);
 
         return redirect()->route('users.index')->with('status', 'Pengguna diperbarui.');
     }
 
-    public function destroy(User $targetUser): JsonResponse|RedirectResponse
+    public function destroy(User $user): JsonResponse|RedirectResponse
     {
-        $user = auth()->user();
-        $this->authorizeAccess($user);
-        $this->authorizeTarget($user, $targetUser);
+        $authUser = auth()->user();
+        $this->authorizeAccess($authUser);
+        $this->authorizeTarget($authUser, $user);
 
-        $targetUser->delete();
+        $user->delete();
 
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Pengguna dihapus.']);
