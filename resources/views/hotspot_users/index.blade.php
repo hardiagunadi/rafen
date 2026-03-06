@@ -75,6 +75,7 @@
                             <th>Status Akun</th>
                             <th>Jatuh Tempo</th>
                             <th>Owner</th>
+                            <th>Perpanjang</th>
                             <th class="text-right">Aksi</th>
                         </tr>
                     </thead>
@@ -110,6 +111,7 @@
                     { data: 'status',      orderable: false },
                     { data: 'jatuh_tempo', orderable: false },
                     { data: 'owner',       orderable: false },
+                    { data: 'perpanjang',  orderable: false, searchable: false },
                     { data: 'aksi',        orderable: false, searchable: false, className: 'text-right' },
                 ],
                 language: {
@@ -142,7 +144,20 @@
                 });
                 form.submit();
             });
+
+            $(document).on('click', '.toggle-status-btn', function (e) {
+                e.preventDefault();
+                var $el = $(this);
+                var url = $el.data('toggle-url');
+                $.post(url, { _token: '{{ csrf_token() }}' }, function (res) {
+                    var isEnable = res.status === 'enable';
+                    $el.removeClass('badge-success badge-danger')
+                       .addClass(isEnable ? 'badge-success' : 'badge-danger')
+                       .attr('title', 'Klik untuk ' + (isEnable ? 'disable' : 'enable'));
+                });
+            });
         }
+
         document.addEventListener('DOMContentLoaded', init);
         if (document.readyState !== 'loading') init();
     })();

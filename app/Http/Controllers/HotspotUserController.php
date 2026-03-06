@@ -60,18 +60,26 @@ class HotspotUserController extends Controller
                 $due = '<span class="text-muted">-</span>';
             }
 
-            $aksi = '<a href="'.route('hotspot-users.edit', $user).'" class="btn btn-sm btn-warning text-white"><i class="fas fa-pen"></i></a> ';
-            $aksi .= '<button class="btn btn-sm btn-danger" data-ajax-delete="'.route('hotspot-users.destroy', $user).'" data-confirm="Hapus user hotspot ini?"><i class="fas fa-trash"></i></button>';
+            $perpanjang = '<div class="btn-group btn-group-sm"><button class="btn btn-success" data-ajax-post="'.route('hotspot-users.renew', $user).'" data-confirm="Perpanjang layanan hotspot ini?"><i class="fas fa-redo-alt mr-1"></i>Perpanjang</button></div>';
+
+            $aksi = '<div class="btn-group btn-group-sm">'.
+                '<a href="'.route('hotspot-users.edit', $user).'" class="btn btn-warning text-white" title="Edit"><i class="fas fa-pen"></i></a>'.
+                '<button type="button" class="btn btn-warning dropdown-toggle dropdown-toggle-split text-white" data-toggle="dropdown"></button>'.
+                '<div class="dropdown-menu dropdown-menu-right">'.
+                    '<button class="dropdown-item text-danger" data-ajax-delete="'.route('hotspot-users.destroy', $user).'" data-confirm="Hapus user hotspot ini?"><i class="fas fa-trash mr-1"></i>Hapus</button>'.
+                '</div>'.
+                '</div>';
 
             return [
                 'checkbox'    => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
-                'customer_id' => $user->customer_id ?? '-',
-                'nama'        => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div><div class="small text-muted">'.($user->nomor_hp ?? '').'</div>',
+                'customer_id' => '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('hotspot-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>',
+                'nama'        => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div>',
                 'username'    => $user->username ?? '-',
                 'profil'      => $user->hotspotProfile?->name ?? '-',
                 'status'      => $statusBadge,
                 'jatuh_tempo' => $due,
                 'owner'       => $user->owner?->name ?? '-',
+                'perpanjang'  => $perpanjang,
                 'aksi'        => '<div class="text-right">'.$aksi.'</div>',
             ];
         });
@@ -182,6 +190,55 @@ class HotspotUserController extends Controller
         }
 
         return redirect()->route('hotspot-users.index')->with('status', 'User Hotspot dihapus.');
+    }
+
+    public function renew(HotspotUser $hotspotUser): JsonResponse|RedirectResponse
+    {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $hotspotUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $profile = $hotspotUser->hotspotProfile;
+
+        $base = $hotspotUser->jatuh_tempo && $hotspotUser->jatuh_tempo->isFuture()
+            ? Carbon::parse($hotspotUser->jatuh_tempo)
+            : now();
+
+        if ($profile && $profile->masa_aktif_value && $profile->masa_aktif_unit) {
+            $unitMap = ['menit' => 'minutes', 'jam' => 'hours', 'hari' => 'days', 'bulan' => 'months'];
+            $carbonUnit = $unitMap[$profile->masa_aktif_unit] ?? 'days';
+            $newDue = $base->add($carbonUnit, (int) $profile->masa_aktif_value)->endOfDay();
+        } else {
+            $newDue = $base->addMonth()->endOfDay();
+        }
+
+        $hotspotUser->update([
+            'jatuh_tempo'  => $newDue,
+            'status_akun'  => 'enable',
+            'status_bayar' => 'belum_bayar',
+        ]);
+
+        if (request()->wantsJson()) {
+            return response()->json(['status' => 'Layanan hotspot diperpanjang.']);
+        }
+
+        return redirect()->route('hotspot-users.index')->with('status', 'Layanan hotspot diperpanjang.');
+    }
+
+    public function toggleStatus(HotspotUser $hotspotUser): JsonResponse
+    {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $hotspotUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $newStatus = $hotspotUser->status_akun === 'enable' ? 'disable' : 'enable';
+        $hotspotUser->update(['status_akun' => $newStatus]);
+
+        return response()->json(['status' => $newStatus]);
     }
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse

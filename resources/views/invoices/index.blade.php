@@ -48,11 +48,11 @@
             + (row.can_pay ? ' data-ajax-post="' + row.pay_url + '" data-confirm="Bayar dan perpanjang layanan sekarang?"' : ' disabled')
             + '><i class="fas fa-check"></i></button>';
         var view = '<a href="' + row.show_url + '" class="btn btn-info btn-sm mr-1" title="Lihat Invoice"><i class="fas fa-eye"></i></a>';
-        var print = '<a href="' + row.print_url + '" target="_blank" class="btn btn-default btn-sm mr-1" title="Cetak Invoice"><i class="fas fa-print"></i></a>';
+        var nota = '<a href="' + row.nota_url + '" target="_blank" class="btn btn-secondary btn-sm mr-1" title="Cetak Nota"><i class="fas fa-receipt"></i></a>';
         var del = '<button class="btn btn-danger btn-sm"'
             + ' data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus invoice ini?"'
             + '><i class="fas fa-trash"></i></button>';
-        return '<div class="text-right d-flex justify-content-end" style="gap:2px;">' + renew + pay + view + print + del + '</div>';
+        return '<div class="text-right d-flex justify-content-end" style="gap:2px;">' + renew + pay + view + nota + del + '</div>';
     }
 
     function init() {

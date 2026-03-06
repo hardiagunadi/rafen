@@ -64,6 +64,7 @@ class InvoiceController extends Controller
                 'destroy_url'     => route('invoices.destroy', $r->id),
                 'show_url'        => route('invoices.show', $r->id),
                 'print_url'       => route('invoices.print', $r->id),
+                'nota_url'        => route('invoices.nota', $r->id),
             ]),
         ]);
     }
@@ -98,6 +99,22 @@ class InvoiceController extends Controller
         $settings = $invoice->owner?->getSettings();
 
         return view('invoices.print', compact('invoice', 'bankAccounts', 'settings'));
+    }
+
+    public function nota(Invoice $invoice): View
+    {
+        $user = auth()->user();
+
+        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $invoice->load(['pppUser', 'owner', 'payment']);
+
+        $bankAccounts = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
+        $settings = $invoice->owner?->getSettings();
+
+        return view('invoices.nota', compact('invoice', 'bankAccounts', 'settings'));
     }
 
     public function pay(Invoice $invoice): JsonResponse|RedirectResponse

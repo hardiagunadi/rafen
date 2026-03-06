@@ -30,11 +30,21 @@ class PppUserController extends Controller
         $draw   = (int) $request->input('draw', 1);
         $start  = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
-        $search = $request->input('search.value', '');
+        $search       = $request->input('search.value', '');
+        $filterIsolir = $request->input('filter_isolir', '');
+        $filterTagihan = $request->input('filter_tagihan', '');
 
         $query = PppUser::query()
             ->with(['owner', 'profile', 'invoices' => fn ($q) => $q->where('status', 'unpaid')->latest()->limit(1)])
             ->accessibleBy($currentUser);
+
+        if ($filterIsolir === '1') {
+            $query->where('status_akun', 'isolir');
+        }
+
+        if ($filterTagihan === '1') {
+            $query->whereHas('invoices', fn ($q) => $q->overdue());
+        }
 
         $total = (clone $query)->count();
 
@@ -69,25 +79,30 @@ class PppUserController extends Controller
                 : '<span class="text-muted">-</span>';
 
             $renewBtn = $invoice
-                ? '<button class="btn btn-primary btn-sm mr-1" data-ajax-post="'.route('invoices.renew', $invoice).'" data-confirm="Perpanjang layanan tanpa pembayaran?" '.($canRenew ? '' : 'disabled').'><i class="fas fa-bolt"></i> Renew</button>'
-                : '<button class="btn btn-light btn-sm mr-1" disabled><i class="fas fa-bolt"></i> Renew</button>';
+                ? '<button class="btn btn-primary" data-ajax-post="'.route('invoices.renew', $invoice).'" data-confirm="Perpanjang layanan tanpa pembayaran?" '.($canRenew ? '' : 'disabled').'><i class="fas fa-bolt"></i> Renew</button>'
+                : '<button class="btn btn-light" disabled><i class="fas fa-bolt"></i> Renew</button>';
 
             $bayarBtn = $invoice
-                ? '<button class="btn btn-success btn-sm" data-ajax-post="'.route('invoices.pay', $invoice).'" data-confirm="Bayar dan perpanjang layanan sekarang?" '.($canPay ? '' : 'disabled').'><i class="fas fa-check"></i> Bayar</button>'
-                : '<button class="btn btn-light btn-sm" disabled><i class="fas fa-check"></i> Bayar</button>';
+                ? '<button class="btn btn-success" data-ajax-post="'.route('invoices.pay', $invoice).'" data-confirm="Bayar dan perpanjang layanan sekarang?" '.($canPay ? '' : 'disabled').'><i class="fas fa-check"></i> Bayar</button>'
+                : '<button class="btn btn-light" disabled><i class="fas fa-check"></i> Bayar</button>';
 
-            $aksi = '';
-            if ($invoice) {
-                $aksi .= '<button class="btn btn-sm btn-danger" data-ajax-delete="'.route('invoices.destroy', $invoice).'" data-confirm="Hapus pembayaran?"><i class="fas fa-trash"></i></button> ';
-            } else {
-                $aksi .= '<button class="btn btn-sm btn-light" disabled><i class="fas fa-trash"></i></button> ';
-            }
-            $aksi .= '<a href="'.route('ppp-users.edit', $user).'" class="btn btn-sm btn-warning text-white"><i class="fas fa-pen"></i></a> ';
-            $aksi .= '<button class="btn btn-sm btn-danger" data-ajax-delete="'.route('ppp-users.destroy', $user).'" data-confirm="Hapus user ini?"><i class="fas fa-trash"></i></button>';
+            $invoiceMenuItem = $invoice
+                ? '<button class="dropdown-item text-danger" data-ajax-delete="'.route('invoices.destroy', $invoice).'" data-confirm="Hapus tagihan ini?"><i class="fas fa-file-invoice mr-1"></i>Hapus Tagihan</button>'
+                : '<span class="dropdown-item text-muted"><i class="fas fa-file-invoice mr-1"></i>Hapus Tagihan</span>';
+
+            $aksi = '<div class="btn-group btn-group-sm">'.
+                '<a href="'.route('ppp-users.edit', $user).'" class="btn btn-warning text-white" title="Edit"><i class="fas fa-pen"></i></a>'.
+                '<button type="button" class="btn btn-warning dropdown-toggle dropdown-toggle-split text-white" data-toggle="dropdown"></button>'.
+                '<div class="dropdown-menu dropdown-menu-right">'.
+                    $invoiceMenuItem.
+                    '<div class="dropdown-divider"></div>'.
+                    '<button class="dropdown-item text-danger" data-ajax-delete="'.route('ppp-users.destroy', $user).'" data-confirm="Hapus user PPP ini?"><i class="fas fa-user-times mr-1"></i>Hapus User</button>'.
+                '</div>'.
+                '</div>';
 
             return [
                 'checkbox'    => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
-                'customer_id' => $user->customer_id ?? '-',
+                'customer_id' => '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('ppp-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>',
                 'nama'        => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div>',
                 'tipe'        => $tipe,
                 'paket'       => $user->profile?->name ?? '-',
@@ -95,7 +110,7 @@ class PppUserController extends Controller
                 'diperpanjang'=> $updated,
                 'jatuh_tempo' => $due,
                 'owner'       => $user->owner?->email ?? $user->owner?->name ?? '-',
-                'renew_print' => $renewBtn.$bayarBtn,
+                'renew_print' => '<div class="btn-group btn-group-sm">'.$renewBtn.$bayarBtn.'</div>',
                 'aksi'        => '<div class="text-right">'.$aksi.'</div>',
             ];
         });
@@ -276,6 +291,22 @@ class PppUserController extends Controller
         }
 
         return redirect()->route('ppp-users.index')->with('status', 'User PPP dihapus.');
+    }
+
+    public function toggleStatus(PppUser $pppUser): JsonResponse
+    {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $newStatus = $pppUser->status_akun === 'enable' ? 'disable' : 'enable';
+        $pppUser->update(['status_akun' => $newStatus]);
+
+        app(RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
+
+        return response()->json(['status' => $newStatus]);
     }
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse

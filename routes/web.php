@@ -78,6 +78,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('hotspot-profiles', HotspotProfileController::class);
     Route::get('invoices/datatable', [InvoiceController::class, 'datatable'])->name('invoices.datatable');
     Route::get('invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
+    Route::get('invoices/{invoice}/nota', [InvoiceController::class, 'nota'])->name('invoices.nota');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::patch('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
@@ -104,9 +105,12 @@ Route::middleware('auth')->group(function () {
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::get('ppp-users/datatable', [\App\Http\Controllers\PppUserController::class, 'datatable'])->name('ppp-users.datatable');
     Route::delete('ppp-users/bulk-destroy', [\App\Http\Controllers\PppUserController::class, 'bulkDestroy'])->name('ppp-users.bulk-destroy');
+    Route::post('ppp-users/{pppUser}/toggle-status', [\App\Http\Controllers\PppUserController::class, 'toggleStatus'])->name('ppp-users.toggle-status');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::get('hotspot-users/datatable', [HotspotUserController::class, 'datatable'])->name('hotspot-users.datatable');
     Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');
+    Route::post('hotspot-users/{hotspotUser}/renew', [HotspotUserController::class, 'renew'])->name('hotspot-users.renew');
+    Route::post('hotspot-users/{hotspotUser}/toggle-status', [HotspotUserController::class, 'toggleStatus'])->name('hotspot-users.toggle-status');
     Route::resource('hotspot-users', HotspotUserController::class);
     Route::get('vouchers/datatable', [VoucherController::class, 'datatable'])->name('vouchers.datatable');
     Route::delete('vouchers/bulk-destroy', [VoucherController::class, 'bulkDestroy'])->name('vouchers.bulk-destroy');

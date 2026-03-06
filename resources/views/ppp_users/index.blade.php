@@ -78,12 +78,11 @@
                             <th>Nama</th>
                             <th>Tipe Service</th>
                             <th>Paket Langganan</th>
-                            <th>IP Address</th>
                             <th>Diperpanjang</th>
                             <th>Jatuh Tempo</th>
                             <th>Renew / Bayar</th>
-                            <th>Owner Data</th>
                             <th class="text-right">Aksi</th>
+                            <th>Owner Data</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -108,19 +107,25 @@
                 processing: true,
                 serverSide: true,
                 responsive: true,
-                ajax: { url: '{{ route('ppp-users.datatable') }}', type: 'GET' },
+                ajax: {
+                    url: '{{ route('ppp-users.datatable') }}',
+                    type: 'GET',
+                    data: function (d) {
+                        d.filter_isolir  = $('#filter-isolir').is(':checked') ? '1' : '';
+                        d.filter_tagihan = $('#filter-tagihan').is(':checked') ? '1' : '';
+                    }
+                },
                 columns: [
                     { data: 'checkbox',    orderable: false, searchable: false, width: '40px' },
                     { data: 'customer_id', orderable: true },
                     { data: 'nama',        orderable: false },
                     { data: 'tipe',        orderable: false },
                     { data: 'paket',       orderable: false },
-                    { data: 'ip',          orderable: false },
                     { data: 'diperpanjang',orderable: true },
                     { data: 'jatuh_tempo', orderable: false },
                     { data: 'renew_print', orderable: false, searchable: false },
-                    { data: 'owner',       orderable: false },
                     { data: 'aksi',        orderable: false, searchable: false, className: 'text-right' },
+                    { data: 'owner',       orderable: false },
                 ],
                 language: {
                     search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ data',
@@ -132,7 +137,23 @@
                 },
                 pageLength: 10,
                 lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
-                order: [[6, 'desc']],
+                order: [[5, 'desc']],
+                initComplete: function () {
+                    var filters = '<div class="d-flex align-items-center mr-2" style="gap:.75rem;">'
+                        + '<div class="custom-control custom-switch mb-0">'
+                        +   '<input type="checkbox" class="custom-control-input" id="filter-isolir">'
+                        +   '<label class="custom-control-label text-warning font-weight-bold" for="filter-isolir">Isolir</label>'
+                        + '</div>'
+                        + '<div class="custom-control custom-switch mb-0">'
+                        +   '<input type="checkbox" class="custom-control-input" id="filter-tagihan">'
+                        +   '<label class="custom-control-label text-danger font-weight-bold" for="filter-tagihan">Jatuh Tempo</label>'
+                        + '</div>'
+                        + '</div>';
+                    $('#ppp-users-table_filter').css('display','flex').css('align-items','center').prepend(filters);
+                    $('#filter-isolir, #filter-tagihan').on('change', function () {
+                        table.ajax.reload();
+                    });
+                },
             });
 
             $('#select-all').on('change', function () {
@@ -152,7 +173,20 @@
                 });
                 form.submit();
             });
+
+            $(document).on('click', '.toggle-status-btn', function (e) {
+                e.preventDefault();
+                var $el = $(this);
+                var url = $el.data('toggle-url');
+                $.post(url, { _token: '{{ csrf_token() }}' }, function (res) {
+                    var isEnable = res.status === 'enable';
+                    $el.removeClass('badge-success badge-danger')
+                       .addClass(isEnable ? 'badge-success' : 'badge-danger')
+                       .attr('title', 'Klik untuk ' + (isEnable ? 'disable' : 'enable'));
+                });
+            });
         }
+
         document.addEventListener('DOMContentLoaded', init);
         if (document.readyState !== 'loading') init();
     })();

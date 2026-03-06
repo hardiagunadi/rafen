@@ -368,7 +368,7 @@
                                     <p>Pengaturan Bisnis</p>
                                 </a>
                             </li>
-                            @if(auth()->user() && (auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'])))
+                            @if(auth()->user() && !auth()->user()->isSuperAdmin())
                             <li class="nav-item">
                                 <a href="{{ route('wa-gateway.index') }}" class="nav-link {{ request()->routeIs('wa-gateway.*') ? 'active' : '' }}">
                                     <i class="fab fa-whatsapp nav-icon text-success"></i>
