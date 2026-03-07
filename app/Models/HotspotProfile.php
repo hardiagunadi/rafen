@@ -41,6 +41,16 @@ class HotspotProfile extends Model
         return $this->belongsTo(User::class, 'owner_id');
     }
 
+    public function hotspotUsers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(HotspotUser::class);
+    }
+
+    public function vouchers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Voucher::class);
+    }
+
     public function bandwidthProfile(): BelongsTo
     {
         return $this->belongsTo(BandwidthProfile::class);

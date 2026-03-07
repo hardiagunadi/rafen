@@ -17,15 +17,12 @@
                     <tr>
                         <th style="width:40px;"><input type="checkbox" id="select-all"></th>
                         <th>Nama</th>
-                        <th>Owner</th>
-                        <th>Harga Jual</th>
-                        <th>Harga Promo</th>
-                        <th>PPN</th>
+                        <th>Harga</th>
                         <th>Bandwidth</th>
                         <th>Tipe Profil</th>
                         <th>Profil Group</th>
                         <th>Shared Users</th>
-                        <th>Prioritas</th>
+                        <th>Pengguna</th>
                         <th class="text-right">Aksi</th>
                     </tr>
                 </thead>
@@ -56,24 +53,43 @@
                         }
                     },
                     { data: 'name' },
-                    { data: 'owner_name', searchable: false },
                     {
                         data: 'harga_jual',
-                        render: function (v) { return parseFloat(v).toLocaleString('id-ID', {minimumFractionDigits:2}); }
-                    },
-                    {
-                        data: 'harga_promo',
-                        render: function (v) { return parseFloat(v).toLocaleString('id-ID', {minimumFractionDigits:2}); }
-                    },
-                    {
-                        data: 'ppn',
-                        render: function (v) { return parseFloat(v).toLocaleString('id-ID', {minimumFractionDigits:2}) + '%'; }
+                        orderable: false,
+                        searchable: false,
+                        render: function (v, type, row) {
+                            var jual = parseFloat(row.harga_jual).toLocaleString('id-ID', {minimumFractionDigits:0});
+                            var lines = '<div>Rp ' + jual + '</div>';
+                            if (parseFloat(row.harga_promo) > 0) {
+                                var promo = parseFloat(row.harga_promo).toLocaleString('id-ID', {minimumFractionDigits:0});
+                                lines += '<div class="small text-muted">Promo: Rp ' + promo + '</div>';
+                            }
+                            if (parseFloat(row.ppn) > 0) {
+                                lines += '<div class="small text-muted">PPN: ' + parseFloat(row.ppn) + '%</div>';
+                            }
+                            return lines;
+                        }
                     },
                     { data: 'bandwidth_name', searchable: false },
                     { data: 'tipe_profil', orderable: false, searchable: false },
                     { data: 'profile_group_name', searchable: false },
-                    { data: 'shared_users' },
-                    { data: 'prioritas_label', searchable: false },
+                    {
+                        data: 'shared_users',
+                        orderable: false,
+                        searchable: false,
+                        render: function (v, type, row) {
+                            return '<div>' + v + ' user</div><div class="small text-muted">' + row.prioritas_label + '</div>';
+                        }
+                    },
+                    {
+                        data: 'hotspot_users_count',
+                        orderable: false,
+                        searchable: false,
+                        render: function (v, type, row) {
+                            return '<div class="small"><i class="fas fa-user mr-1 text-primary"></i>' + row.hotspot_users_count + ' user</div>'
+                                + '<div class="small"><i class="fas fa-ticket-alt mr-1 text-success"></i>' + row.vouchers_count + ' voucher</div>';
+                        }
+                    },
                     { data: 'aksi', orderable: false, searchable: false, className: 'text-right' },
                 ],
                 language: {

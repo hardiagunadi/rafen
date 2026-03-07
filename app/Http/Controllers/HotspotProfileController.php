@@ -23,6 +23,7 @@ class HotspotProfileController extends Controller
         $query = HotspotProfile::query()
             ->accessibleBy($user)
             ->with(['owner', 'profileGroup', 'bandwidthProfile'])
+            ->withCount(['hotspotUsers', 'vouchers'])
             ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"))
             ->latest();
 
@@ -64,9 +65,11 @@ class HotspotProfileController extends Controller
                     'bandwidth_name'     => $p->bandwidthProfile?->name ?? '-',
                     'tipe_profil'        => $tipe,
                     'profile_group_name' => $p->profileGroup?->name ?? '-',
-                    'shared_users'       => $p->shared_users,
-                    'prioritas_label'    => $prioritas,
-                    'aksi'               => $aksi,
+                    'shared_users'        => $p->shared_users,
+                    'prioritas_label'     => $prioritas,
+                    'hotspot_users_count' => $p->hotspot_users_count,
+                    'vouchers_count'      => $p->vouchers_count,
+                    'aksi'                => $aksi,
                 ];
             }),
         ]);

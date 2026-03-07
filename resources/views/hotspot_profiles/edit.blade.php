@@ -178,7 +178,7 @@
                 </div>
             </div>
             <div class="card-footer d-flex justify-content-between">
-                <a href="{{ route('hotspot-profiles.index') }}" class="btn btn-link">Batal</a>
+                <a href="{{ route('hotspot-profiles.index') }}" class="btn btn-secondary">Kembali</a>
                 <button type="submit" class="btn btn-primary">Update</button>
             </div>
         </form>
