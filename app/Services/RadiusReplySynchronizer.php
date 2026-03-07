@@ -212,10 +212,10 @@ class RadiusReplySynchronizer
             return;
         }
 
-        // User enable: hapus Mikrotik-Group isolir jika masih ada (sisa dari isolir)
+        // User enable: hapus attribute isolir yang mungkin masih ada (Mikrotik-Group + Framed-Pool isolir)
         DB::table('radreply')
             ->where('username', $user->username)
-            ->where('attribute', 'Mikrotik-Group')
+            ->whereIn('attribute', ['Mikrotik-Group', 'Framed-Pool'])
             ->delete();
 
         $this->syncUser($user);

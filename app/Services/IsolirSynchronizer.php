@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MikrotikConnection;
+use App\Models\ProfileGroup;
 use App\Models\PppUser;
 use App\Models\TenantSettings;
 use Illuminate\Support\Facades\DB;
@@ -142,6 +143,9 @@ class IsolirSynchronizer
             // -- 3. IP Address untuk gateway pool isolir (pada interface loopback/bridge) --
             // Tidak perlu — gateway PPP profile di Mikrotik ditangani oleh local-address profile
 
+            // -- 3. Parent Queues (PPPoE, Hotspot, Expired User) --
+            $this->ensureParentQueues($client, $connection, $subnet, $rate);
+
             // -- 4. Firewall filter: DROP semua dari subnet isolir KECUALI DNS + HTTP/HTTPS --
             $this->ensureFirewallFilters($client, $subnet);
 
@@ -201,9 +205,10 @@ class IsolirSynchronizer
 
         if ($ownerId) {
             $settings = TenantSettings::getOrCreate($ownerId);
-            $slug     = $this->tenantSlug($settings);
             $appUrl   = rtrim(config('app.url', ''), '/');
-            return ltrim(parse_url($appUrl, PHP_URL_HOST) ?: $appUrl, 'https://');
+            $host     = parse_url($appUrl, PHP_URL_HOST) ?: $appUrl;
+            $port     = parse_url($appUrl, PHP_URL_PORT);
+            return $port ? "{$host}:{$port}" : $host;
         }
 
         return null;
@@ -226,6 +231,97 @@ class IsolirSynchronizer
             return implode('.', $parts).'/24';
         }
         return '10.99.0.0/24';
+    }
+
+    /**
+     * Kelola ketiga parent queue: PPPoE, Hotspot, dan Expired User.
+     * Dipanggil dari setupMikrotik() setelah PPP profile dibuat.
+     */
+    private function ensureParentQueues(
+        MikrotikApiClient $client,
+        MikrotikConnection $connection,
+        string $isolirSubnet,
+        string $rateLimit
+    ): void {
+        // -- 0. PPPOe Pelanggan: target dari profile_groups PPPoE milik tenant --
+        $pppoeTarget = $this->resolvePppoeTarget($connection);
+        if ($pppoeTarget) {
+            $this->ensureSimpleQueue($client, '0. PPPOe Pelanggan', $pppoeTarget, '0/0',
+                'rafen: parent queue pelanggan PPPoE');
+        }
+
+        // -- 1. Hotspot: target dari kolom hotspot_subnet per-router --
+        if ($connection->hotspot_subnet) {
+            $this->ensureSimpleQueue($client, '1. Hotspot', $connection->hotspot_subnet, '0/0',
+                'rafen: parent queue hotspot');
+        }
+
+        // -- 2. Expired User: target subnet isolir, throttle sesuai isolir_rate_limit --
+        $this->ensureSimpleQueue($client, '2. Expired User', $isolirSubnet, $rateLimit,
+            'rafen-isolir: throttle pelanggan jatuh tempo');
+    }
+
+    /**
+     * Buat atau update simple queue berdasarkan nama.
+     * Jika sudah ada tapi target/max-limit berbeda → update.
+     * Jika belum ada → buat baru.
+     */
+    private function ensureSimpleQueue(
+        MikrotikApiClient $client,
+        string $name,
+        string $target,
+        string $maxLimit,
+        string $comment
+    ): void {
+        $existing = $client->command('/queue/simple/print', [], ['name' => $name]);
+
+        if (! empty($existing['data'])) {
+            $entry        = $existing['data'][0];
+            $needsUpdate  = ($entry['target'] ?? '') !== $target
+                         || ($entry['max-limit'] ?? '') !== $maxLimit;
+
+            if ($needsUpdate) {
+                $client->command('/queue/simple/set', [
+                    '.id'       => $entry['.id'],
+                    'target'    => $target,
+                    'max-limit' => $maxLimit,
+                    'comment'   => $comment,
+                ]);
+            }
+            return;
+        }
+
+        $client->command('/queue/simple/add', [
+            'name'      => $name,
+            'target'    => $target,
+            'max-limit' => $maxLimit,
+            'comment'   => $comment,
+        ]);
+    }
+
+    /**
+     * Hitung target queue PPPoE dari profile_groups tenant yang punya parent_queue PPPoE.
+     * Mengembalikan string subnet dipisah koma, mis: "192.168.22.0/24,192.168.32.0/24"
+     */
+    private function resolvePppoeTarget(MikrotikConnection $connection): ?string
+    {
+        $groups = ProfileGroup::query()
+            ->where('owner_id', $connection->owner_id)
+            ->where('parent_queue', '0. PPPOe Pelanggan')
+            ->whereNotNull('ip_address')
+            ->where('ip_address', '!=', '')
+            ->where('ip_address', '!=', '-')
+            ->whereNotNull('netmask')
+            ->get(['ip_address', 'netmask']);
+
+        $subnets = $groups->map(function ($g) {
+            $netmask = (int) $g->netmask;
+            $mask    = ~((1 << (32 - $netmask)) - 1);
+            $network = long2ip(ip2long($g->ip_address) & $mask);
+            return "{$network}/{$netmask}";
+        })->unique()->sort()->values();
+
+        return $subnets->isNotEmpty() ? $subnets->implode(',') : null;
     }
 
     private function ensureIpPool(MikrotikApiClient $client, string $poolName, string $ranges): void
@@ -328,35 +424,52 @@ class IsolirSynchronizer
             [$host, $port] = explode(':', $isolirHost, 2);
         }
 
+        // MikroTik to-addresses harus IP address, bukan domain — resolve jika perlu
+        if (! filter_var($host, FILTER_VALIDATE_IP)) {
+            $resolved = gethostbyname($host);
+            if ($resolved !== $host) {
+                $host = $resolved;
+            }
+        }
+
         $rules = [
             [
-                'chain'       => 'dstnat',
-                'src-address' => $subnet,
-                'protocol'    => 'tcp',
-                'dst-port'    => '80',
-                'action'      => 'dst-nat',
+                'chain'        => 'dstnat',
+                'src-address'  => $subnet,
+                'protocol'     => 'tcp',
+                'dst-port'     => '80',
+                'action'       => 'dst-nat',
                 'to-addresses' => $host,
-                'to-ports'    => $port,
-                'comment'     => 'rafen-isolir: redirect HTTP ke halaman isolir',
+                'to-ports'     => $port,
+                'comment'      => 'rafen-isolir: redirect HTTP ke halaman isolir',
             ],
             [
-                'chain'       => 'dstnat',
-                'src-address' => $subnet,
-                'protocol'    => 'tcp',
-                'dst-port'    => '443',
-                'action'      => 'dst-nat',
+                'chain'        => 'dstnat',
+                'src-address'  => $subnet,
+                'protocol'     => 'tcp',
+                'dst-port'     => '443',
+                'action'       => 'dst-nat',
                 'to-addresses' => $host,
-                'to-ports'    => $port,
-                'comment'     => 'rafen-isolir: redirect HTTPS ke halaman isolir',
+                'to-ports'     => '443',
+                'comment'      => 'rafen-isolir: redirect HTTPS ke halaman isolir',
             ],
         ];
 
         foreach ($rules as $rule) {
             $comment  = $rule['comment'];
             $existing = $client->command('/ip/firewall/nat/print', [], ['comment' => $comment]);
-            if (! empty($existing['data'])) {
-                continue;
+
+            // Hapus rule lama jika ada agar to-ports dapat diperbarui
+            foreach ($existing['data'] ?? [] as $entry) {
+                if (isset($entry['.id'])) {
+                    try {
+                        $client->command('/ip/firewall/nat/remove', ['.id' => $entry['.id']]);
+                    } catch (RuntimeException) {
+                        // Abaikan jika rule sudah tidak ada
+                    }
+                }
             }
+
             $client->command('/ip/firewall/nat/add', $rule);
         }
     }

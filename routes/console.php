@@ -31,9 +31,15 @@ Schedule::command('radius:check-dictionary --fix')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Reset status_bayar ke belum_bayar untuk user yang jatuh temponya sudah tiba (setiap hari jam 06:55)
+// Reset status_bayar ke belum_bayar untuk user yang jatuh temponya sudah tiba (setiap menit, idempoten)
 Schedule::command('billing:reset-status')
-    ->dailyAt('06:55')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Isolir user PPP yang overdue dan belum bayar (setiap menit, gap ~1 menit dari jatuh tempo)
+Schedule::command('billing:isolate-overdue')
+    ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 

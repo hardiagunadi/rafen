@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use App\Models\TenantSettings;
+use App\Services\IsolirSynchronizer;
 use App\Services\RadiusReplySynchronizer;
 use App\Services\WaNotificationService;
 use App\Traits\LogsActivity;
@@ -151,16 +152,25 @@ class InvoiceController extends Controller
             'payment_note'    => $request->input('payment_note') ?: null,
         ]);
         if ($invoice->pppUser) {
-            $wasOnProcess = $invoice->pppUser->status_registrasi === 'on_process';
+            $pppUser      = $invoice->pppUser;
+            $wasOnProcess = $pppUser->status_registrasi === 'on_process';
+            $wasIsolir    = $pppUser->status_akun === 'isolir';
 
-            $invoice->pppUser->update([
+            $pppUser->update([
                 'status_bayar' => 'sudah_bayar',
-                'jatuh_tempo' => $this->extendDueDate($invoice),
+                'status_akun'  => 'enable',
+                'jatuh_tempo'  => $this->extendDueDate($invoice),
             ]);
 
             if ($wasOnProcess) {
-                $invoice->pppUser->update(['status_registrasi' => 'aktif']);
-                app(RadiusReplySynchronizer::class)->syncSingleUser($invoice->pppUser->fresh());
+                $pppUser->update(['status_registrasi' => 'aktif']);
+            }
+
+            $pppUser->refresh();
+            app(RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
+
+            if ($wasIsolir) {
+                app(IsolirSynchronizer::class)->deisolate($pppUser);
             }
         }
 
@@ -169,7 +179,7 @@ class InvoiceController extends Controller
         $settings = TenantSettings::getOrCreate((int) $invoice->owner_id);
 
         if (isset($wasOnProcess) && $wasOnProcess) {
-            WaNotificationService::notifyRegistration($settings, $invoice->pppUser->fresh()->load('profile'));
+            WaNotificationService::notifyRegistration($settings, $pppUser->fresh()->load('profile'));
         }
 
         WaNotificationService::notifyInvoicePaid($settings, $invoice->fresh()->load('pppUser'));

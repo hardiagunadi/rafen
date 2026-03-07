@@ -277,15 +277,37 @@ class TenantSettingsController extends Controller
 
     public function waGateway(Request $request)
     {
-        $user     = $request->user();
-        $settings = $user->getSettings();
+        $user = $request->user();
 
-        return view('wa-gateway.index', compact('settings'));
+        $tenants       = null;
+        $selectedTenant = null;
+
+        if ($user->isSuperAdmin()) {
+            $tenants = \App\Models\User::whereNull('parent_id')
+                ->where('is_super_admin', false)
+                ->orderBy('name')
+                ->get();
+
+            $tenantId = $request->integer('tenant_id');
+            if ($tenantId) {
+                $selectedTenant = $tenants->firstWhere('id', $tenantId);
+            }
+
+            $settings = $selectedTenant
+                ? \App\Models\TenantSettings::getOrCreate($selectedTenant->id)
+                : null;
+        } else {
+            $settings = $user->getSettings();
+        }
+
+        return view('wa-gateway.index', compact('settings', 'tenants', 'selectedTenant'));
     }
 
     public function updateWa(Request $request)
     {
-        if ($request->user()->isSubUser()) abort(403);
+        $user = $request->user();
+
+        if ($user->isSubUser()) abort(403);
 
         $validated = $request->validate([
             'wa_gateway_url'              => 'nullable|url|max:255',
@@ -305,10 +327,20 @@ class TenantSettingsController extends Controller
             'wa_template_payment'         => 'nullable|string|max:2000',
             'wa_notify_on_process'        => 'boolean',
             'wa_template_on_process'      => 'nullable|string|max:2000',
+            'tenant_id'                   => 'nullable|integer',
         ]);
 
-        $user = $request->user();
-        $settings = $user->getSettings();
+        if ($user->isSuperAdmin() && !empty($validated['tenant_id'])) {
+            $tenant = \App\Models\User::where('id', $validated['tenant_id'])
+                ->where('is_super_admin', false)
+                ->whereNull('parent_id')
+                ->firstOrFail();
+            $settings = \App\Models\TenantSettings::getOrCreate($tenant->id);
+        } else {
+            $settings = $user->getSettings();
+        }
+
+        unset($validated['tenant_id']);
         $settings->update($validated);
 
         return back()->with('success', 'Pengaturan WhatsApp berhasil diperbarui.');
@@ -331,10 +363,19 @@ class TenantSettingsController extends Controller
         if (! empty($url) && (! empty($token) || ! empty($key))) {
             $service = new WaGatewayService(rtrim($url, '/'), $token ?? '', $key ?? '');
         } else {
-            $user     = $request->user();
-            $settings = $user->getSettings();
+            $user = $request->user();
 
-            if (! $settings->hasWaConfigured()) {
+            if ($user->isSuperAdmin() && $request->integer('tenant_id')) {
+                $tenant = \App\Models\User::where('id', $request->integer('tenant_id'))
+                    ->where('is_super_admin', false)
+                    ->whereNull('parent_id')
+                    ->first();
+                $settings = $tenant ? \App\Models\TenantSettings::getOrCreate($tenant->id) : null;
+            } else {
+                $settings = $user->getSettings();
+            }
+
+            if (! $settings || ! $settings->hasWaConfigured()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'URL Gateway dan Token WhatsApp belum dikonfigurasi.',

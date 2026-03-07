@@ -48,6 +48,7 @@ class MikrotikConnection extends Model
         'isolir_profile_name',
         'isolir_rate_limit',
         'isolir_setup_at',
+        'hotspot_subnet',
     ];
 
     /**

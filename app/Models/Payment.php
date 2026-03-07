@@ -106,12 +106,23 @@ class Payment extends Model
                 'payment_id' => $this->id,
             ]);
 
-            // Update PPP user status
+            // Update PPP user status + lepas isolir jika sebelumnya terisolir
             if ($this->invoice->pppUser) {
-                $this->invoice->pppUser->update([
+                $pppUser       = $this->invoice->pppUser;
+                $wasIsolir     = $pppUser->status_akun === 'isolir';
+
+                $pppUser->update([
                     'status_bayar' => 'sudah_bayar',
-                    'status_akun' => 'enable',
+                    'status_akun'  => 'enable',
                 ]);
+
+                $pppUser->refresh();
+
+                app(\App\Services\RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
+
+                if ($wasIsolir) {
+                    app(\App\Services\IsolirSynchronizer::class)->deisolate($pppUser);
+                }
             }
         }
     }

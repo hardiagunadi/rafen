@@ -3,16 +3,59 @@
 @section('title', 'WA Gateway')
 
 @section('content')
+
+@if(auth()->user()->isSuperAdmin())
+<div class="row mb-3">
+    <div class="col-md-8">
+        <div class="card card-outline card-primary mb-0">
+            <div class="card-body py-2">
+                <form method="GET" action="{{ route('wa-gateway.index') }}" class="form-inline">
+                    <label class="mr-2 mb-0 font-weight-bold"><i class="fas fa-crown text-warning mr-1"></i> Pilih Tenant:</label>
+                    <select name="tenant_id" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
+                        <option value="">-- Pilih Tenant --</option>
+                        @foreach($tenants as $t)
+                            <option value="{{ $t->id }}" {{ $selectedTenant?->id == $t->id ? 'selected' : '' }}>
+                                {{ $t->name }} ({{ $t->email }})
+                            </option>
+                        @endforeach
+                    </select>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
+@if(auth()->user()->isSuperAdmin() && !$selectedTenant)
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body text-center text-muted py-5">
+                <i class="fab fa-whatsapp fa-3x mb-3 text-success"></i>
+                <p>Pilih tenant di atas untuk mengatur WA Gateway mereka.</p>
+            </div>
+        </div>
+    </div>
+</div>
+@else
+
 <div class="row">
     <div class="col-md-8">
 
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title"><i class="fab fa-whatsapp text-success mr-1"></i> Integrasi WhatsApp Gateway</h3>
+                <h3 class="card-title"><i class="fab fa-whatsapp text-success mr-1"></i> Integrasi WhatsApp Gateway
+                @if(auth()->user()->isSuperAdmin() && $selectedTenant)
+                    <span class="badge badge-primary ml-2">{{ $selectedTenant->name }}</span>
+                @endif
+                </h3>
             </div>
             <form action="{{ route('tenant-settings.update-wa') }}" method="POST">
                 @csrf
                 @method('PUT')
+                @if(auth()->user()->isSuperAdmin() && $selectedTenant)
+                <input type="hidden" name="tenant_id" value="{{ $selectedTenant->id }}">
+                @endif
                 <div class="card-body">
 
                     {{-- Koneksi --}}
@@ -248,6 +291,7 @@
         </div>
     </div>
 </div>
+@endif {{-- end super admin tenant check --}}
 @endsection
 
 @push('scripts')

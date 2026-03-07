@@ -278,7 +278,6 @@ class PppUserController extends Controller
     public function update(UpdatePppUserRequest $request, PppUser $pppUser): RedirectResponse
     {
         $originalStatus = $pppUser->status_bayar;
-        $originalStatus = $pppUser->status_bayar;
         $originalStatusAkun = $pppUser->status_akun;
         $originalStatusRegistrasi = $pppUser->status_registrasi;
         $originalDue = $pppUser->jatuh_tempo;
@@ -859,6 +858,10 @@ class PppUserController extends Controller
 
         $due = Carbon::parse($user->jatuh_tempo)->endOfDay();
         if (now()->greaterThan($due) && $user->aksi_jatuh_tempo === 'isolir' && $user->status_akun !== 'isolir') {
+            $settings = TenantSettings::getOrCreate((int) $user->owner_id);
+            if (! $settings->auto_isolate_unpaid) {
+                return;
+            }
             $user->update(['status_akun' => 'isolir']);
             // Sync RADIUS + setup Mikrotik + kick sesi aktif
             app(RadiusReplySynchronizer::class)->syncSingleUser($user);
