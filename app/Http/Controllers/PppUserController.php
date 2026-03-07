@@ -11,6 +11,7 @@ use App\Models\ProfileGroup;
 use App\Models\TenantSettings;
 use App\Models\User;
 use App\Services\IsolirSynchronizer;
+use App\Services\MikrotikApiClient;
 use App\Services\RadiusReplySynchronizer;
 use App\Services\WaNotificationService;
 use App\Traits\LogsActivity;
@@ -18,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -60,8 +62,16 @@ class PppUserController extends Controller
 
         $users = $query->latest()->skip($start)->take($length > 0 ? $length : 10)->get();
 
-        $data = $users->map(function (PppUser $user) {
+        // Fetch active sessions for this batch of users in one query
+        $usernames = $users->pluck('username')->filter()->values()->all();
+        $activeSessions = \App\Models\RadiusAccount::whereIn('username', $usernames)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('username');
+
+        $data = $users->map(function (PppUser $user) use ($activeSessions) {
             $invoice = $user->invoices->first();
+            $session = $activeSessions->get($user->username);
             $canRenew = $invoice && $invoice->created_at->equalTo($invoice->updated_at);
             $canPay   = (bool) $invoice;
 
@@ -103,7 +113,17 @@ class PppUserController extends Controller
             return [
                 'checkbox'    => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
                 'customer_id' => '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('ppp-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>',
-                'nama'        => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div>',
+                'nama'        => (function () use ($user, $session) {
+                    if ($session) {
+                        $tooltipText = 'CONNECTED | '.$session->caller_id.' | Online: '.$session->uptime;
+                    } else {
+                        $tooltipText = 'DISCONNECTED';
+                    }
+                    $tooltipText .= ' — Klik untuk edit';
+                    $iconColor = $session ? 'text-success' : 'text-secondary';
+                    return '<a href="'.route('ppp-users.edit', $user).'" class="font-weight-bold text-uppercase text-dark">'.$user->customer_name.'</a>'
+                        .' <i class="fas fa-info-circle '.$iconColor.'" data-toggle="tooltip" data-placement="top" title="'.e($tooltipText).'"></i>';
+                })(),
                 'tipe'        => $tipe,
                 'paket'       => $user->profile?->name ?? '-',
                 'ip'          => $ip,
@@ -307,6 +327,185 @@ class PppUserController extends Controller
         app(RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
 
         return response()->json(['status' => $newStatus]);
+    }
+
+    public function invoiceDatatable(Request $request, PppUser $pppUser): JsonResponse
+    {
+        $currentUser = $request->user();
+
+        if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $draw   = (int) $request->input('draw', 1);
+        $start  = (int) $request->input('start', 0);
+        $length = (int) $request->input('length', 10);
+        $search = $request->input('search.value', '');
+
+        $query = Invoice::query()->where('ppp_user_id', $pppUser->id)->with('owner');
+
+        $total = (clone $query)->count();
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_number', 'like', "%{$search}%")
+                    ->orWhere('paket_langganan', 'like', "%{$search}%");
+            });
+        }
+
+        $filtered = (clone $query)->count();
+
+        $orderCol = (int) ($request->input('order.0.column', 0));
+        $orderDir = $request->input('order.0.dir', 'desc') === 'asc' ? 'asc' : 'desc';
+        $cols = ['id', 'invoice_number', 'paket_langganan', 'total', 'created_at', 'due_date'];
+        $query->orderBy($cols[$orderCol] ?? 'id', $orderDir);
+
+        $invoices = $query->skip($start)->take($length > 0 ? $length : 10)->get();
+
+        $data = $invoices->map(function (Invoice $invoice) {
+            $statusBadge = $invoice->status === 'paid'
+                ? '<span class="badge badge-success">Lunas</span>'
+                : '<span class="badge badge-warning">Belum Bayar</span>';
+
+            $aksi = '<div class="btn-group btn-group-sm">'
+                .'<a href="'.route('invoices.show', $invoice).'" class="btn btn-info btn-sm" title="Detail"><i class="fas fa-eye"></i></a>'
+                .'<a href="'.route('invoices.nota', $invoice).'" target="_blank" class="btn btn-secondary btn-sm" title="Nota"><i class="fas fa-print"></i></a>'
+                .'</div>';
+
+            return [
+                'id'             => $invoice->id,
+                'invoice_number' => $invoice->invoice_number.' '.$statusBadge,
+                'paket_langganan'=> $invoice->paket_langganan ?? '-',
+                'total'          => 'Rp '.number_format((float) $invoice->total, 0, ',', '.'),
+                'created_at'     => $invoice->created_at?->format('M d, Y') ?? '-',
+                'due_date'       => $invoice->due_date?->format('M d, Y') ?? '-',
+                'owner'          => $invoice->owner?->name ?? '-',
+                'aksi'           => $aksi,
+            ];
+        });
+
+        return response()->json([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data,
+        ]);
+    }
+
+    public function dialupDatatable(Request $request, PppUser $pppUser): JsonResponse
+    {
+        $currentUser = $request->user();
+
+        if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $draw   = (int) $request->input('draw', 1);
+        $start  = (int) $request->input('start', 0);
+        $length = (int) $request->input('length', 10);
+        $search = $request->input('search.value', '');
+
+        $query = DB::table('radacct')
+            ->where('username', $pppUser->username)
+            ->orderBy('radacctid', 'desc')
+            ->limit(100);
+
+        $total = DB::table('radacct')->where('username', $pppUser->username)->count();
+        $total = min($total, 100);
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('nasipaddress', 'like', "%{$search}%")
+                    ->orWhere('acctterminatecause', 'like', "%{$search}%")
+                    ->orWhere('callingstationid', 'like', "%{$search}%");
+            });
+        }
+
+        $filtered = (clone $query)->count();
+
+        $rows = $query->skip($start)->take($length > 0 ? $length : 10)->get();
+
+        $data = $rows->map(function ($row) {
+            $uploadBytes = (int) ($row->acctinputoctets ?? 0);
+            $downloadBytes = (int) ($row->acctoutputoctets ?? 0);
+
+            $formatBytes = function (int $bytes): string {
+                if ($bytes >= 1073741824) return round($bytes / 1073741824, 2).' GB';
+                if ($bytes >= 1048576) return round($bytes / 1048576, 2).' MB';
+                if ($bytes >= 1024) return round($bytes / 1024, 2).' KB';
+                return $bytes.' B';
+            };
+
+            $upSecs = (int) ($row->acctsessiontime ?? 0);
+            $uptime = sprintf('%dh %dm %ds', intdiv($upSecs, 3600), intdiv($upSecs % 3600, 60), $upSecs % 60);
+
+            return [
+                'radacctid' => $row->radacctid,
+                'uptime'    => $uptime,
+                'start'     => $row->acctstarttime ? \Carbon\Carbon::parse($row->acctstarttime)->format('M/d/Y H:i') : '-',
+                'stop'      => $row->acctstoptime  ? \Carbon\Carbon::parse($row->acctstoptime)->format('M/d/Y H:i')  : '-',
+                'nas'       => $row->calledstationid ?: $row->nasipaddress,
+                'upload'    => '<i class="fas fa-upload text-success mr-1"></i>'.$formatBytes($uploadBytes),
+                'download'  => '<i class="fas fa-download text-info mr-1"></i>'.$formatBytes($downloadBytes),
+                'terminate' => '<em>'.($row->acctterminatecause ?: '-').'</em>',
+            ];
+        });
+
+        return response()->json([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data,
+        ]);
+    }
+
+    public function addInvoice(PppUser $pppUser): JsonResponse
+    {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $this->createInvoiceForUser($pppUser, null, true);
+
+        return response()->json(['status' => 'Tagihan berhasil ditambahkan.']);
+    }
+
+    public function disconnect(PppUser $pppUser): JsonResponse
+    {
+        $currentUser = auth()->user();
+
+        if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        try {
+            $pppUser->load('owner');
+            $connections = \App\Models\MikrotikConnection::query()
+                ->accessibleBy($currentUser)
+                ->get();
+
+            foreach ($connections as $conn) {
+                try {
+                    $client = app(MikrotikApiClient::class, ['connection' => $conn]);
+                    $client->connect();
+                    $active = $client->command('/ppp/active/print', ['?name' => $pppUser->username]);
+                    foreach ($active['data'] ?? [] as $session) {
+                        if (isset($session['.id'])) {
+                            $client->command('/ppp/active/remove', ['=.id' => $session['.id']]);
+                        }
+                    }
+                    $client->disconnect();
+                } catch (\Throwable) {
+                    // skip unreachable routers
+                }
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['status' => 'Gagal memutus koneksi: '.$e->getMessage()], 500);
+        }
+
+        return response()->json(['status' => 'Koneksi berhasil diputus.']);
     }
 
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse

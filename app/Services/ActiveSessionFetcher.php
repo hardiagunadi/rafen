@@ -18,19 +18,37 @@ class ActiveSessionFetcher
     public function syncPpp(MikrotikConnection $conn): int
     {
         $this->client->connect();
-        $response = $this->client->command('/ppp/active/print');
+        $response  = $this->client->command('/ppp/active/print');
+        $ifResponse = $this->client->command('/interface/print');
         $this->client->disconnect();
 
         $sessions = $response['data'] ?? [];
 
-        $this->upsertSessions($conn, 'pppoe', $sessions, function (array $row): array {
+        // Index interface stats by username extracted from interface name "<pppoe-username>"
+        $ifStats = [];
+        foreach ($ifResponse['data'] ?? [] as $iface) {
+            $name = $iface['name'] ?? '';
+            if (str_starts_with($name, '<pppoe-') && str_ends_with($name, '>')) {
+                $username = substr($name, 7, -1); // strip "<pppoe-" and ">"
+                $ifStats[$username] = [
+                    'bytes_in'  => isset($iface['rx-byte']) ? (int) $iface['rx-byte'] : null,
+                    'bytes_out' => isset($iface['tx-byte']) ? (int) $iface['tx-byte'] : null,
+                ];
+            }
+        }
+
+        $this->upsertSessions($conn, 'pppoe', $sessions, function (array $row) use ($ifStats): array {
+            $username = $row['name'] ?? '';
+            $stats    = $ifStats[$username] ?? [];
             return [
-                'username'     => $row['name'] ?? '',
+                'username'     => $username,
                 'ipv4_address' => $row['address'] ?? null,
                 'uptime'       => $row['uptime'] ?? null,
                 'caller_id'    => $row['caller-id'] ?? null,
                 'server_name'  => null,
                 'profile'      => $row['service'] ?? null,
+                'bytes_in'     => $stats['bytes_in'] ?? null,
+                'bytes_out'    => $stats['bytes_out'] ?? null,
             ];
         });
 

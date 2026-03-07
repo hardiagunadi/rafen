@@ -107,6 +107,10 @@ Route::middleware('auth')->group(function () {
     Route::get('ppp-users/datatable', [\App\Http\Controllers\PppUserController::class, 'datatable'])->name('ppp-users.datatable');
     Route::delete('ppp-users/bulk-destroy', [\App\Http\Controllers\PppUserController::class, 'bulkDestroy'])->name('ppp-users.bulk-destroy');
     Route::post('ppp-users/{pppUser}/toggle-status', [\App\Http\Controllers\PppUserController::class, 'toggleStatus'])->name('ppp-users.toggle-status');
+    Route::get('ppp-users/{pppUser}/invoice-datatable', [\App\Http\Controllers\PppUserController::class, 'invoiceDatatable'])->name('ppp-users.invoice-datatable');
+    Route::get('ppp-users/{pppUser}/dialup-datatable', [\App\Http\Controllers\PppUserController::class, 'dialupDatatable'])->name('ppp-users.dialup-datatable');
+    Route::post('ppp-users/{pppUser}/add-invoice', [\App\Http\Controllers\PppUserController::class, 'addInvoice'])->name('ppp-users.add-invoice');
+    Route::post('ppp-users/{pppUser}/disconnect', [\App\Http\Controllers\PppUserController::class, 'disconnect'])->name('ppp-users.disconnect');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::get('hotspot-users/datatable', [HotspotUserController::class, 'datatable'])->name('hotspot-users.datatable');
     Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');

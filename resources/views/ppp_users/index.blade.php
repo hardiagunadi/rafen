@@ -138,6 +138,9 @@
                 pageLength: 10,
                 lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
                 order: [[5, 'desc']],
+                drawCallback: function () {
+                    $('[data-toggle="tooltip"]').tooltip();
+                },
                 initComplete: function () {
                     var filters = '<div class="d-flex align-items-center mr-2" style="gap:.75rem;">'
                         + '<div class="custom-control custom-switch mb-0">'

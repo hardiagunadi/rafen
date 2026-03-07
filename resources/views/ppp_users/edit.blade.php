@@ -4,13 +4,32 @@
 
 @section('content')
     <div class="card">
-        <div class="card-header">
-            <h4 class="mb-0">Edit Pelanggan</h4>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Edit Pelanggan — <span class="text-primary">{{ $pppUser->customer_name }}</span></h4>
+            <a href="{{ route('ppp-users.index') }}" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left"></i> Kembali</a>
         </div>
-        <form action="{{ route('ppp-users.update', $pppUser) }}" method="POST">
+
+        {{-- Main tabs: form + invoice/session/dialup --}}
+        <div class="card-body p-0">
+            <ul class="nav nav-tabs px-3 pt-2" id="mainTab" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="edit-tab" data-toggle="tab" href="#edit-pane" role="tab">Edit Pelanggan</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="invoice-tab" data-toggle="tab" href="#invoice-pane" role="tab"><i class="fas fa-file-invoice mr-1"></i>Invoice &amp; Session</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="dialup-tab" data-toggle="tab" href="#dialup-pane" role="tab"><i class="fas fa-history mr-1"></i>Riwayat Dialup</a>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="mainTabContent">
+                {{-- TAB: EDIT FORM --}}
+                <div class="tab-pane fade show active p-3" id="edit-pane" role="tabpanel">
+        <form action="{{ route('ppp-users.update', $pppUser) }}" method="POST" id="form-edit-ppp">
             @csrf
             @method('PUT')
-            <div class="card-body">
+            <div>
                 <ul class="nav nav-tabs" id="pppTab" role="tablist">
                     <li class="nav-item">
                         <a class="nav-link active" id="paket-tab" data-toggle="tab" href="#paket" role="tab">Paket Langganan</a>
@@ -260,13 +279,172 @@
                 </div>
 
             </div>
-            <div class="card-footer d-flex justify-content-between">
+            <div class="d-flex justify-content-between px-3 pb-3">
                 <a href="{{ route('ppp-users.index') }}" class="btn btn-link">Batal</a>
                 <button type="submit" class="btn btn-primary">Update</button>
             </div>
         </form>
+                </div>{{-- end #edit-pane --}}
+
+                {{-- TAB: INVOICE & SESSION --}}
+                <div class="tab-pane fade p-3" id="invoice-pane" role="tabpanel">
+                    <p class="text-muted small"><strong>*** Penghitung trafik direset disetiap waktu jatuh tempo</strong></p>
+
+                    {{-- Session info cards --}}
+                    @php
+                        $activeSession = \App\Models\RadiusAccount::where('username', $pppUser->username)
+                            ->where('is_active', true)->first();
+                        $formatBytes = function (int $bytes): string {
+                            if ($bytes >= 1099511627776) return round($bytes / 1099511627776, 2) . ' TB';
+                            if ($bytes >= 1073741824)    return round($bytes / 1073741824, 2) . ' GB';
+                            if ($bytes >= 1048576)       return round($bytes / 1048576, 2) . ' MB';
+                            if ($bytes >= 1024)          return round($bytes / 1024, 2) . ' KB';
+                            return $bytes . ' B';
+                        };
+                        $bytesIn  = (int) ($activeSession?->bytes_in  ?? 0);
+                        $bytesOut = (int) ($activeSession?->bytes_out ?? 0);
+                        $totalBytes  = $bytesIn + $bytesOut;
+                        $uploadDisplay   = $formatBytes($bytesIn);
+                        $downloadDisplay = $formatBytes($bytesOut);
+                        $totalDisplay    = $formatBytes($totalBytes);
+
+                        // Parse uptime string (e.g. "2d17h23m7s", "4h33m25s", "2d17h23m") → total seconds
+                        $uptimeSeconds = 0;
+                        if ($activeSession?->uptime) {
+                            preg_match_all('/(\d+)([wdhms])/', $activeSession->uptime, $matches, PREG_SET_ORDER);
+                            foreach ($matches as $m) {
+                                $uptimeSeconds += match($m[2]) {
+                                    'w' => (int)$m[1] * 604800,
+                                    'd' => (int)$m[1] * 86400,
+                                    'h' => (int)$m[1] * 3600,
+                                    'm' => (int)$m[1] * 60,
+                                    's' => (int)$m[1],
+                                    default => 0,
+                                };
+                            }
+                        }
+                        $baseSeconds = $uptimeSeconds;
+                    @endphp
+                    <div class="row mb-3">
+                        <div class="col-md-3 mb-2 d-flex">
+                            <div class="p-3 rounded text-white w-100 {{ $activeSession ? 'bg-info' : 'bg-secondary' }}">
+                                <div class="small mb-1" style="opacity:.8">Perangkat</div>
+                                <div><i class="fas fa-network-wired mr-1"></i><strong>{{ $activeSession?->caller_id ?? '-' }}</strong></div>
+                                <div class="small mt-1" style="opacity:.9"><strong>{{ $activeSession ? 'connected' : 'disconnected' }}</strong></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-2 d-flex">
+                            <div class="p-3 rounded w-100 bg-warning text-dark">
+                                <div class="small mb-1" style="opacity:.7">Waktu Online</div>
+                                <div><i class="fas fa-clock mr-1"></i><strong id="uptime-counter">{{ $activeSession?->uptime ?? '-' }}</strong></div>
+                                <div class="small mt-1" style="opacity:.75">
+                                    @if($activeSession?->updated_at)
+                                        sync: {{ $activeSession->updated_at->diffForHumans() }}
+                                    @else
+                                        &nbsp;
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-2 d-flex">
+                            <div class="p-3 rounded text-white w-100 bg-success">
+                                <div class="small mb-1" style="opacity:.8">Quota Terpakai</div>
+                                <div><i class="fas fa-chart-area mr-1"></i><strong>{{ $totalDisplay }}</strong></div>
+                                <div class="small mt-1" style="opacity:.9">
+                                    <i class="fas fa-upload mr-1"></i>{{ $uploadDisplay }}
+                                    &nbsp;&nbsp;
+                                    <i class="fas fa-download mr-1"></i>{{ $downloadDisplay }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-2 d-flex">
+                            <div class="p-3 rounded text-white w-100 bg-primary">
+                                <div class="small mb-1" style="opacity:.8">IP Address</div>
+                                <div><i class="fas fa-signal mr-1"></i><strong>{{ $activeSession?->ipv4_address ?? '-' }}</strong></div>
+                                <div class="small mt-1">&nbsp;</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Action buttons --}}
+                    <div class="mb-3">
+                        <button class="btn btn-info btn-sm" data-ajax-post="{{ route('ppp-users.add-invoice', $pppUser) }}" data-confirm="Tambah tagihan baru untuk pelanggan ini?">
+                            <i class="fas fa-file-invoice mr-1"></i>add invoice
+                        </button>
+                        <button class="btn btn-success btn-sm ml-1 btn-disconnect" data-url="{{ route('ppp-users.disconnect', $pppUser) }}" {{ $activeSession ? '' : 'disabled' }}>
+                            <i class="fas fa-ban mr-1"></i>disconnect
+                        </button>
+                        <button class="btn btn-danger btn-sm ml-1 btn-toggle-akun" data-url="{{ route('ppp-users.toggle-status', $pppUser) }}" data-status="{{ $pppUser->status_akun }}">
+                            <i class="fas fa-times mr-1"></i>{{ $pppUser->status_akun === 'disable' ? 'enable' : 'disable' }}
+                        </button>
+                    </div>
+
+                    {{-- Invoice datatable --}}
+                    <table id="invoice-dt" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Id</th>
+                                <th>Invoice</th>
+                                <th>Paket Langganan</th>
+                                <th>Jumlah</th>
+                                <th>Aktivasi</th>
+                                <th>Deadline</th>
+                                <th>Owner Data</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>{{-- end #invoice-pane --}}
+
+                {{-- TAB: RIWAYAT DIALUP --}}
+                <div class="tab-pane fade p-3" id="dialup-pane" role="tabpanel">
+                    <p class="text-muted small"><strong>*** only display last 100 record</strong></p>
+                    <table id="dialup-dt" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Acct ID</th>
+                                <th>Uptime</th>
+                                <th>Waktu Mulai</th>
+                                <th>Waktu Berakhir</th>
+                                <th>NAS</th>
+                                <th>Upload</th>
+                                <th>Download</th>
+                                <th>Terminate By</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>{{-- end #dialup-pane --}}
+
+            </div>{{-- end .tab-content mainTabContent --}}
+        </div>{{-- end .card-body --}}
     </div>
-    <script>
+
+@endsection
+
+@push('scripts')
+<script>
+        // Live uptime counter
+        (function () {
+            var el = document.getElementById('uptime-counter');
+            if (!el) return;
+            var base = {{ $baseSeconds }};
+            if (base <= 0) return;
+            function fmt(s) {
+                var d = Math.floor(s / 86400);
+                var h = Math.floor((s % 86400) / 3600);
+                var m = Math.floor((s % 3600) / 60);
+                var sec = s % 60;
+                if (d > 0) return d + 'd ' + h + 'h ' + m + 'm ' + sec + 's';
+                if (h > 0) return h + 'h ' + m + 'm ' + sec + 's';
+                return m + 'm ' + sec + 's';
+            }
+            var t = base;
+            el.textContent = fmt(t);
+            setInterval(function () { el.textContent = fmt(++t); }, 1000);
+        })();
+
         const ipSelect = document.getElementById('tipe-ip-select');
         const staticSection = document.getElementById('static-ip-section');
         function toggleStatic() {
@@ -274,5 +452,99 @@
         }
         ipSelect.addEventListener('change', toggleStatic);
         toggleStatic();
+
+        // Invoice datatable (lazy init on tab show)
+        var invoiceDtInitialized = false;
+        var dialupDtInitialized  = false;
+
+        $('#mainTab a[href="#invoice-pane"]').on('shown.bs.tab', function () {
+            if (invoiceDtInitialized) return;
+            invoiceDtInitialized = true;
+            $('#invoice-dt').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: true,
+                ajax: '{{ route('ppp-users.invoice-datatable', $pppUser) }}',
+                columns: [
+                    { data: 'id' },
+                    { data: 'invoice_number' },
+                    { data: 'paket_langganan' },
+                    { data: 'total' },
+                    { data: 'created_at' },
+                    { data: 'due_date' },
+                    { data: 'owner' },
+                    { data: 'aksi', orderable: false, searchable: false },
+                ],
+                language: {
+                    search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ data',
+                    info: 'Menampilkan _START_ - _END_ dari _TOTAL_ data',
+                    infoEmpty: 'Tidak ada data', zeroRecords: 'Tidak ada data.',
+                    emptyTable: 'Belum ada invoice.', processing: 'Memuat...',
+                    paginate: { first: 'Pertama', last: 'Terakhir', next: 'Selanjutnya', previous: 'Sebelumnya' },
+                },
+                order: [[0, 'desc']],
+                pageLength: 10,
+            });
+        });
+
+        $('#mainTab a[href="#dialup-pane"]').on('shown.bs.tab', function () {
+            if (dialupDtInitialized) return;
+            dialupDtInitialized = true;
+            $('#dialup-dt').DataTable({
+                processing: true,
+                serverSide: true,
+                responsive: true,
+                ajax: '{{ route('ppp-users.dialup-datatable', $pppUser) }}',
+                columns: [
+                    { data: 'radacctid' },
+                    { data: 'uptime' },
+                    { data: 'start' },
+                    { data: 'stop' },
+                    { data: 'nas' },
+                    { data: 'upload' },
+                    { data: 'download' },
+                    { data: 'terminate' },
+                ],
+                language: {
+                    search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ data',
+                    info: 'Menampilkan _START_ - _END_ dari _TOTAL_ data',
+                    infoEmpty: 'Tidak ada data', zeroRecords: 'Tidak ada data.',
+                    emptyTable: 'Belum ada riwayat dialup.', processing: 'Memuat...',
+                    paginate: { first: 'Pertama', last: 'Terakhir', next: 'Selanjutnya', previous: 'Sebelumnya' },
+                },
+                order: [[0, 'desc']],
+                pageLength: 10,
+            });
+        });
+
+        // Disconnect button
+        $(document).on('click', '.btn-disconnect', function () {
+            var url = $(this).data('url');
+            if (!confirm('Putuskan koneksi aktif pelanggan ini?')) return;
+            var btn = $(this);
+            btn.prop('disabled', true);
+            $.post(url, { _token: '{{ csrf_token() }}' })
+                .done(function (res) {
+                    toastr.success(res.status || 'Koneksi diputus.');
+                    setTimeout(function () { location.reload(); }, 1500);
+                })
+                .fail(function () { toastr.error('Gagal memutus koneksi.'); btn.prop('disabled', false); });
+        });
+
+        // Toggle akun (enable/disable)
+        $(document).on('click', '.btn-toggle-akun', function () {
+            var btn = $(this);
+            var url = btn.data('url');
+            var current = btn.data('status');
+            var action = current === 'disable' ? 'enable' : 'disable';
+            if (!confirm('Ubah status akun menjadi ' + action + '?')) return;
+            $.post(url, { _token: '{{ csrf_token() }}' })
+                .done(function (res) {
+                    toastr.success('Status akun: ' + res.status);
+                    btn.data('status', res.status);
+                    btn.html('<i class="fas fa-times mr-1"></i>' + (res.status === 'disable' ? 'enable' : 'disable'));
+                })
+                .fail(function () { toastr.error('Gagal mengubah status.'); });
+        });
     </script>
-@endsection
+@endpush
