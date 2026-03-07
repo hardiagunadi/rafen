@@ -81,6 +81,9 @@
             <span class="brand-text font-weight-light">{{ $tenantTitle }}</span>
         </a>
         <div class="sidebar">
+            @hasSection('sidebar')
+                @yield('sidebar')
+            @else
             <nav class="mt-2">
                 <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
                     @if($subscriptionExpired)
@@ -395,6 +398,7 @@
                         </ul>
                     </li>
                     @endif
+                    @if(!$isTeknisi)
                     <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-cog"></i>
@@ -438,7 +442,9 @@
                             </li>
                         </ul>
                     </li>
+                    @endif {{-- end !$isTeknisi (Pengaturan) --}}
                     @endif {{-- end @else (subscription not expired) --}}
+                    @if(!auth()->user()->isSubUser())
                     <li class="nav-item has-treeview {{ request()->routeIs('subscription.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('subscription.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-credit-card {{ $subscriptionExpired ? 'text-warning' : '' }}"></i>
@@ -473,6 +479,7 @@
                             </li>
                         </ul>
                     </li>
+                    @endif {{-- end !isSubUser (Langganan) --}}
                     @if(auth()->user()->isSuperAdmin())
                     <li class="nav-header">SUPER ADMIN</li>
                     <li class="nav-item">
@@ -508,6 +515,7 @@
                     </li>
                 </ul>
             </nav>
+            @endif
         </div>
     </aside>
 

@@ -360,6 +360,285 @@ class DashboardController extends Controller
      *     uptime:string
      * }
      */
+    public function apiDashboardMenu(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        $menu = $request->string('menu')->toString();
+
+        $menuMap = [
+            'interface'          => '/interface/print',
+            'ppp_active'         => '/ppp/active/print',
+            'ppp_setting'        => '/ppp/secret/print',
+            'ppp_interface'      => '/interface/pppoe-client/print',
+            'pppoe_server'       => '/interface/pppoe-server/server/print',
+            'hotspot_active'     => '/ip/hotspot/active/print',
+            'hotspot_setting'    => '/ip/hotspot/print',
+            'hotspot_ip_binding' => '/ip/hotspot/ip-binding/print',
+            'hotspot_server'     => '/ip/hotspot/server/print',
+            'hotspot_profiles'   => '/ip/hotspot/profile/print',
+            'hotspot_cookies'    => '/ip/hotspot/cookie/print',
+        ];
+
+        if (! isset($menuMap[$menu])) {
+            return response()->json(['error' => 'Menu tidak valid.'], 422);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $result = $client->command($menuMap[$menu]);
+            $client->disconnect();
+
+            return response()->json(['data' => $result['data']]);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pppSecretStore(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        $name     = trim($request->string('name')->toString());
+        $password = trim($request->string('password')->toString());
+        $profile  = trim($request->string('profile')->toString());
+        $service  = trim($request->string('service', 'pppoe')->toString());
+
+        if ($name === '') {
+            return response()->json(['error' => 'Name wajib diisi.'], 422);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['name' => $name, 'password' => $password, 'service' => $service];
+            if ($profile !== '') {
+                $attrs['profile'] = $profile;
+            }
+            $client->command('/ppp/secret/add', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'PPP Secret berhasil ditambahkan.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pppSecretUpdate(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['.id' => $id];
+            if ($request->filled('password')) {
+                $attrs['password'] = $request->string('password')->toString();
+            }
+            if ($request->filled('profile')) {
+                $attrs['profile'] = $request->string('profile')->toString();
+            }
+            if ($request->filled('service')) {
+                $attrs['service'] = $request->string('service')->toString();
+            }
+            if ($request->filled('comment')) {
+                $attrs['comment'] = $request->string('comment')->toString();
+            }
+            $client->command('/ppp/secret/set', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'PPP Secret berhasil diperbarui.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pppSecretDestroy(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $client->command('/ppp/secret/remove', ['.id' => $id]);
+            $client->disconnect();
+
+            return response()->json(['message' => 'PPP Secret berhasil dihapus.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pppActiveDisconnect(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $client->command('/ppp/active/remove', ['.id' => $id]);
+            $client->disconnect();
+
+            return response()->json(['message' => 'Session PPP berhasil didisconnect.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function hotspotUserStore(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        $name = trim($request->string('name')->toString());
+        if ($name === '') {
+            return response()->json(['error' => 'Name wajib diisi.'], 422);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['name' => $name];
+            if ($request->filled('password')) {
+                $attrs['password'] = $request->string('password')->toString();
+            }
+            if ($request->filled('profile')) {
+                $attrs['profile'] = $request->string('profile')->toString();
+            }
+            if ($request->filled('server')) {
+                $attrs['server'] = $request->string('server')->toString();
+            }
+            $client->command('/ip/hotspot/user/add', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'Hotspot user berhasil ditambahkan.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function hotspotUserUpdate(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['.id' => $id];
+            if ($request->filled('password')) {
+                $attrs['password'] = $request->string('password')->toString();
+            }
+            if ($request->filled('profile')) {
+                $attrs['profile'] = $request->string('profile')->toString();
+            }
+            if ($request->filled('server')) {
+                $attrs['server'] = $request->string('server')->toString();
+            }
+            if ($request->filled('comment')) {
+                $attrs['comment'] = $request->string('comment')->toString();
+            }
+            $client->command('/ip/hotspot/user/set', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'Hotspot user berhasil diperbarui.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function hotspotUserDestroy(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $client->command('/ip/hotspot/user/remove', ['.id' => $id]);
+            $client->disconnect();
+
+            return response()->json(['message' => 'Hotspot user berhasil dihapus.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function hotspotActiveDisconnect(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $client->command('/ip/hotspot/active/remove', ['.id' => $id]);
+            $client->disconnect();
+
+            return response()->json(['message' => 'Session Hotspot berhasil didisconnect.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function apiDashboardTraffic(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        $interface = $request->string('interface')->toString();
+        if ($interface === '') {
+            return response()->json(['error' => 'Interface wajib diisi.'], 422);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $result = $client->command('/interface/monitor-traffic', [
+                'interface' => $interface,
+                'once'      => '',
+            ]);
+            $client->disconnect();
+
+            $row = $result['data'][0] ?? [];
+
+            return response()->json([
+                'tx' => (int) ($row['tx-bits-per-second'] ?? 0),
+                'rx' => (int) ($row['rx-bits-per-second'] ?? 0),
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
     private function apiDashboardPayload(?MikrotikConnection $connection): array
     {
         $systemRaw = $this->systemMetricsRaw();

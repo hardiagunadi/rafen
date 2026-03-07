@@ -51,7 +51,6 @@
 
     function renderAksi(d, t, row) {
         return '<div class="text-right">'
-            + '<a href="' + row.api_url + '" class="btn btn-info btn-sm text-white mr-1" title="API Dashboard"><i class="fas fa-plug"></i></a>'
             + '<a href="' + row.edit_url + '" class="btn btn-sm btn-warning text-white mr-1"><i class="fas fa-pen"></i></a>'
             + '<button class="btn btn-sm btn-danger" data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus koneksi ini?"><i class="fas fa-trash"></i></button>'
             + '</div>';

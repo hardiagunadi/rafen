@@ -2,165 +2,864 @@
 
 @section('title', 'API Dashboard')
 
-@section('content')
-    <div class="card">
-        <div class="card-header d-flex flex-wrap align-items-center">
-            <ul class="nav nav-tabs card-header-tabs" role="tablist">
+{{-- Override sidebar AdminLTE dengan menu MikroTik --}}
+@section('sidebar')
+<nav class="mt-2">
+    <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
+
+        {{-- Header router selector --}}
+        <li class="nav-item px-2 py-2">
+            <select id="dashboard-connection" class="form-control form-control-sm" style="background:#3f4a59;color:#c2c7d0;border-color:#4a5568;">
+                <option value="">- Pilih Router -</option>
+                @foreach($connections as $connection)
+                    <option value="{{ $connection->id }}" @selected($selectedConnection && $selectedConnection->id === $connection->id)>
+                        {{ $connection->name }}
+                    </option>
+                @endforeach
+            </select>
+        </li>
+
+        <li class="nav-header">MIKROTIK</li>
+
+        <li class="nav-item">
+            <a href="#" class="nav-link active mikrotik-menu-item" data-menu="resource">
+                <i class="nav-icon fas fa-server"></i>
+                <p>Resource</p>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="#" class="nav-link mikrotik-menu-item" data-menu="interface">
+                <i class="nav-icon fas fa-network-wired"></i>
+                <p>Interface</p>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="#" class="nav-link mikrotik-menu-item" data-menu="traffic">
+                <i class="nav-icon fas fa-chart-area"></i>
+                <p>Trafik Live</p>
+            </a>
+        </li>
+
+        {{-- PPP Group --}}
+        <li class="nav-item has-treeview" id="ppp-group-li">
+            <a href="#" class="nav-link">
+                <i class="nav-icon fas fa-plug"></i>
+                <p>PPP <i class="right fas fa-angle-left"></i></p>
+            </a>
+            <ul class="nav nav-treeview">
                 <li class="nav-item">
-                    <a class="nav-link active" data-toggle="tab" href="#resource-tab" role="tab">Resource</a>
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="ppp_active">
+                        <i class="far fa-circle nav-icon"></i><p>Active</p>
+                    </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" data-toggle="tab" href="#traffic-tab" role="tab">Trafik Live</a>
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="ppp_setting">
+                        <i class="far fa-circle nav-icon"></i><p>Setting</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="ppp_interface">
+                        <i class="far fa-circle nav-icon"></i><p>Interface</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="pppoe_server">
+                        <i class="far fa-circle nav-icon"></i><p>PPPoE Servers</p>
+                    </a>
                 </li>
             </ul>
-            <div class="ml-auto d-flex align-items-center mt-2 mt-md-0">
-                <span class="text-muted mr-2">Select Interface</span>
-                <select id="dashboard-connection" class="custom-select custom-select-sm">
-                    <option value="">- Select Router -</option>
-                    @foreach($connections as $connection)
-                        <option value="{{ $connection->id }}" @selected($selectedConnection && $selectedConnection->id === $connection->id)>
-                            {{ $connection->name }}
-                        </option>
-                    @endforeach
-                </select>
+        </li>
+
+        {{-- Hotspot Group --}}
+        <li class="nav-item has-treeview" id="hotspot-group-li">
+            <a href="#" class="nav-link">
+                <i class="nav-icon fas fa-wifi"></i>
+                <p>Hotspot <i class="right fas fa-angle-left"></i></p>
+            </a>
+            <ul class="nav nav-treeview">
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_active">
+                        <i class="far fa-circle nav-icon"></i><p>Active</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_setting">
+                        <i class="far fa-circle nav-icon"></i><p>Setting</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_ip_binding">
+                        <i class="far fa-circle nav-icon"></i><p>IP Binding</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_server">
+                        <i class="far fa-circle nav-icon"></i><p>Server</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_profiles">
+                        <i class="far fa-circle nav-icon"></i><p>Profiles</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_cookies">
+                        <i class="far fa-circle nav-icon"></i><p>Cookies</p>
+                    </a>
+                </li>
+            </ul>
+        </li>
+
+        <li class="nav-header">NAVIGASI</li>
+        <li class="nav-item">
+            <a href="{{ route('mikrotik-connections.index') }}" class="nav-link">
+                <i class="nav-icon fas fa-arrow-left"></i>
+                <p>Kembali ke Rafen</p>
+            </a>
+        </li>
+
+    </ul>
+</nav>
+@endsection
+
+@section('content')
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0" id="panel-title">Resource</h5>
+    </div>
+    <div class="card-body" id="mikrotik-content">
+
+        {{-- Resource (default) --}}
+        <div id="panel-resource">
+            <div class="text-center my-3">
+                <h5 class="mb-0">
+                    <i class="far fa-clock mr-1"></i>
+                    Uptime : <span data-field="uptime">{{ $resource['uptime'] }}</span>
+                </h5>
+            </div>
+            <div class="row">
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-info">
+                        <span class="info-box-icon"><i class="fas fa-flag"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">Platform</span>
+                            <span class="info-box-number" data-field="platform_vendor">{{ $resource['platform_vendor'] }}</span>
+                            <span class="text-sm" data-field="platform_model">{{ $resource['platform_model'] }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-success">
+                        <span class="info-box-icon"><i class="fas fa-globe"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">RouterOS</span>
+                            <span class="info-box-number" data-field="routeros">{{ $resource['routeros'] }}</span>
+                            <span class="text-sm">stable</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-warning">
+                        <span class="info-box-icon"><i class="fas fa-microchip"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">CPU Type</span>
+                            <span class="info-box-number" data-field="cpu_type">{{ $resource['cpu_type'] }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-danger">
+                        <span class="info-box-icon"><i class="fas fa-cube"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">CPU Cores</span>
+                            <span class="info-box-number" data-field="cpu_mhz">{{ $resource['cpu_mhz'] }}</span>
+                            <span class="text-sm" data-field="cpu_cores">{{ $resource['cpu_cores'] }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-secondary">
+                        <span class="info-box-icon"><i class="fas fa-tachometer-alt"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">CPU Load</span>
+                            <span class="info-box-number" data-field="cpu_load">{{ $resource['cpu_load'] }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-warning">
+                        <span class="info-box-icon"><i class="fas fa-server"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">Free Memory</span>
+                            <span class="info-box-number" data-field="ram_free_percent">{{ $resource['ram_free_percent'] }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-success">
+                        <span class="info-box-icon"><i class="fas fa-hdd"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">Free Disk</span>
+                            <span class="info-box-number" data-field="disk_free_percent">{{ $resource['disk_free_percent'] }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="info-box bg-info">
+                        <span class="info-box-icon"><i class="fas fa-calendar-alt"></i></span>
+                        <div class="info-box-content">
+                            <span class="info-box-text">Build Time</span>
+                            <span class="info-box-number" data-field="build_date">{{ $resource['build_date'] }}</span>
+                            <span class="text-sm" data-field="build_time">{{ $resource['build_time'] }}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="card-body" id="api-dashboard" data-endpoint="{{ route('dashboard.api.data') }}">
-            <div class="tab-content">
-                <div class="tab-pane fade show active" id="resource-tab" role="tabpanel">
-                    <div class="text-center my-3">
-                        <h5 class="mb-0">
-                            <i class="far fa-clock mr-1"></i>
-                            Uptime : <span data-field="uptime">{{ $resource['uptime'] }}</span>
-                        </h5>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-info">
-                                <span class="info-box-icon"><i class="fas fa-flag"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">Platform</span>
-                                    <span class="info-box-number" data-field="platform_vendor">{{ $resource['platform_vendor'] }}</span>
-                                    <span class="text-sm" data-field="platform_model">{{ $resource['platform_model'] }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-success">
-                                <span class="info-box-icon"><i class="fas fa-globe"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">RouterOS</span>
-                                    <span class="info-box-number" data-field="routeros">{{ $resource['routeros'] }}</span>
-                                    <span class="text-sm">stable</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-warning">
-                                <span class="info-box-icon"><i class="fas fa-microchip"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">CPU Type</span>
-                                    <span class="info-box-number" data-field="cpu_type">{{ $resource['cpu_type'] }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-danger">
-                                <span class="info-box-icon"><i class="fas fa-cube"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">CPU Cores</span>
-                                    <span class="info-box-number" data-field="cpu_mhz">{{ $resource['cpu_mhz'] }}</span>
-                                    <span class="text-sm" data-field="cpu_cores">{{ $resource['cpu_cores'] }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-secondary">
-                                <span class="info-box-icon"><i class="fas fa-tachometer-alt"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">CPU Load</span>
-                                    <span class="info-box-number" data-field="cpu_load">{{ $resource['cpu_load'] }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-warning">
-                                <span class="info-box-icon"><i class="fas fa-server"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">Free Memory</span>
-                                    <span class="info-box-number" data-field="ram_free_percent">{{ $resource['ram_free_percent'] }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-success">
-                                <span class="info-box-icon"><i class="fas fa-hdd"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">Free Disk</span>
-                                    <span class="info-box-number" data-field="disk_free_percent">{{ $resource['disk_free_percent'] }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3 col-sm-6">
-                            <div class="info-box bg-info">
-                                <span class="info-box-icon"><i class="fas fa-calendar-alt"></i></span>
-                                <div class="info-box-content">
-                                    <span class="info-box-text">Build Time</span>
-                                    <span class="info-box-number" data-field="build_date">{{ $resource['build_date'] }}</span>
-                                    <span class="text-sm" data-field="build_time">{{ $resource['build_time'] }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="traffic-tab" role="tabpanel">
-                    <div class="text-center text-muted py-5">
-                        Trafik live belum tersedia. Pilih router untuk menambahkan data trafik.
-                    </div>
-                </div>
+
+        {{-- Trafik Live --}}
+        <div id="panel-traffic" class="d-none">
+            <div class="d-flex align-items-center flex-wrap mb-3" style="gap:.5rem;">
+                <label class="mb-0 font-weight-bold">Interface:</label>
+                <select id="traffic-interface" class="custom-select custom-select-sm" style="max-width:220px;">
+                    <option value="">- Memuat interface... -</option>
+                </select>
+                <button id="traffic-toggle" class="btn btn-sm btn-success">
+                    <i class="fas fa-play mr-1"></i> Start
+                </button>
+                <span class="badge badge-secondary ml-2">TX: <span id="traffic-tx-label">-</span></span>
+                <span class="badge badge-info">RX: <span id="traffic-rx-label">-</span></span>
             </div>
+            <div style="position:relative;height:320px;">
+                <canvas id="traffic-chart"></canvas>
+            </div>
+            <div id="traffic-error" class="alert alert-danger mt-2 d-none"></div>
+        </div>
+
+        {{-- Menu data (tabel dinamis) --}}
+        <div id="panel-menu" class="d-none">
+            <div class="mb-2" id="menu-action-bar" style="display:none!important;">
+                <button class="btn btn-sm btn-success" id="btn-create-record">
+                    <i class="fas fa-plus mr-1"></i> Tambah
+                </button>
+            </div>
+            <div id="menu-loading" class="text-center py-5 d-none">
+                <i class="fas fa-spinner fa-spin fa-2x text-muted"></i>
+                <div class="text-muted mt-2">Memuat data...</div>
+            </div>
+            <div id="menu-error" class="alert alert-danger d-none"></div>
+            <div id="menu-table-wrap"></div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+#mikrotik-content table th { white-space: nowrap; font-size: .78rem; }
+#mikrotik-content table td { font-size: .8rem; white-space: nowrap; }
+</style>
+
+{{-- Modal PPP Secret --}}
+<div class="modal fade" id="modal-ppp-secret" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-ppp-secret-title">Tambah PPP Secret</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <form id="form-ppp-secret">
+                <input type="hidden" id="ppp-secret-id" value="">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Name <span class="text-danger">*</span></label>
+                        <input type="text" id="ppp-secret-name" class="form-control form-control-sm" placeholder="username">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="text" id="ppp-secret-password" class="form-control form-control-sm" placeholder="password">
+                    </div>
+                    <div class="form-group">
+                        <label>Service</label>
+                        <select id="ppp-secret-service" class="form-control form-control-sm">
+                            <option value="pppoe">pppoe</option>
+                            <option value="pptp">pptp</option>
+                            <option value="l2tp">l2tp</option>
+                            <option value="any">any</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Profile</label>
+                        <input type="text" id="ppp-secret-profile" class="form-control form-control-sm" placeholder="default">
+                    </div>
+                    <div class="form-group">
+                        <label>Comment</label>
+                        <input type="text" id="ppp-secret-comment" class="form-control form-control-sm">
+                    </div>
+                    <div id="ppp-secret-error" class="alert alert-danger d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btn-ppp-secret-save">Simpan</button>
+                </div>
+            </form>
         </div>
     </div>
+</div>
+
+{{-- Modal Hotspot User --}}
+<div class="modal fade" id="modal-hotspot-user" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-hotspot-user-title">Tambah Hotspot User</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <form id="form-hotspot-user">
+                <input type="hidden" id="hotspot-user-id" value="">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Name <span class="text-danger">*</span></label>
+                        <input type="text" id="hotspot-user-name" class="form-control form-control-sm" placeholder="username">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="text" id="hotspot-user-password" class="form-control form-control-sm" placeholder="password">
+                    </div>
+                    <div class="form-group">
+                        <label>Profile</label>
+                        <input type="text" id="hotspot-user-profile" class="form-control form-control-sm" placeholder="default">
+                    </div>
+                    <div class="form-group">
+                        <label>Server</label>
+                        <input type="text" id="hotspot-user-server" class="form-control form-control-sm" placeholder="all">
+                    </div>
+                    <div class="form-group">
+                        <label>Comment</label>
+                        <input type="text" id="hotspot-user-comment" class="form-control form-control-sm">
+                    </div>
+                    <div id="hotspot-user-error" class="alert alert-danger d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btn-hotspot-user-save">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
-    <script>
-        (function () {
-            const container = document.getElementById('api-dashboard');
-            const select = document.getElementById('dashboard-connection');
-            const endpoint = container?.dataset.endpoint;
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const connectionSelect = document.getElementById('dashboard-connection');
+    const menuEndpoint     = '{{ route("dashboard.api.menu") }}';
+    const dataEndpoint     = '{{ route("dashboard.api.data") }}';
+    const trafficEndpoint  = '{{ route("dashboard.api.traffic") }}';
+    const panelTitle       = document.getElementById('panel-title');
+    const csrfToken        = document.querySelector('meta[name="csrf-token"]').content;
 
-            if (! container || ! select || ! endpoint) {
+    // URL templates for CRUD endpoints
+    const pppSecretBaseUrl      = '{{ url("api-dashboard/ppp-secret") }}';
+    const pppActiveBaseUrl      = '{{ url("api-dashboard/ppp-active") }}';
+    const hotspotUserBaseUrl    = '{{ url("api-dashboard/hotspot-user") }}';
+    const hotspotActiveBaseUrl  = '{{ url("api-dashboard/hotspot-active") }}';
+
+    // Menus that support CRUD actions
+    const crudMenus       = ['ppp_setting', 'hotspot_setting'];
+    const disconnectMenus = ['ppp_active', 'hotspot_active'];
+
+    const menuLabels = {
+        resource        : 'Resource',
+        interface       : 'Interface',
+        traffic         : 'Trafik Live',
+        ppp_active      : 'PPP — Active',
+        ppp_setting     : 'PPP — Setting',
+        ppp_interface   : 'PPP — Interface',
+        pppoe_server    : 'PPP — PPPoE Servers',
+        hotspot_active  : 'Hotspot — Active',
+        hotspot_setting : 'Hotspot — Setting',
+        hotspot_ip_binding: 'Hotspot — IP Binding',
+        hotspot_server  : 'Hotspot — Server',
+        hotspot_profiles: 'Hotspot — Profiles',
+        hotspot_cookies : 'Hotspot — Cookies',
+    };
+
+    function getConnectionId() { return connectionSelect ? connectionSelect.value : ''; }
+
+    function formatBits(bps) {
+        if (bps >= 1e9) return (bps / 1e9).toFixed(2) + ' Gbps';
+        if (bps >= 1e6) return (bps / 1e6).toFixed(2) + ' Mbps';
+        if (bps >= 1e3) return (bps / 1e3).toFixed(2) + ' Kbps';
+        return bps + ' bps';
+    }
+
+    function esc(str) {
+        return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function apiRequest(method, url, body) {
+        const opts = {
+            method,
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+        };
+        if (body) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(body);
+        }
+        const res  = await fetch(url, opts);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Permintaan gagal.');
+        return json;
+    }
+
+    // ── Panels ──────────────────────────────────────────────────────────────
+    const panels = {
+        resource : document.getElementById('panel-resource'),
+        traffic  : document.getElementById('panel-traffic'),
+        menu     : document.getElementById('panel-menu'),
+    };
+
+    function showPanel(name) {
+        Object.entries(panels).forEach(([k, el]) => el.classList.toggle('d-none', k !== name));
+    }
+
+    // ── Resource refresh on connection change ────────────────────────────────
+    const resourcePanel = panels.resource;
+    function updateResourceFields(payload) {
+        Object.entries(payload || {}).forEach(([key, val]) => {
+            const node = resourcePanel.querySelector('[data-field="' + key + '"]');
+            if (node) node.textContent = val ?? '-';
+        });
+    }
+
+    if (connectionSelect) {
+        connectionSelect.addEventListener('change', async () => {
+            const id = getConnectionId();
+            const params = id ? '?connection_id=' + id : '';
+            try {
+                const res  = await fetch(dataEndpoint + params, { headers: { Accept: 'application/json' } });
+                const json = await res.json();
+                if (res.ok && json?.data) updateResourceFields(json.data);
+            } catch (e) { /* silent */ }
+
+            if (currentMenu && currentMenu !== 'resource' && currentMenu !== 'traffic') loadMenu(currentMenu);
+            if (currentMenu === 'traffic') loadTrafficInterfaces(false);
+        });
+    }
+
+    // ── Menu item click ──────────────────────────────────────────────────────
+    let currentMenu = 'resource';
+
+    document.querySelectorAll('.mikrotik-menu-item').forEach(function (item) {
+        item.addEventListener('click', function (e) {
+            e.preventDefault();
+            document.querySelectorAll('.mikrotik-menu-item').forEach(el => el.classList.remove('active'));
+            this.classList.add('active');
+            const menu = this.dataset.menu;
+            if (panelTitle) panelTitle.textContent = menuLabels[menu] || menu;
+            switchMenu(menu);
+        });
+    });
+
+    function switchMenu(menu) {
+        currentMenu = menu;
+
+        const actionBar = document.getElementById('menu-action-bar');
+        if (crudMenus.includes(menu)) {
+            actionBar.style.removeProperty('display');
+        } else {
+            actionBar.style.setProperty('display', 'none', 'important');
+        }
+
+        if (menu === 'resource') {
+            showPanel('resource');
+            return;
+        }
+
+        if (menu === 'traffic') {
+            showPanel('traffic');
+            initTrafficChart();
+            loadTrafficInterfaces(true);
+            return;
+        }
+
+        showPanel('menu');
+        loadMenu(menu);
+    }
+
+    // ── Menu data (tabel) ────────────────────────────────────────────────────
+    const menuLoading   = document.getElementById('menu-loading');
+    const menuError     = document.getElementById('menu-error');
+    const menuTableWrap = document.getElementById('menu-table-wrap');
+
+    async function loadMenu(menu) {
+        menuLoading.classList.remove('d-none');
+        menuError.classList.add('d-none');
+        menuTableWrap.innerHTML = '';
+
+        const id = getConnectionId();
+        if (!id) {
+            menuLoading.classList.add('d-none');
+            menuError.classList.remove('d-none');
+            menuError.textContent = 'Pilih router terlebih dahulu.';
+            return;
+        }
+
+        try {
+            const res  = await fetch(menuEndpoint + '?menu=' + menu + '&connection_id=' + id, { headers: { Accept: 'application/json' } });
+            const json = await res.json();
+            menuLoading.classList.add('d-none');
+            if (!res.ok || json.error) {
+                menuError.classList.remove('d-none');
+                menuError.textContent = json.error || 'Gagal memuat data.';
                 return;
             }
+            renderTable(json.data || [], menu);
+        } catch (e) {
+            menuLoading.classList.add('d-none');
+            menuError.classList.remove('d-none');
+            menuError.textContent = 'Gagal terhubung ke server.';
+        }
+    }
 
-            const updateFields = (payload) => {
-                Object.entries(payload || {}).forEach(([key, value]) => {
-                    const node = container.querySelector(`[data-field="${key}"]`);
-                    if (node) {
-                        node.textContent = value ?? '-';
-                    }
-                });
-            };
+    function renderTable(rows, menu) {
+        const hasCrud       = crudMenus.includes(menu);
+        const hasDisconnect = disconnectMenus.includes(menu);
+        const hasActions    = hasCrud || hasDisconnect;
 
-            select.addEventListener('change', async () => {
-                const params = new URLSearchParams();
-                if (select.value) {
-                    params.set('connection_id', select.value);
+        if (!rows.length) {
+            menuTableWrap.innerHTML = '<p class="text-muted">Tidak ada data.</p>';
+            return;
+        }
+
+        // Exclude internal .id from visible columns
+        const allKeys = Object.keys(rows[0]);
+        const keys    = allKeys.filter(k => k !== '.id');
+
+        let html = '<div class="table-responsive"><table class="table table-sm table-hover table-bordered mb-0"><thead class="thead-light"><tr>';
+        keys.forEach(k => { html += '<th>' + esc(k) + '</th>'; });
+        if (hasActions) html += '<th style="width:1%">Aksi</th>';
+        html += '</tr></thead><tbody>';
+
+        rows.forEach(function (row) {
+            const rowId = esc(row['.id'] || '');
+            html += '<tr>';
+            keys.forEach(k => { html += '<td>' + esc(row[k] ?? '') + '</td>'; });
+            if (hasActions) {
+                html += '<td class="text-nowrap">';
+                if (hasCrud) {
+                    const rowJson = esc(JSON.stringify(row));
+                    html += '<button class="btn btn-xs btn-warning mr-1 btn-edit-row" data-row="' + rowJson + '" title="Edit"><i class="fas fa-pencil-alt"></i></button>';
+                    html += '<button class="btn btn-xs btn-danger btn-delete-row" data-id="' + rowId + '" title="Hapus"><i class="fas fa-trash"></i></button>';
                 }
-
-                try {
-                    const response = await fetch(`${endpoint}?${params.toString()}`, {
-                        headers: { 'Accept': 'application/json' },
-                    });
-                    const data = await response.json();
-                    if (response.ok && data?.data) {
-                        updateFields(data.data);
-                    }
-                } catch (error) {
-                    console.error(error);
+                if (hasDisconnect) {
+                    html += '<button class="btn btn-xs btn-secondary btn-disconnect-row" data-id="' + rowId + '" title="Disconnect"><i class="fas fa-plug"></i> Disconnect</button>';
                 }
+                html += '</td>';
+            }
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        menuTableWrap.innerHTML = html;
+    }
+
+    // ── Tombol Tambah (Create) ───────────────────────────────────────────────
+    document.getElementById('btn-create-record').addEventListener('click', function () {
+        if (currentMenu === 'ppp_setting')     openPppSecretModal(null);
+        if (currentMenu === 'hotspot_setting') openHotspotUserModal(null);
+    });
+
+    // ── Delegated: Edit / Delete / Disconnect ────────────────────────────────
+    menuTableWrap.addEventListener('click', function (e) {
+        const editBtn       = e.target.closest('.btn-edit-row');
+        const deleteBtn     = e.target.closest('.btn-delete-row');
+        const disconnectBtn = e.target.closest('.btn-disconnect-row');
+
+        if (editBtn) {
+            const row = JSON.parse(editBtn.dataset.row);
+            if (currentMenu === 'ppp_setting')     openPppSecretModal(row);
+            if (currentMenu === 'hotspot_setting') openHotspotUserModal(row);
+        }
+
+        if (deleteBtn) {
+            if (!confirm('Hapus data ini?')) return;
+            const id  = deleteBtn.dataset.id;
+            const cid = getConnectionId();
+            let url;
+            if (currentMenu === 'ppp_setting')     url = pppSecretBaseUrl + '/' + id + '?connection_id=' + cid;
+            if (currentMenu === 'hotspot_setting') url = hotspotUserBaseUrl + '/' + id + '?connection_id=' + cid;
+            if (!url) return;
+            deleteBtn.disabled = true;
+            apiRequest('DELETE', url).then(function (json) {
+                AppAjax.showToast(json.message || 'Berhasil dihapus.', 'success');
+                loadMenu(currentMenu);
+            }).catch(function (err) {
+                deleteBtn.disabled = false;
+                AppAjax.showToast(err.message || 'Gagal menghapus.', 'danger');
             });
-        })();
-    </script>
+        }
+
+        if (disconnectBtn) {
+            if (!confirm('Disconnect session ini?')) return;
+            const id  = disconnectBtn.dataset.id;
+            const cid = getConnectionId();
+            let url;
+            if (currentMenu === 'ppp_active')     url = pppActiveBaseUrl + '/' + id + '/disconnect?connection_id=' + cid;
+            if (currentMenu === 'hotspot_active') url = hotspotActiveBaseUrl + '/' + id + '/disconnect?connection_id=' + cid;
+            if (!url) return;
+            disconnectBtn.disabled = true;
+            apiRequest('POST', url).then(function (json) {
+                AppAjax.showToast(json.message || 'Berhasil disconnect.', 'success');
+                loadMenu(currentMenu);
+            }).catch(function (err) {
+                disconnectBtn.disabled = false;
+                AppAjax.showToast(err.message || 'Gagal disconnect.', 'danger');
+            });
+        }
+    });
+
+    // ── PPP Secret Modal ─────────────────────────────────────────────────────
+    const $pppModal = $('#modal-ppp-secret');
+
+    function openPppSecretModal(row) {
+        const isEdit = row !== null;
+        document.getElementById('modal-ppp-secret-title').textContent = isEdit ? 'Edit PPP Secret' : 'Tambah PPP Secret';
+        document.getElementById('ppp-secret-id').value       = isEdit ? (row['.id'] || '') : '';
+        document.getElementById('ppp-secret-name').value     = isEdit ? (row['name'] || '') : '';
+        document.getElementById('ppp-secret-password').value = '';
+        document.getElementById('ppp-secret-service').value  = isEdit ? (row['service'] || 'pppoe') : 'pppoe';
+        document.getElementById('ppp-secret-profile').value  = isEdit ? (row['profile'] || '') : '';
+        document.getElementById('ppp-secret-comment').value  = isEdit ? (row['comment'] || '') : '';
+        document.getElementById('ppp-secret-name').readOnly  = isEdit;
+        document.getElementById('ppp-secret-error').classList.add('d-none');
+        $pppModal.modal('show');
+    }
+
+    document.getElementById('form-ppp-secret').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const id       = document.getElementById('ppp-secret-id').value;
+        const isEdit   = id !== '';
+        const cid      = getConnectionId();
+        const errEl    = document.getElementById('ppp-secret-error');
+        const saveBtn  = document.getElementById('btn-ppp-secret-save');
+
+        const body = {
+            connection_id : cid,
+            name          : document.getElementById('ppp-secret-name').value,
+            password      : document.getElementById('ppp-secret-password').value,
+            service       : document.getElementById('ppp-secret-service').value,
+            profile       : document.getElementById('ppp-secret-profile').value,
+            comment       : document.getElementById('ppp-secret-comment').value,
+        };
+
+        errEl.classList.add('d-none');
+        saveBtn.disabled = true;
+
+        try {
+            const url = isEdit ? pppSecretBaseUrl + '/' + id : pppSecretBaseUrl;
+            const json = await apiRequest(isEdit ? 'PUT' : 'POST', url, body);
+            AppAjax.showToast(json.message || 'Berhasil.', 'success');
+            $pppModal.modal('hide');
+            loadMenu(currentMenu);
+        } catch (err) {
+            errEl.textContent = err.message || 'Gagal menyimpan.';
+            errEl.classList.remove('d-none');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+
+    // ── Hotspot User Modal ───────────────────────────────────────────────────
+    const $hotspotModal = $('#modal-hotspot-user');
+
+    function openHotspotUserModal(row) {
+        const isEdit = row !== null;
+        document.getElementById('modal-hotspot-user-title').textContent = isEdit ? 'Edit Hotspot User' : 'Tambah Hotspot User';
+        document.getElementById('hotspot-user-id').value       = isEdit ? (row['.id'] || '') : '';
+        document.getElementById('hotspot-user-name').value     = isEdit ? (row['name'] || '') : '';
+        document.getElementById('hotspot-user-password').value = '';
+        document.getElementById('hotspot-user-profile').value  = isEdit ? (row['profile'] || '') : '';
+        document.getElementById('hotspot-user-server').value   = isEdit ? (row['server'] || '') : '';
+        document.getElementById('hotspot-user-comment').value  = isEdit ? (row['comment'] || '') : '';
+        document.getElementById('hotspot-user-name').readOnly  = isEdit;
+        document.getElementById('hotspot-user-error').classList.add('d-none');
+        $hotspotModal.modal('show');
+    }
+
+    document.getElementById('form-hotspot-user').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const id       = document.getElementById('hotspot-user-id').value;
+        const isEdit   = id !== '';
+        const cid      = getConnectionId();
+        const errEl    = document.getElementById('hotspot-user-error');
+        const saveBtn  = document.getElementById('btn-hotspot-user-save');
+
+        const body = {
+            connection_id : cid,
+            name          : document.getElementById('hotspot-user-name').value,
+            password      : document.getElementById('hotspot-user-password').value,
+            profile       : document.getElementById('hotspot-user-profile').value,
+            server        : document.getElementById('hotspot-user-server').value,
+            comment       : document.getElementById('hotspot-user-comment').value,
+        };
+
+        errEl.classList.add('d-none');
+        saveBtn.disabled = true;
+
+        try {
+            const url = isEdit ? hotspotUserBaseUrl + '/' + id : hotspotUserBaseUrl;
+            const json = await apiRequest(isEdit ? 'PUT' : 'POST', url, body);
+            AppAjax.showToast(json.message || 'Berhasil.', 'success');
+            $hotspotModal.modal('hide');
+            loadMenu(currentMenu);
+        } catch (err) {
+            errEl.textContent = err.message || 'Gagal menyimpan.';
+            errEl.classList.remove('d-none');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+
+    // ── Trafik Live ──────────────────────────────────────────────────────────
+    const trafficInterfaceSelect = document.getElementById('traffic-interface');
+    const trafficToggleBtn       = document.getElementById('traffic-toggle');
+    const trafficTxLabel         = document.getElementById('traffic-tx-label');
+    const trafficRxLabel         = document.getElementById('traffic-rx-label');
+    const trafficError           = document.getElementById('traffic-error');
+    let trafficChart   = null;
+    let trafficTimer   = null;
+    let trafficRunning = false;
+
+    function initTrafficChart() {
+        if (trafficChart) return;
+        const ctx = document.getElementById('traffic-chart').getContext('2d');
+        trafficChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(60).fill(''),
+                datasets: [
+                    { label: 'TX (Upload)',   data: Array(60).fill(null), borderColor: 'rgba(255,140,0,.9)',  backgroundColor: 'rgba(255,140,0,.1)',  borderWidth: 2, pointRadius: 0, tension: .3, fill: true },
+                    { label: 'RX (Download)', data: Array(60).fill(null), borderColor: 'rgba(23,162,184,.9)', backgroundColor: 'rgba(23,162,184,.1)', borderWidth: 2, pointRadius: 0, tension: .3, fill: true },
+                ],
+            },
+            options: {
+                animation: false,
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => formatBits(v) } },
+                    x: { display: false },
+                },
+                plugins: {
+                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + formatBits(ctx.raw || 0) } },
+                },
+            },
+        });
+    }
+
+    function pushTrafficData(tx, rx) {
+        if (!trafficChart) return;
+        trafficChart.data.labels.push(new Date().toLocaleTimeString());
+        trafficChart.data.labels.shift();
+        trafficChart.data.datasets[0].data.push(tx); trafficChart.data.datasets[0].data.shift();
+        trafficChart.data.datasets[1].data.push(rx); trafficChart.data.datasets[1].data.shift();
+        trafficChart.update('none');
+    }
+
+    async function fetchTraffic() {
+        const id    = getConnectionId();
+        const iface = trafficInterfaceSelect ? trafficInterfaceSelect.value : '';
+        if (!id || !iface) return;
+
+        try {
+            const res  = await fetch(trafficEndpoint + '?connection_id=' + id + '&interface=' + encodeURIComponent(iface), { headers: { Accept: 'application/json' } });
+            const json = await res.json();
+            if (!res.ok || json.error) {
+                trafficError.classList.remove('d-none');
+                trafficError.textContent = json.error || 'Gagal memuat trafik.';
+                stopTraffic();
+                return;
+            }
+            trafficError.classList.add('d-none');
+            trafficTxLabel.textContent = formatBits(json.tx || 0);
+            trafficRxLabel.textContent = formatBits(json.rx || 0);
+            pushTrafficData(json.tx || 0, json.rx || 0);
+        } catch (e) {
+            trafficError.classList.remove('d-none');
+            trafficError.textContent = 'Gagal terhubung ke server.';
+            stopTraffic();
+        }
+    }
+
+    function startTraffic() {
+        trafficRunning = true;
+        trafficToggleBtn.innerHTML = '<i class="fas fa-stop mr-1"></i> Stop';
+        trafficToggleBtn.classList.replace('btn-success', 'btn-danger');
+        fetchTraffic();
+        trafficTimer = setInterval(fetchTraffic, 2000);
+    }
+
+    function stopTraffic() {
+        trafficRunning = false;
+        clearInterval(trafficTimer);
+        trafficTimer = null;
+        trafficToggleBtn.innerHTML = '<i class="fas fa-play mr-1"></i> Start';
+        trafficToggleBtn.classList.replace('btn-danger', 'btn-success');
+    }
+
+    trafficToggleBtn.addEventListener('click', function () {
+        if (trafficRunning) { stopTraffic(); return; }
+        const id = getConnectionId();
+        if (!id)                           { alert('Pilih router terlebih dahulu.'); return; }
+        if (!trafficInterfaceSelect.value) { alert('Pilih interface terlebih dahulu.'); return; }
+        startTraffic();
+    });
+
+    trafficInterfaceSelect.addEventListener('change', function () {
+        if (trafficRunning) { stopTraffic(); startTraffic(); }
+    });
+
+    async function loadTrafficInterfaces(autoStart) {
+        if (trafficRunning) stopTraffic();
+        const id = getConnectionId();
+        trafficInterfaceSelect.innerHTML = '<option value="">- Memuat... -</option>';
+        if (!id) { trafficInterfaceSelect.innerHTML = '<option value="">- Pilih router dulu -</option>'; return; }
+
+        try {
+            const res  = await fetch(menuEndpoint + '?menu=interface&connection_id=' + id, { headers: { Accept: 'application/json' } });
+            const json = await res.json();
+            if (!res.ok || json.error || !json.data) {
+                trafficInterfaceSelect.innerHTML = '<option value="">- Gagal memuat interface -</option>';
+                return;
+            }
+            trafficInterfaceSelect.innerHTML = '<option value="">- Pilih Interface -</option>';
+            let firstRunning = null;
+            json.data.forEach(function (iface) {
+                const name    = iface.name || '';
+                const running = iface.running === 'true';
+                const type    = iface.type || '';
+                if (type === 'loopback') return;
+                const opt = document.createElement('option');
+                opt.value       = name;
+                opt.textContent = name + (running ? ' ✓' : '');
+                if (running && !firstRunning) firstRunning = opt;
+                trafficInterfaceSelect.appendChild(opt);
+            });
+            if (firstRunning) firstRunning.selected = true;
+            if (autoStart && trafficInterfaceSelect.value) startTraffic();
+        } catch (e) {
+            trafficInterfaceSelect.innerHTML = '<option value="">- Gagal memuat interface -</option>';
+        }
+    }
+
+    // stop polling when leaving traffic
+    document.querySelectorAll('.mikrotik-menu-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            if (this.dataset.menu !== 'traffic' && trafficRunning) stopTraffic();
+        });
+    });
+})();
+</script>
 @endpush

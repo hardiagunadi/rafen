@@ -42,6 +42,18 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('api-dashboard', [DashboardController::class, 'apiDashboard'])->name('dashboard.api');
     Route::get('api-dashboard/data', [DashboardController::class, 'apiDashboardData'])->name('dashboard.api.data');
+    Route::get('api-dashboard/menu-data', [DashboardController::class, 'apiDashboardMenu'])->name('dashboard.api.menu');
+    Route::get('api-dashboard/traffic', [DashboardController::class, 'apiDashboardTraffic'])->name('dashboard.api.traffic');
+    // PPP Secret CRUD via MikroTik API
+    Route::post('api-dashboard/ppp-secret', [DashboardController::class, 'pppSecretStore'])->name('dashboard.api.ppp-secret.store');
+    Route::put('api-dashboard/ppp-secret/{id}', [DashboardController::class, 'pppSecretUpdate'])->name('dashboard.api.ppp-secret.update');
+    Route::delete('api-dashboard/ppp-secret/{id}', [DashboardController::class, 'pppSecretDestroy'])->name('dashboard.api.ppp-secret.destroy');
+    Route::post('api-dashboard/ppp-active/{id}/disconnect', [DashboardController::class, 'pppActiveDisconnect'])->name('dashboard.api.ppp-active.disconnect');
+    // Hotspot User CRUD via MikroTik API
+    Route::post('api-dashboard/hotspot-user', [DashboardController::class, 'hotspotUserStore'])->name('dashboard.api.hotspot-user.store');
+    Route::put('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserUpdate'])->name('dashboard.api.hotspot-user.update');
+    Route::delete('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserDestroy'])->name('dashboard.api.hotspot-user.destroy');
+    Route::post('api-dashboard/hotspot-active/{id}/disconnect', [DashboardController::class, 'hotspotActiveDisconnect'])->name('dashboard.api.hotspot-active.disconnect');
     Route::get('reports/income', IncomeReportController::class)->name('reports.income');
 
     // Log Aplikasi
