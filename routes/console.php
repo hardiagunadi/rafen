@@ -25,6 +25,12 @@ Schedule::command('radius:sync-replies')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Cek atribut RADIUS di DB sudah terdaftar di dictionary, auto-fix jika ada yang baru (setiap hari jam 06:00)
+Schedule::command('radius:check-dictionary --fix')
+    ->dailyAt('06:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Reset status_bayar ke belum_bayar untuk user yang jatuh temponya sudah tiba (setiap hari jam 06:55)
 Schedule::command('billing:reset-status')
     ->dailyAt('06:55')

@@ -238,21 +238,45 @@ parse_app_host() {
     printf '%s' "$host"
 }
 
-install_packages_apt() {
-    ${SUDO_CMD} apt-get update
-    ${SUDO_CMD} apt-get install -y software-properties-common curl ca-certificates gnupg lsb-release unzip git openssl debconf-utils
+pkg_installed() {
+    dpkg -s "$1" >/dev/null 2>&1 && dpkg -s "$1" | grep -q "^Status: install ok installed"
+}
 
+install_packages_apt() {
+    local need_update=0
+    local missing_base=()
+    local missing_main=()
+
+    # --- Base tools ---
+    for pkg in software-properties-common curl ca-certificates gnupg lsb-release unzip git openssl debconf-utils; do
+        if ! pkg_installed "$pkg"; then
+            missing_base+=("$pkg")
+        else
+            echo "  skip (sudah terinstall): ${pkg}"
+        fi
+    done
+
+    if [ "${#missing_base[@]}" -gt 0 ]; then
+        need_update=1
+        ${SUDO_CMD} apt-get update
+        ${SUDO_CMD} apt-get install -y "${missing_base[@]}"
+    fi
+
+    # --- PHP repository (hanya jika php8.4 belum ada) ---
     if ! command_exists php8.4; then
         add_ondrej_php_repository
+        need_update=1
         ${SUDO_CMD} apt-get update
     fi
 
-    if command_exists debconf-set-selections; then
+    # --- debconf phpmyadmin (hanya jika belum terinstall) ---
+    if ! pkg_installed phpmyadmin && command_exists debconf-set-selections; then
         printf '%s\n' "phpmyadmin phpmyadmin/dbconfig-install boolean false" | ${SUDO_CMD} debconf-set-selections
         printf '%s\n' "phpmyadmin phpmyadmin/reconfigure-webserver multiselect apache2" | ${SUDO_CMD} debconf-set-selections
     fi
 
-    ${SUDO_CMD} apt-get install -y \
+    # --- Paket utama ---
+    for pkg in \
         apache2 \
         certbot \
         python3-certbot-apache \
@@ -260,6 +284,7 @@ install_packages_apt() {
         mariadb-server \
         redis-server \
         freeradius \
+        freeradius-mysql \
         supervisor \
         php8.4-cli \
         php8.4-fpm \
@@ -272,16 +297,36 @@ install_packages_apt() {
         php8.4-gd \
         php8.4-mysql \
         php8.4-readline
+    do
+        if ! pkg_installed "$pkg"; then
+            missing_main+=("$pkg")
+        else
+            echo "  skip (sudah terinstall): ${pkg}"
+        fi
+    done
 
+    if [ "${#missing_main[@]}" -gt 0 ]; then
+        if [ "$need_update" -eq 0 ]; then
+            ${SUDO_CMD} apt-get update
+        fi
+        ${SUDO_CMD} apt-get install -y "${missing_main[@]}"
+    fi
+
+    # --- Node.js ---
     if ! command_exists node; then
         curl -fsSL https://deb.nodesource.com/setup_20.x | ${SUDO_CMD} bash -
         ${SUDO_CMD} apt-get install -y nodejs
+    else
+        echo "  skip (sudah terinstall): nodejs ($(node --version))"
     fi
 
+    # --- Composer ---
     if ! command_exists composer; then
         curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php
         ${SUDO_CMD} php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
         rm -f /tmp/composer-setup.php
+    else
+        echo "  skip (sudah terinstall): composer ($(composer --version --no-ansi 2>/dev/null | head -1))"
     fi
 
     if [ -x /usr/bin/php8.4 ]; then
@@ -518,6 +563,97 @@ PYEOF
     if [ "$needs_restart" -eq 1 ]; then
         restart_service_if_present "php8.4-fpm.service"
         restart_service_if_present "apache2.service"
+    fi
+}
+
+restore_freeradius_config() {
+    local fr_dir="/etc/freeradius/3.0"
+    local backup_dir="${APP_DIR}/freeradius-config"
+
+    if [ ! -d "$backup_dir" ]; then
+        echo "NOTIFIKASI: freeradius-config/ tidak ditemukan di ${APP_DIR}, skip restore."
+        return
+    fi
+
+    if [ ! -d "$fr_dir" ]; then
+        echo "NOTIFIKASI: ${fr_dir} belum ada (freeradius belum terinstall?), skip restore."
+        return
+    fi
+
+    echo "Merestore FreeRADIUS config dari ${backup_dir}..."
+
+    # Helper: copy file backup ke tujuan, skip jika sudah identik
+    fr_copy() {
+        local src="$1"
+        local dst="$2"
+
+        if [ ! -f "$src" ]; then
+            return
+        fi
+
+        if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+            echo "  skip (sudah sama): ${dst}"
+            return
+        fi
+
+        ${SUDO_CMD} cp "$src" "$dst"
+        ${SUDO_CMD} chown freerad:freerad "$dst"
+        ${SUDO_CMD} chmod 0640 "$dst"
+        echo "  restored: ${dst}"
+    }
+
+    # radiusd.conf & clients.conf — file utama
+    fr_copy "${backup_dir}/radiusd.conf" "${fr_dir}/radiusd.conf"
+    fr_copy "${backup_dir}/clients.conf" "${fr_dir}/clients.conf"
+
+    # dictionary — wajib agar atribut Mikrotik extended (nomor 31+) dikenal
+    fr_copy "${backup_dir}/dictionary" "${fr_dir}/dictionary"
+
+    # mods-available/sql
+    fr_copy "${backup_dir}/mods-available/sql" "${fr_dir}/mods-available/sql"
+
+    # Aktifkan sql module jika symlink belum ada
+    if [ ! -L "${fr_dir}/mods-enabled/sql" ]; then
+        ${SUDO_CMD} ln -sf "${fr_dir}/mods-available/sql" "${fr_dir}/mods-enabled/sql"
+        echo "  enabled: mods-enabled/sql"
+    else
+        echo "  skip (sudah enabled): mods-enabled/sql"
+    fi
+
+    # sites-available/default
+    fr_copy "${backup_dir}/sites-available/default" "${fr_dir}/sites-available/default"
+
+    # policy.d
+    fr_copy "${backup_dir}/policy.d/filter"             "${fr_dir}/policy.d/filter"
+    fr_copy "${backup_dir}/policy.d/strip_pppoe_prefix" "${fr_dir}/policy.d/strip_pppoe_prefix"
+
+    # clients.d — buat dir jika belum ada, copy placeholder
+    ${SUDO_CMD} mkdir -p "${fr_dir}/clients.d"
+    if [ -f "${backup_dir}/clients.d/laravel.conf" ]; then
+        fr_copy "${backup_dir}/clients.d/laravel.conf" "${fr_dir}/clients.d/laravel.conf"
+    fi
+    ${SUDO_CMD} chown freerad:freerad "${fr_dir}/clients.d"
+    ${SUDO_CMD} chmod 0755 "${fr_dir}/clients.d"
+
+    # Sudoers dictionary cp untuk deploy user (dibutuhkan radius:check-dictionary --fix)
+    local sudoers_dict="/etc/sudoers.d/rafen-freeradius-dict"
+    if [ ! -f "$sudoers_dict" ]; then
+        printf '%s\n' \
+            "# Izinkan deploy user copy dictionary baru ke FreeRADIUS (radius:check-dictionary --fix)" \
+            "${DEPLOY_USER} ALL=NOPASSWD:/bin/cp ${backup_dir}/dictionary ${fr_dir}/dictionary" \
+            | ${SUDO_CMD} tee "$sudoers_dict" >/dev/null
+        ${SUDO_CMD} chmod 0440 "$sudoers_dict"
+        echo "  created: ${sudoers_dict}"
+    else
+        echo "  skip (sudah ada): ${sudoers_dict}"
+    fi
+
+    # Validasi config lalu restart
+    if ${SUDO_CMD} freeradius -C 2>/dev/null; then
+        ${SUDO_CMD} systemctl restart freeradius
+        echo "  FreeRADIUS berhasil direstart."
+    else
+        echo "NOTIFIKASI: Validasi config FreeRADIUS gagal — jalankan 'sudo freeradius -C' untuk detail."
     fi
 }
 
@@ -1114,6 +1250,7 @@ main() {
     setup_database
     verify_database_access
     setup_freeradius
+    restore_freeradius_config
     setup_wireguard
     setup_apache
     setup_phpmyadmin
