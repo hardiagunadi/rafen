@@ -141,25 +141,57 @@
 
                     {{-- Template Pesan --}}
                     <h6 class="text-muted text-uppercase mb-1" style="font-size:0.75rem;letter-spacing:.08em">Template Pesan</h6>
-                    <p class="text-muted small mb-3">Placeholder: <code>{name}</code>, <code>{username}</code>, <code>{service}</code>, <code>{profile}</code>, <code>{due_date}</code>, <code>{invoice_no}</code>, <code>{total}</code>, <code>{paid_at}</code></p>
+                    <p class="text-muted small mb-1">Placeholder yang tersedia:</p>
+                    <div class="mb-3" style="font-size:12px;line-height:2;">
+                        <code>{name}</code> Nama pelanggan &nbsp;
+                        <code>{customer_id}</code> ID pelanggan &nbsp;
+                        <code>{profile}</code> Nama paket &nbsp;
+                        <code>{service}</code> Tipe (PPPoE/Hotspot) &nbsp;
+                        <code>{total}</code> Harga/Tagihan &nbsp;
+                        <code>{due_date}</code> Jatuh tempo &nbsp;
+                        <code>{invoice_no}</code> No. invoice &nbsp;
+                        <code>{paid_at}</code> Waktu bayar &nbsp;
+                        <code>{cs_number}</code> Nomor CS (dari Pengaturan Bisnis) &nbsp;
+                        <code>{bank_account}</code> Info rekening bank &nbsp;
+                        <code>{username}</code> Username PPP
+                    </div>
+                    <p class="text-muted small mb-3">Tombol <strong>Test Kirim</strong> mengirim pesan ke nomor HP bisnis (CS) dengan data dummy. Simpan dulu sebelum test agar template terbaru digunakan.</p>
 
                     <div class="form-group">
-                        <label>Template Registrasi</label>
-                        <textarea name="wa_template_registration" class="form-control" rows="4"
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="mb-0">Template Registrasi</label>
+                            <button type="button" class="btn btn-outline-success btn-sm btn-test-template" data-type="registration">
+                                <i class="fas fa-paper-plane mr-1"></i>Test Kirim ke CS
+                            </button>
+                        </div>
+                        <textarea name="wa_template_registration" class="form-control" rows="6"
                             placeholder="{{ $settings->getDefaultTemplate('registration') }}">{{ old('wa_template_registration', $settings->wa_template_registration) }}</textarea>
                         <small class="text-muted">Kosongkan untuk menggunakan template default.</small>
+                        <div class="test-template-result mt-1" data-for="registration"></div>
                     </div>
                     <div class="form-group">
-                        <label>Template Tagihan</label>
-                        <textarea name="wa_template_invoice" class="form-control" rows="4"
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="mb-0">Template Tagihan (Invoice)</label>
+                            <button type="button" class="btn btn-outline-success btn-sm btn-test-template" data-type="invoice">
+                                <i class="fas fa-paper-plane mr-1"></i>Test Kirim ke CS
+                            </button>
+                        </div>
+                        <textarea name="wa_template_invoice" class="form-control" rows="6"
                             placeholder="{{ $settings->getDefaultTemplate('invoice') }}">{{ old('wa_template_invoice', $settings->wa_template_invoice) }}</textarea>
                         <small class="text-muted">Kosongkan untuk menggunakan template default.</small>
+                        <div class="test-template-result mt-1" data-for="invoice"></div>
                     </div>
                     <div class="form-group">
-                        <label>Template Pembayaran</label>
-                        <textarea name="wa_template_payment" class="form-control" rows="4"
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="mb-0">Template Pembayaran</label>
+                            <button type="button" class="btn btn-outline-success btn-sm btn-test-template" data-type="payment">
+                                <i class="fas fa-paper-plane mr-1"></i>Test Kirim ke CS
+                            </button>
+                        </div>
+                        <textarea name="wa_template_payment" class="form-control" rows="6"
                             placeholder="{{ $settings->getDefaultTemplate('payment') }}">{{ old('wa_template_payment', $settings->wa_template_payment) }}</textarea>
                         <small class="text-muted">Kosongkan untuk menggunakan template default.</small>
+                        <div class="test-template-result mt-1" data-for="payment"></div>
                     </div>
 
                 </div>
@@ -231,6 +263,35 @@ function copyText(elementId) {
 function escapeHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+document.querySelectorAll('.btn-test-template').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var type      = btn.dataset.type;
+        var resultDiv = document.querySelector('.test-template-result[data-for="' + type + '"]');
+        btn.disabled  = true;
+        resultDiv.innerHTML = '<div class="alert alert-info alert-sm py-1 px-2 mb-0"><i class="fas fa-spinner fa-spin mr-1"></i> Mengirim...</div>';
+
+        fetch('{{ route("tenant-settings.test-template") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            body: JSON.stringify({ type: type })
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            if (data.success) {
+                resultDiv.innerHTML = '<div class="alert alert-success alert-sm py-1 px-2 mb-0"><i class="fas fa-check-circle mr-1"></i>' + escapeHtml(data.message) + '</div>';
+            } else {
+                resultDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1 px-2 mb-0"><i class="fas fa-times-circle mr-1"></i>' + escapeHtml(data.message) + '</div>';
+            }
+            setTimeout(function () { resultDiv.innerHTML = ''; }, 6000);
+        })
+        .catch(function (e) {
+            btn.disabled = false;
+            resultDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1 px-2 mb-0">' + escapeHtml(e.message) + '</div>';
+        });
+    });
+});
 
 function testWaGateway() {
     var resultDiv  = document.getElementById('wa-test-result');

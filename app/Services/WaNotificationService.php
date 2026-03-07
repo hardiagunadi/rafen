@@ -36,12 +36,17 @@ class WaNotificationService
                 ? ($user->profile->name ?? '-')
                 : ($user->hotspotProfile->name ?? '-');
             $dueDate = $isPpp ? ($user->jatuh_tempo ? \Carbon\Carbon::parse($user->jatuh_tempo)->format('d/m/Y') : '-') : '-';
+            $customerId = $user->customer_id ?? $user->username ?? '-';
+            $harga = $isPpp
+                ? ($user->profile ? 'Rp ' . number_format($user->profile->harga ?? 0, 0, ',', '.') : '-')
+                : '-';
+            $csNumber = $settings->business_phone ?? '-';
 
             $template = $settings->getTemplate('registration');
 
             $message = str_replace(
-                ['{name}', '{username}', '{service}', '{profile}', '{due_date}'],
-                [$user->customer_name, $user->username, $serviceLabel, $profileName, $dueDate],
+                ['{name}', '{username}', '{service}', '{profile}', '{due_date}', '{customer_id}', '{total}', '{cs_number}'],
+                [$user->customer_name, $user->username, $serviceLabel, $profileName, $dueDate, $customerId, $harga, $csNumber],
                 $template
             );
 
@@ -73,13 +78,28 @@ class WaNotificationService
 
             $template = $settings->getTemplate('invoice');
 
+            $customerId  = $invoice->customer_id ?? ($user->customer_id ?? '-');
+            $profileName = $invoice->paket_langganan ?? '-';
+            $serviceType = $invoice->tipe_service ? strtoupper($invoice->tipe_service) : '-';
+            $csNumber    = $settings->business_phone ?? '-';
+
+            // Bank accounts
+            $bankAccounts = $user->owner?->bankAccounts()->active()->get()
+                ?? \App\Models\BankAccount::where('user_id', $invoice->owner_id)->where('is_active', true)->get();
+            $bankLines = $bankAccounts->map(fn($b) => $b->bank_name . ' ' . $b->account_number . ' a/n ' . $b->account_name)->join("\n");
+
             $message = str_replace(
-                ['{name}', '{invoice_no}', '{total}', '{due_date}'],
+                ['{name}', '{invoice_no}', '{total}', '{due_date}', '{customer_id}', '{profile}', '{service}', '{cs_number}', '{bank_account}'],
                 [
                     $invoice->customer_name,
                     $invoice->invoice_number,
-                    number_format($invoice->total, 0, ',', '.'),
+                    'Rp ' . number_format($invoice->total, 0, ',', '.'),
                     $invoice->due_date ? $invoice->due_date->format('d/m/Y') : '-',
+                    $customerId,
+                    $profileName,
+                    $serviceType,
+                    $csNumber,
+                    $bankLines,
                 ],
                 $template
             );
@@ -116,17 +136,23 @@ class WaNotificationService
 
             $template = $settings->getTemplate('payment');
 
-            $paidAt = $invoice->paid_at
-                ? $invoice->paid_at->format('d/m/Y H:i')
-                : now()->format('d/m/Y H:i');
+            $paidAt      = $invoice->paid_at ? $invoice->paid_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
+            $customerId  = $invoice->customer_id ?? ($invoice->pppUser->customer_id ?? '-');
+            $profileName = $invoice->paket_langganan ?? '-';
+            $serviceType = $invoice->tipe_service ? strtoupper($invoice->tipe_service) : '-';
+            $csNumber    = $settings->business_phone ?? '-';
 
             $message = str_replace(
-                ['{name}', '{invoice_no}', '{total}', '{paid_at}'],
+                ['{name}', '{invoice_no}', '{total}', '{paid_at}', '{customer_id}', '{profile}', '{service}', '{cs_number}'],
                 [
                     $invoice->customer_name,
                     $invoice->invoice_number,
-                    number_format($invoice->total, 0, ',', '.'),
+                    'Rp ' . number_format($invoice->total, 0, ',', '.'),
                     $paidAt,
+                    $customerId,
+                    $profileName,
+                    $serviceType,
+                    $csNumber,
                 ],
                 $template
             );

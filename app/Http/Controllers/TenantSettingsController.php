@@ -283,6 +283,53 @@ class TenantSettingsController extends Controller
         ]);
     }
 
+    public function testTemplate(Request $request)
+    {
+        $request->validate([
+            'type' => 'required|in:registration,invoice,payment',
+        ]);
+
+        $user     = $request->user();
+        $settings = $user->getSettings();
+
+        if (! $settings->hasWaConfigured()) {
+            return response()->json(['success' => false, 'message' => 'WA Gateway belum dikonfigurasi.']);
+        }
+
+        $csNumber = $settings->business_phone ?? '';
+        if (empty(trim($csNumber))) {
+            return response()->json(['success' => false, 'message' => 'Nomor HP bisnis (CS) belum diisi di Pengaturan Bisnis.']);
+        }
+
+        $template = $settings->getTemplate($request->type);
+
+        $bankAccounts = $user->bankAccounts()->active()->get();
+        $bankLines    = $bankAccounts->map(fn($b) => $b->bank_name . ' ' . $b->account_number . ' a/n ' . $b->account_name)->join("\n");
+        if (empty(trim($bankLines))) {
+            $bankLines = '(Belum ada rekening bank aktif)';
+        }
+
+        $message = str_replace(
+            ['{name}', '{username}', '{service}', '{profile}', '{due_date}', '{invoice_no}', '{total}', '{paid_at}', '{customer_id}', '{cs_number}', '{bank_account}'],
+            ['Bapak/Ibu Test', 'test_user', 'PPPoE', 'Paket 10Mbps', date('d/m/Y'), 'INV-TEST001', 'Rp 150.000', now()->format('d/m/Y H:i'), 'CUST-001', $csNumber, $bankLines],
+            $template
+        );
+
+        $service = \App\Services\WaGatewayService::forTenant($settings);
+        if (! $service) {
+            return response()->json(['success' => false, 'message' => 'WA Gateway tidak dapat diinisialisasi.']);
+        }
+
+        $phone = '62' . ltrim(preg_replace('/[^0-9]/', '', $csNumber), '0');
+
+        try {
+            $service->sendMessage($phone, '[TEST TEMPLATE] ' . "\n\n" . $message);
+            return response()->json(['success' => true, 'message' => 'Pesan test berhasil dikirim ke ' . $csNumber]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal kirim: ' . $e->getMessage()]);
+        }
+    }
+
     public function uploadLogo(Request $request)
     {
         $request->validate([

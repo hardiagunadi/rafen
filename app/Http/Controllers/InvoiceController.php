@@ -101,6 +101,22 @@ class InvoiceController extends Controller
         return view('invoices.print', compact('invoice', 'bankAccounts', 'settings'));
     }
 
+    public function notaBulk(Request $request): View
+    {
+        $user = auth()->user();
+        $ids  = array_filter(explode(',', $request->input('ids', '')), 'is_numeric');
+
+        $invoices = Invoice::query()
+            ->with(['pppUser', 'owner'])
+            ->whereIn('id', $ids)
+            ->accessibleBy($user)
+            ->get();
+
+        $settings = $invoices->first()?->owner?->getSettings();
+
+        return view('invoices.nota-bulk', compact('invoices', 'settings'));
+    }
+
     public function nota(Invoice $invoice): View
     {
         $user = auth()->user();

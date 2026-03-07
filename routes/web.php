@@ -79,6 +79,7 @@ Route::middleware('auth')->group(function () {
     Route::get('invoices/datatable', [InvoiceController::class, 'datatable'])->name('invoices.datatable');
     Route::get('invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
     Route::get('invoices/{invoice}/nota', [InvoiceController::class, 'nota'])->name('invoices.nota');
+    Route::get('invoices/nota-bulk', [InvoiceController::class, 'notaBulk'])->name('invoices.nota-bulk');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::patch('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
@@ -179,6 +180,7 @@ Route::middleware('auth')->group(function () {
         // WhatsApp settings
         Route::put('/wa', [TenantSettingsController::class, 'updateWa'])->name('update-wa');
         Route::post('/test-wa', [TenantSettingsController::class, 'testWa'])->name('test-wa');
+        Route::post('/test-template', [TenantSettingsController::class, 'testTemplate'])->name('test-template');
 
         // Isolir page settings
         Route::put('/isolir', [TenantSettingsController::class, 'updateIsolir'])->name('update-isolir');

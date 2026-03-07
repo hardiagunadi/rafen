@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cetak Nota - {{ $invoice->invoice_number }}</title>
+    <title>Cetak Nota Massal ({{ $invoices->count() }} nota)</title>
 @verbatim
     <style>
         @page {
@@ -17,6 +17,16 @@
             font-family: Arial, Helvetica, sans-serif;
             font-size: 13px;
             color: #000;
+        }
+
+        .nota-item {
+            width: 100%;
+            box-sizing: border-box;
+            page-break-after: always;
+        }
+
+        .nota-item:last-child {
+            page-break-after: avoid;
         }
 
         .wrapper {
@@ -107,8 +117,21 @@
 </head>
 <body>
 
+<div class="no-print">
+    <button onclick="window.print()">Print Semua ({{ $invoices->count() }} nota)</button>
+    <button onclick="window.close()">Tutup</button>
+</div>
+
+<script>
+    window.addEventListener('load', function () { window.print(); });
+</script>
+
 @php
-    $bulanNames   = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    $bulanNames = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+@endphp
+
+@foreach($invoices as $invoice)
+@php
     $refDate      = $invoice->due_date ?? $invoice->created_at;
     $bulanIdx     = ($refDate->month - 1) < 1 ? 12 : ($refDate->month - 1);
     $tagihanBulan = $bulanNames[$bulanIdx];
@@ -125,11 +148,7 @@
     $footer       = $settings ? ($settings->invoice_footer ?? '') : '';
 @endphp
 
-<div class="no-print">
-    <button onclick="window.print()">Print</button>
-    <button onclick="window.close()">Tutup</button>
-</div>
-
+<div class="nota-item">
 <div class="wrapper">
 
     {{-- HEADER --}}
@@ -222,13 +241,15 @@
 
     <div class="mt-3 bold"><em>{{ $terbilang }} rupiah</em></div>
 
-
     {{-- FOOTER --}}
     @if($footer)
         <div class="mt-3" style="font-size:11px; text-align:center;">{{ $footer }}</div>
     @endif
 
 </div>
+</div>
+
+@endforeach
 
 </body>
 </html>
