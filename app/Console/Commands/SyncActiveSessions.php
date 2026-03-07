@@ -6,6 +6,7 @@ use App\Models\MikrotikConnection;
 use App\Services\ActiveSessionFetcher;
 use App\Services\MikrotikApiClient;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class SyncActiveSessions extends Command
@@ -48,7 +49,20 @@ class SyncActiveSessions extends Command
             $this->warn($err);
         }
 
-        $this->info("Sync selesai — PPPoE: {$pppTotal}, Hotspot: {$hotspotTotal} sesi aktif.");
+        // Close zombie sessions from NAS IPs not registered in MikrotikConnection.
+        // These routers are unreachable or removed, so all their open sessions are stale.
+        $knownNasIps = MikrotikConnection::pluck('host')->filter()->all();
+        $now = now()->toDateTimeString();
+        $unregisteredZombies = DB::table('radacct')
+            ->whereNull('acctstoptime')
+            ->whereNotIn('nasipaddress', $knownNasIps)
+            ->update([
+                'acctstoptime'       => $now,
+                'acctupdatetime'     => $now,
+                'acctterminatecause' => 'NAS-Request',
+            ]);
+
+        $this->info("Sync selesai — PPPoE: {$pppTotal}, Hotspot: {$hotspotTotal} sesi aktif. Zombie dari NAS tidak terdaftar: {$unregisteredZombies}.");
 
         return self::SUCCESS;
     }
