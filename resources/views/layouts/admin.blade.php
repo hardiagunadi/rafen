@@ -98,6 +98,125 @@
                             <p>Dashboard</p>
                         </a>
                     </li>
+                    <li class="nav-item has-treeview {{ request()->is('sessions*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->is('sessions*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-signal"></i>
+                            <p>
+                                Session User
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.pppoe') }}" class="nav-link {{ request()->routeIs('sessions.pppoe') || request()->routeIs('sessions.pppoe.datatable') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>PPPoE Aktif</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.pppoe-inactive') }}" class="nav-link {{ request()->routeIs('sessions.pppoe-inactive*') ? 'active' : '' }}">
+                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
+                                    <p>PPPoE Tidak Aktif</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.hotspot') }}" class="nav-link {{ request()->routeIs('sessions.hotspot') || request()->routeIs('sessions.hotspot.datatable') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Hotspot Aktif</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('sessions.hotspot-inactive') }}" class="nav-link {{ request()->routeIs('sessions.hotspot-inactive*') ? 'active' : '' }}">
+                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
+                                    <p>Hotspot Tidak Aktif</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
+                     <li class="nav-item has-treeview {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-users"></i>
+                            <p>
+                                List Pelanggan
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('hotspot-users.index') }}" class="nav-link {{ request()->routeIs('hotspot-users.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>User Hotspot</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('ppp-users.index') }}" class="nav-link {{ request()->routeIs('ppp-users.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>User PPP</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('vouchers.index') }}" class="nav-link {{ request()->routeIs('vouchers.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Voucher</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Peta Pelanggan</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Data ODP</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                   <li class="nav-item">
+                        <a href="{{ route('mikrotik-connections.index') }}" class="nav-link">
+                            <i class="nav-icon fas fa-server"></i>
+                            <p>Router (NAS)</p>
+                        </a>
+                    </li>
+                    <li class="nav-item has-treeview {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-box"></i>
+                            <p>
+                                Profil Paket
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link {{ request()->routeIs('bandwidth-profiles.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Bandwidth</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('profile-groups.index') }}" class="nav-link {{ request()->routeIs('profile-groups.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Profil Group</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('hotspot-profiles.index') }}" class="nav-link {{ request()->routeIs('hotspot-profiles.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Profil Hotspot</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('ppp-profiles.index') }}" class="nav-link {{ request()->routeIs('ppp-profiles.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Profil PPP</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    
                     <li class="nav-item has-treeview">
                         <a href="#" class="nav-link">
                             <i class="nav-icon fas fa-file-invoice"></i>
@@ -260,123 +379,6 @@
                                 <a href="{{ route('logs.wa-blast') }}" class="nav-link {{ request()->routeIs('logs.wa-blast') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Log WA Blast</p>
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-                    <li class="nav-item has-treeview {{ request()->is('sessions*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->is('sessions*') ? 'active' : '' }}">
-                            <i class="nav-icon fas fa-signal"></i>
-                            <p>
-                                Session User
-                                <i class="right fas fa-angle-left"></i>
-                            </p>
-                        </a>
-                        <ul class="nav nav-treeview">
-                            <li class="nav-item">
-                                <a href="{{ route('sessions.pppoe') }}" class="nav-link {{ request()->routeIs('sessions.pppoe') || request()->routeIs('sessions.pppoe.datatable') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>PPPoE Aktif</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('sessions.pppoe-inactive') }}" class="nav-link {{ request()->routeIs('sessions.pppoe-inactive*') ? 'active' : '' }}">
-                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
-                                    <p>PPPoE Tidak Aktif</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('sessions.hotspot') }}" class="nav-link {{ request()->routeIs('sessions.hotspot') || request()->routeIs('sessions.hotspot.datatable') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Hotspot Aktif</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('sessions.hotspot-inactive') }}" class="nav-link {{ request()->routeIs('sessions.hotspot-inactive*') ? 'active' : '' }}">
-                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
-                                    <p>Hotspot Tidak Aktif</p>
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ route('mikrotik-connections.index') }}" class="nav-link">
-                            <i class="nav-icon fas fa-server"></i>
-                            <p>Router (NAS)</p>
-                        </a>
-                    </li>
-                    <li class="nav-item has-treeview {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'active' : '' }}">
-                            <i class="nav-icon fas fa-box"></i>
-                            <p>
-                                Profil Paket
-                                <i class="right fas fa-angle-left"></i>
-                            </p>
-                        </a>
-                        <ul class="nav nav-treeview">
-                            <li class="nav-item">
-                                <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link {{ request()->routeIs('bandwidth-profiles.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Bandwidth</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('profile-groups.index') }}" class="nav-link {{ request()->routeIs('profile-groups.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil Group</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('hotspot-profiles.index') }}" class="nav-link {{ request()->routeIs('hotspot-profiles.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil Hotspot</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('ppp-profiles.index') }}" class="nav-link {{ request()->routeIs('ppp-profiles.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil PPP</p>
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-                    <li class="nav-item has-treeview {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'active' : '' }}">
-                            <i class="nav-icon fas fa-users"></i>
-                            <p>
-                                List Pelanggan
-                                <i class="right fas fa-angle-left"></i>
-                            </p>
-                        </a>
-                        <ul class="nav nav-treeview">
-                            <li class="nav-item">
-                                <a href="{{ route('hotspot-users.index') }}" class="nav-link {{ request()->routeIs('hotspot-users.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>User Hotspot</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('ppp-users.index') }}" class="nav-link {{ request()->routeIs('ppp-users.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>User PPP</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('vouchers.index') }}" class="nav-link {{ request()->routeIs('vouchers.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Voucher</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="#" class="nav-link">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Peta Pelanggan</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="#" class="nav-link">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Data ODP</p>
                                 </a>
                             </li>
                         </ul>
