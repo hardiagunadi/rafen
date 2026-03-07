@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\MikrotikConnection;
 use App\Models\RadiusAccount;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ActiveSessionFetcher
 {
@@ -135,5 +136,25 @@ class ActiveSessionFetcher
             ->where('is_active', true)
             ->when(! empty($activeUsernames), fn ($q) => $q->whereNotIn('username', $activeUsernames))
             ->update(['is_active' => false, 'updated_at' => $now]);
+
+        // Close zombie radacct sessions: open sessions (acctstoptime IS NULL) for users
+        // that are no longer active on this NAS. This prevents FreeRADIUS from blocking
+        // new logins due to stale Simultaneous-Use counts.
+        $nasIp = $conn->host ?? null;
+        if ($nasIp !== null) {
+            $zombieQuery = DB::table('radacct')
+                ->whereNull('acctstoptime')
+                ->where('nasipaddress', $nasIp);
+
+            if (! empty($activeUsernames)) {
+                $zombieQuery->whereNotIn('username', $activeUsernames);
+            }
+
+            $zombieQuery->update([
+                'acctstoptime'       => $now,
+                'acctupdatetime'     => $now,
+                'acctterminatecause' => 'NAS-Request',
+            ]);
+        }
     }
 }
