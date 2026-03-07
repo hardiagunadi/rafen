@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\HotspotProfile;
+use App\Models\HotspotUser;
 use App\Models\MikrotikConnection;
 use App\Models\RadiusAccount;
 use Carbon\Carbon;
@@ -84,7 +86,100 @@ class ActiveSessionFetcher
 
         (new VoucherUsageTracker)->markUsedFromRadacct();
 
+        $this->kickDisabledHotspotUsers($conn, $sessions);
+        $this->ensureDefaultProfileSharedUsers($conn);
+
         return count($sessions);
+    }
+
+    /**
+     * Ensure MikroTik hotspot default profile has shared-users >= max shared_users in our DB.
+     * Mac-cookie logins bypass RADIUS and always use the default profile, so if shared-users=1
+     * on default, users with multiple devices will be blocked on reconnect.
+     */
+    private function ensureDefaultProfileSharedUsers(MikrotikConnection $conn): void
+    {
+        $maxSharedUsers = HotspotProfile::where('owner_id', $conn->owner_id)->max('shared_users') ?? 1;
+
+        if ($maxSharedUsers <= 1) {
+            return;
+        }
+
+        try {
+            $this->client->connect();
+            $res = $this->client->command('/ip/hotspot/user/profile/print', [], ['default' => 'true']);
+            $defaultProfile = $res['data'][0] ?? null;
+            if (! $defaultProfile) {
+                $this->client->disconnect();
+                return;
+            }
+
+            $currentSharedUsers = (int) ($defaultProfile['shared-users'] ?? 1);
+            if ($currentSharedUsers < $maxSharedUsers) {
+                $this->client->command('/ip/hotspot/user/profile/set', [
+                    '.id'          => $defaultProfile['.id'],
+                    'shared-users' => (string) $maxSharedUsers,
+                ]);
+            }
+            $this->client->disconnect();
+        } catch (\RuntimeException) {
+            // Non-fatal
+        }
+    }
+
+    /**
+     * Kick active hotspot sessions on MikroTik for users that are disabled/isolir in our DB.
+     * Prevents "no more sessions are allowed" errors caused by zombie sessions
+     * of users who were disabled while still connected.
+     *
+     * @param  array<int, array<string, string>>  $sessions  Active sessions from MikroTik
+     */
+    private function kickDisabledHotspotUsers(MikrotikConnection $conn, array $sessions): void
+    {
+        if (empty($sessions)) {
+            return;
+        }
+
+        // Get usernames currently active on this MikroTik
+        $activeUsernames = array_filter(array_map(
+            fn ($row) => $row['user'] ?? ($row['name'] ?? ''),
+            $sessions
+        ));
+
+        if (empty($activeUsernames)) {
+            return;
+        }
+
+        // Find which of those active users are disabled in our DB
+        $disabledUsernames = HotspotUser::whereIn('username', $activeUsernames)
+            ->whereIn('status_akun', ['disable', 'isolir'])
+            ->pluck('username')
+            ->all();
+
+        if (empty($disabledUsernames)) {
+            return;
+        }
+
+        // Remove their sessions from MikroTik
+        foreach ($sessions as $row) {
+            $username = $row['user'] ?? ($row['name'] ?? '');
+            if (! in_array($username, $disabledUsernames, true)) {
+                continue;
+            }
+
+            $sessionId = $row['.id'] ?? null;
+            if (! $sessionId) {
+                continue;
+            }
+
+            try {
+                $this->client->connect();
+                $this->client->command('/ip/hotspot/active/remove', ['.id' => $sessionId]);
+                $this->client->disconnect();
+            } catch (\RuntimeException) {
+                // Non-fatal: session may have already ended
+            }
+        }
     }
 
     /**

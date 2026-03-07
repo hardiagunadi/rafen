@@ -9,6 +9,7 @@ use App\Models\HotspotUser;
 use App\Models\ProfileGroup;
 use App\Models\TenantSettings;
 use App\Models\User;
+use App\Services\HotspotRadiusSynchronizer;
 use App\Services\WaNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -143,6 +144,8 @@ class HotspotUserController extends Controller
         $settings = TenantSettings::getOrCreate((int) ($user->owner_id ?? auth()->user()->effectiveOwnerId()));
         WaNotificationService::notifyRegistration($settings, $user->load('hotspotProfile'));
 
+        app(HotspotRadiusSynchronizer::class)->syncSingleUser($user);
+
         return redirect()->route('hotspot-users.index')->with('status', 'User Hotspot ditambahkan.');
     }
 
@@ -171,6 +174,8 @@ class HotspotUserController extends Controller
     {
         $data = $this->prepareData($request->validated());
         $hotspotUser->update($data);
+
+        app(HotspotRadiusSynchronizer::class)->syncSingleUser($hotspotUser);
 
         return redirect()->route('hotspot-users.index')->with('status', 'User Hotspot diperbarui.');
     }
@@ -220,6 +225,8 @@ class HotspotUserController extends Controller
             'status_bayar' => 'belum_bayar',
         ]);
 
+        app(HotspotRadiusSynchronizer::class)->syncSingleUser($hotspotUser);
+
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Layanan hotspot diperpanjang.']);
         }
@@ -237,6 +244,8 @@ class HotspotUserController extends Controller
 
         $newStatus = $hotspotUser->status_akun === 'enable' ? 'disable' : 'enable';
         $hotspotUser->update(['status_akun' => $newStatus]);
+
+        app(HotspotRadiusSynchronizer::class)->syncSingleUser($hotspotUser);
 
         return response()->json(['status' => $newStatus]);
     }

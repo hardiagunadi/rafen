@@ -74,6 +74,18 @@ class HotspotRadiusSynchronizer
             DB::table('radreply')->where('username', $user->username)->where('attribute', 'Framed-Pool')->delete();
         }
 
+        // Mikrotik-Group assigns the hotspot user profile on MikroTik side,
+        // which controls shared-users limit. Without this, MikroTik falls back
+        // to the "default" profile (shared-users=1), causing login failures.
+        if ($group && $group->ip_pool_mode === 'group_only') {
+            DB::table('radreply')->updateOrInsert(
+                ['username' => $user->username, 'attribute' => 'Mikrotik-Group'],
+                ['op' => ':=', 'value' => $group->name]
+            );
+        } else {
+            DB::table('radreply')->where('username', $user->username)->where('attribute', 'Mikrotik-Group')->delete();
+        }
+
         $parentQueue = ($group && $group->parent_queue)
             ? $group->parent_queue
             : ($user->hotspotProfile?->parent_queue ?: null);
@@ -97,11 +109,12 @@ class HotspotRadiusSynchronizer
             ->with(['hotspotProfile.bandwidthProfile', 'hotspotProfile.profileGroup'])
             ->get();
 
-        $radcheckRows  = [];
-        $radreplyRows  = [];
+        $radcheckRows   = [];
+        $radreplyRows   = [];
         $deletePoolFor  = [];
         $deleteRateFor  = [];
         $deleteQueueFor = [];
+        $deleteGroupFor = [];
 
         foreach ($users as $user) {
             $username = $user->username;
@@ -119,7 +132,7 @@ class HotspotRadiusSynchronizer
                 $deleteRateFor[] = $username;
             }
 
-            // Framed-Pool
+            // Framed-Pool & Mikrotik-Group
             $group = $user->hotspotProfile?->profileGroup
                 ?? ($user->profile_group_id ? \App\Models\ProfileGroup::find($user->profile_group_id) : null);
 
@@ -127,6 +140,14 @@ class HotspotRadiusSynchronizer
                 $radreplyRows[] = ['username' => $username, 'attribute' => 'Framed-Pool', 'op' => ':=', 'value' => $group->ip_pool_name];
             } else {
                 $deletePoolFor[] = $username;
+            }
+
+            // Mikrotik-Group directs MikroTik to use the correct hotspot profile,
+            // which controls shared-users. Without it MikroTik uses "default" (shared-users=1).
+            if ($group && $group->ip_pool_mode === 'group_only') {
+                $radreplyRows[] = ['username' => $username, 'attribute' => 'Mikrotik-Group', 'op' => ':=', 'value' => $group->name];
+            } else {
+                $deleteGroupFor[] = $username;
             }
 
             // Queue parent
@@ -156,6 +177,9 @@ class HotspotRadiusSynchronizer
         if ($deletePoolFor) {
             DB::table('radreply')->whereIn('username', $deletePoolFor)->where('attribute', 'Framed-Pool')->delete();
         }
+        if ($deleteGroupFor) {
+            DB::table('radreply')->whereIn('username', $deleteGroupFor)->where('attribute', 'Mikrotik-Group')->delete();
+        }
         if ($deleteQueueFor) {
             DB::table('radreply')->whereIn('username', $deleteQueueFor)->where('attribute', 'Mikrotik-Queue-Parent-Name')->delete();
         }
@@ -183,10 +207,11 @@ class HotspotRadiusSynchronizer
             ->with(['hotspotProfile.bandwidthProfile', 'hotspotProfile.profileGroup'])
             ->get();
 
-        $radcheckRows  = [];
-        $radreplyRows  = [];
-        $deleteRateFor = [];
-        $deletePoolFor = [];
+        $radcheckRows   = [];
+        $radreplyRows   = [];
+        $deleteRateFor  = [];
+        $deletePoolFor  = [];
+        $deleteGroupFor = [];
         $deleteQueueFor = [];
 
         foreach ($vouchers as $voucher) {
@@ -212,6 +237,12 @@ class HotspotRadiusSynchronizer
                 $deletePoolFor[] = $username;
             }
 
+            if ($group && $group->ip_pool_mode === 'group_only') {
+                $radreplyRows[] = ['username' => $username, 'attribute' => 'Mikrotik-Group', 'op' => ':=', 'value' => $group->name];
+            } else {
+                $deleteGroupFor[] = $username;
+            }
+
             $parentQueue = ($group && $group->parent_queue)
                 ? $group->parent_queue
                 : ($voucher->hotspotProfile?->parent_queue ?: null);
@@ -235,6 +266,9 @@ class HotspotRadiusSynchronizer
         }
         if ($deletePoolFor) {
             DB::table('radreply')->whereIn('username', $deletePoolFor)->where('attribute', 'Framed-Pool')->delete();
+        }
+        if ($deleteGroupFor) {
+            DB::table('radreply')->whereIn('username', $deleteGroupFor)->where('attribute', 'Mikrotik-Group')->delete();
         }
         if ($deleteQueueFor) {
             DB::table('radreply')->whereIn('username', $deleteQueueFor)->where('attribute', 'Mikrotik-Queue-Parent-Name')->delete();

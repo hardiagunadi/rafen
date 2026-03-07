@@ -85,7 +85,9 @@ class ProfileGroupController extends Controller
      */
     public function store(StoreProfileGroupRequest $request): RedirectResponse
     {
+        $user = auth()->user();
         $data = $this->hydrateHostRange($request->validated());
+        $data['owner_id'] = $user->effectiveOwnerId();
 
         ProfileGroup::create($data);
 
@@ -107,7 +109,7 @@ class ProfileGroupController extends Controller
     {
         $user = auth()->user();
 
-        if (! $user->isSuperAdmin() && $profileGroup->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $profileGroup->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -123,7 +125,7 @@ class ProfileGroupController extends Controller
     public function update(UpdateProfileGroupRequest $request, ProfileGroup $profileGroup): RedirectResponse
     {
         $user = auth()->user();
-        if (! $user->isSuperAdmin() && $profileGroup->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $profileGroup->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -181,7 +183,7 @@ class ProfileGroupController extends Controller
     {
         $user = auth()->user();
 
-        if (! $user->isSuperAdmin() && $profileGroup->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $profileGroup->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -212,7 +214,7 @@ class ProfileGroupController extends Controller
     public function export(ProfileGroup $profileGroup, ProfileGroupExporter $exporter): RedirectResponse
     {
         $user = auth()->user();
-        if (! $user->isSuperAdmin() && $profileGroup->mikrotikConnection?->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $profileGroup->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 

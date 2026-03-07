@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProfileGroup extends Model
 {
@@ -18,6 +19,7 @@ class ProfileGroup extends Model
     protected $fillable = [
         'name',
         'owner',
+        'owner_id',
         'mikrotik_connection_id',
         'type',
         'ip_pool_mode',
@@ -43,6 +45,6 @@ class ProfileGroup extends Model
             return $query;
         }
 
-        return $query->whereHas('mikrotikConnection', fn (Builder $q) => $q->where('owner_id', $user->effectiveOwnerId()));
+        return $query->where('owner_id', $user->effectiveOwnerId());
     }
 }
