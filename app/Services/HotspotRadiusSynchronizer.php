@@ -240,13 +240,6 @@ class HotspotRadiusSynchronizer
             DB::table('radreply')->whereIn('username', $deleteQueueFor)->where('attribute', 'Mikrotik-Queue-Parent-Name')->delete();
         }
 
-        // Remove expired vouchers from radcheck/radreply
-        $expiredUsernames = Voucher::where('status', 'expired')->pluck('username')->all();
-        if ($expiredUsernames) {
-            DB::table('radcheck')->whereIn('username', $expiredUsernames)->delete();
-            DB::table('radreply')->whereIn('username', $expiredUsernames)->delete();
-        }
-
         return $vouchers->count();
     }
 

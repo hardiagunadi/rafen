@@ -6,10 +6,19 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @php
         $tenantTitle = 'Radius Manager';
+        $subscriptionExpired = false;
+        $subscriptionDaysLeft = null;
         if (auth()->check()) {
             $tenantSettings = \App\Models\TenantSettings::getOrCreate(auth()->user()->effectiveOwnerId());
             if ($tenantSettings?->business_name) {
                 $tenantTitle = $tenantSettings->business_name;
+            }
+            $authUser = auth()->user();
+            if (!$authUser->isSuperAdmin() && !$authUser->canAccessApp()) {
+                $subscriptionExpired = true;
+            }
+            if (!$authUser->isSuperAdmin() && !$subscriptionExpired && $authUser->subscription_expires_at) {
+                $subscriptionDaysLeft = now()->diffInDays($authUser->subscription_expires_at, false);
             }
         }
     @endphp
@@ -33,6 +42,24 @@
         </ul>
         <ul class="navbar-nav ml-auto">
             @auth
+                @if($subscriptionExpired)
+                <li class="nav-item">
+                    <a href="{{ route('subscription.expired') }}" class="nav-link text-danger font-weight-bold">
+                        <i class="fas fa-exclamation-triangle"></i> Langganan Berakhir
+                    </a>
+                </li>
+                @elseif($subscriptionDaysLeft !== null && $subscriptionDaysLeft <= 7)
+                <li class="nav-item">
+                    <a href="{{ route('subscription.index') }}" class="nav-link {{ $subscriptionDaysLeft <= 3 ? 'text-danger' : 'text-warning' }} font-weight-bold">
+                        <i class="fas fa-bell"></i>
+                        @if($subscriptionDaysLeft <= 0)
+                            Langganan habis hari ini!
+                        @else
+                            Langganan berakhir {{ $subscriptionDaysLeft }} hari lagi
+                        @endif
+                    </a>
+                </li>
+                @endif
                 <li class="nav-item">
                     <span class="nav-link">{{ auth()->user()->name }} ({{ strtoupper(str_replace('_', ' ', auth()->user()->role)) }})</span>
                 </li>
@@ -56,6 +83,15 @@
         <div class="sidebar">
             <nav class="mt-2">
                 <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
+                    @if($subscriptionExpired)
+                    {{-- Subscription expired: hanya tampilkan menu Langganan --}}
+                    <li class="nav-item">
+                        <a href="{{ route('subscription.expired') }}" class="nav-link text-warning">
+                            <i class="nav-icon fas fa-exclamation-triangle"></i>
+                            <p>Perpanjang Langganan</p>
+                        </a>
+                    </li>
+                    @else
                     <li class="nav-item">
                         <a href="{{ route('dashboard') }}" class="nav-link">
                             <i class="nav-icon fas fa-tachometer-alt"></i>
@@ -390,11 +426,17 @@
                             </li>
                         </ul>
                     </li>
+                    @endif {{-- end @else (subscription not expired) --}}
                     <li class="nav-item has-treeview {{ request()->routeIs('subscription.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('subscription.*') ? 'active' : '' }}">
-                            <i class="nav-icon fas fa-credit-card"></i>
+                            <i class="nav-icon fas fa-credit-card {{ $subscriptionExpired ? 'text-warning' : '' }}"></i>
                             <p>
                                 Langganan
+                                @if($subscriptionExpired)
+                                    <span class="badge badge-danger badge-pill ml-1">!</span>
+                                @elseif($subscriptionDaysLeft !== null && $subscriptionDaysLeft <= 7)
+                                    <span class="badge {{ $subscriptionDaysLeft <= 3 ? 'badge-danger' : 'badge-warning' }} badge-pill ml-1">{{ $subscriptionDaysLeft }}h</span>
+                                @endif
                                 <i class="right fas fa-angle-left"></i>
                             </p>
                         </a>
@@ -467,6 +509,39 @@
                 </div>
             </div>
         </section>
+
+        @if($subscriptionExpired)
+        <section class="content-header pb-0">
+            <div class="container-fluid">
+                <div class="alert alert-danger alert-dismissible mb-0">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    <strong>Langganan Anda telah berakhir.</strong>
+                    Akses fitur dibatasi. Silakan perpanjang untuk menggunakan semua fitur.
+                    <a href="{{ route('subscription.plans') }}" class="btn btn-sm btn-danger ml-2">
+                        <i class="fas fa-shopping-cart"></i> Perpanjang Sekarang
+                    </a>
+                </div>
+            </div>
+        </section>
+        @elseif($subscriptionDaysLeft !== null && $subscriptionDaysLeft <= 7)
+        <section class="content-header pb-0">
+            <div class="container-fluid">
+                <div class="alert {{ $subscriptionDaysLeft <= 3 ? 'alert-danger' : 'alert-warning' }} alert-dismissible mb-0">
+                    <button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>
+                    <i class="fas fa-bell mr-1"></i>
+                    <strong>Peringatan:</strong>
+                    @if($subscriptionDaysLeft <= 0)
+                        Langganan Anda habis hari ini!
+                    @else
+                        Langganan Anda akan berakhir dalam <strong>{{ $subscriptionDaysLeft }} hari</strong>.
+                    @endif
+                    <a href="{{ route('subscription.renew') }}" class="btn btn-sm {{ $subscriptionDaysLeft <= 3 ? 'btn-danger' : 'btn-warning' }} ml-2">
+                        <i class="fas fa-redo"></i> Perpanjang
+                    </a>
+                </div>
+            </div>
+        </section>
+        @endif
 
         @if (session('status'))
             <script>window.__flashStatus = {{ Js::from(session('status')) }};</script>

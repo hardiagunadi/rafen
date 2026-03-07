@@ -118,8 +118,8 @@
                     url: '{{ route("vouchers.datatable") }}',
                     type: 'GET',
                     data: function (d) {
-                        d.status = $('#filter-status').val();
-                        d.batch  = $('#filter-batch').val();
+                        d.status = $('#filter-status').val() || '';
+                        d.batch  = $('#filter-batch').val() || '';
                     },
                 },
                 columns: [

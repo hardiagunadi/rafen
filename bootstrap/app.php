@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'webhook/wa/session',
             'webhook/wa/message',
         ]);
+        $middleware->alias([
+            'tenant' => \App\Http\Middleware\TenantMiddleware::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

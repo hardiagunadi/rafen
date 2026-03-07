@@ -28,8 +28,17 @@ class TenantMiddleware
 
         // Check if user can access the app
         if (!$user->canAccessApp()) {
-            return redirect()->route('subscription.expired')
-                ->with('error', 'Langganan Anda telah berakhir. Silakan perpanjang untuk melanjutkan.');
+            // Izinkan akses ke route subscription.* agar bisa bayar perpanjangan
+            $allowedRoutes = [
+                'subscription.expired', 'subscription.plans', 'subscription.subscribe',
+                'subscription.payment', 'subscription.process-payment', 'subscription.index',
+                'subscription.renew', 'subscription.callback', 'subscription.history',
+                'subscription.history-datatable', 'subscription.subscriptions-datatable',
+            ];
+            if ($request->routeIs(...$allowedRoutes)) {
+                return $next($request);
+            }
+            return redirect()->route('subscription.expired');
         }
 
         return $next($request);

@@ -81,6 +81,8 @@ class ActiveSessionFetcher
             ];
         });
 
+        (new VoucherUsageTracker)->markUsedFromRadacct();
+
         return count($sessions);
     }
 

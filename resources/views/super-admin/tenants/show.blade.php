@@ -116,6 +116,10 @@
                 </button>
                 @endif
 
+                <button type="button" class="btn btn-primary btn-block mb-2" data-toggle="modal" data-target="#changePlanModal">
+                    <i class="fas fa-exchange-alt"></i> Ubah Paket
+                </button>
+
                 @if($tenant->subscription_status !== 'suspended')
                 <form action="{{ route('super-admin.tenants.suspend', $tenant) }}" method="POST" onsubmit="return confirm('Suspend tenant ini?')">
                     @csrf
@@ -137,6 +141,45 @@
     </div>
 
     <div class="col-md-8">
+        <!-- Pending Subscriptions (awaiting manual payment confirmation) -->
+        @if($pendingSubscriptions->isNotEmpty())
+        <div class="card card-warning card-outline">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-clock mr-1"></i> Menunggu Konfirmasi Pembayaran</h3>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Paket</th>
+                            <th>Mulai</th>
+                            <th>Berakhir</th>
+                            <th>Jumlah</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($pendingSubscriptions as $sub)
+                        <tr>
+                            <td>{{ $sub->plan->name ?? '-' }}</td>
+                            <td>{{ $sub->start_date->format('d M Y') }}</td>
+                            <td>{{ $sub->end_date->format('d M Y') }}</td>
+                            <td>Rp {{ number_format($sub->amount_paid, 0, ',', '.') }}</td>
+                            <td>
+                                <button type="button" class="btn btn-success btn-xs"
+                                    data-toggle="modal"
+                                    data-target="#confirmPaymentModal{{ $sub->id }}">
+                                    <i class="fas fa-check"></i> Konfirmasi
+                                </button>
+                            </td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        @endif
+
         <!-- Subscription History -->
         <div class="card">
             <div class="card-header">
@@ -240,6 +283,118 @@
     </div>
 </div>
 
+<!-- Confirm Payment Modals (one per pending subscription) -->
+@foreach($pendingSubscriptions as $sub)
+<div class="modal fade" id="confirmPaymentModal{{ $sub->id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ route('super-admin.tenants.subscriptions.confirm-payment', [$tenant, $sub]) }}" method="POST">
+                @csrf
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-check-circle text-success mr-1"></i> Konfirmasi Pembayaran Manual</h5>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">Paket: <strong>{{ $sub->plan->name ?? '-' }}</strong> — <strong>Rp {{ number_format($sub->amount_paid, 0, ',', '.') }}</strong></p>
+                    <div class="form-group">
+                        <label>Metode Pembayaran</label>
+                        <input type="text" name="payment_method" class="form-control" placeholder="Contoh: Transfer BCA, Tunai, dll" value="Transfer Manual">
+                    </div>
+                    <div class="form-group">
+                        <label>Catatan <small class="text-muted">(opsional)</small></label>
+                        <textarea name="notes" class="form-control" rows="2" placeholder="Catatan tambahan..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Konfirmasi Bayar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endforeach
+
+<!-- Change Plan Modal (Upgrade/Downgrade) -->
+<div class="modal fade" id="changePlanModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ route('super-admin.tenants.change-plan', $tenant) }}" method="POST">
+                @csrf
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-exchange-alt mr-1"></i> Ubah Paket Langganan</h5>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 p-2 bg-light rounded">
+                        <small class="text-muted d-block">Paket saat ini: <strong>{{ $tenant->subscriptionPlan->name ?? 'Tidak ada' }}</strong></small>
+                        <small class="text-muted d-block">Berakhir: <strong>{{ $tenant->subscription_expires_at ? $tenant->subscription_expires_at->format('d M Y') : '-' }}</strong></small>
+                    </div>
+                    <div class="form-group">
+                        <label>Pilih Paket Baru</label>
+                        <select name="plan_id" id="changePlanSelect" class="form-control" required>
+                            @foreach(\App\Models\SubscriptionPlan::active()->orderBy('sort_order')->get() as $plan)
+                            <option value="{{ $plan->id }}" {{ $tenant->subscription_plan_id == $plan->id ? 'selected' : '' }}>
+                                {{ $plan->name }} — Rp {{ number_format($plan->price, 0, ',', '.') }} / {{ $plan->duration_days }} hari
+                            </option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <!-- Prorated Preview -->
+                    <div id="proratedPreview" class="d-none">
+                        <div class="card card-body bg-light mb-3 p-3">
+                            <h6 class="mb-2"><i class="fas fa-calculator mr-1"></i> Kalkulasi Prorated</h6>
+                            <table class="table table-sm table-borderless mb-0">
+                                <tr>
+                                    <td class="text-muted pl-0">Sisa hari aktif</td>
+                                    <td class="text-right font-weight-bold" id="previewRemainingDays">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted pl-0">Nilai sisa (kredit)</td>
+                                    <td class="text-right" id="previewRemainingValue">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted pl-0">Harga paket baru</td>
+                                    <td class="text-right" id="previewNewPrice">-</td>
+                                </tr>
+                                <tr class="border-top">
+                                    <td class="pl-0"><strong>Tagihan prorated</strong></td>
+                                    <td class="text-right font-weight-bold text-primary" id="previewProratedCost">-</td>
+                                </tr>
+                                <tr id="previewExtraDaysRow" class="d-none">
+                                    <td class="text-muted pl-0">Bonus hari (sisa kredit)</td>
+                                    <td class="text-right text-success font-weight-bold" id="previewExtraDays">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted pl-0">Total durasi baru</td>
+                                    <td class="text-right" id="previewTotalDuration">-</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="proratedLoading" class="text-center text-muted py-2 d-none">
+                        <i class="fas fa-spinner fa-spin mr-1"></i> Menghitung...
+                    </div>
+
+                    <div class="form-group">
+                        <label>Metode Pembayaran <small class="text-muted">(untuk tagihan prorated)</small></label>
+                        <input type="text" name="payment_method" class="form-control" placeholder="Contoh: Transfer BCA, Tunai" value="Transfer Manual">
+                    </div>
+                    <div class="form-group">
+                        <label>Catatan <small class="text-muted">(opsional)</small></label>
+                        <textarea name="notes" class="form-control" rows="2" placeholder="Catatan tambahan..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-exchange-alt"></i> Ubah Paket</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Activate Modal -->
 <div class="modal fade" id="activateModal" tabindex="-1">
     <div class="modal-dialog">
@@ -297,4 +452,52 @@
         </div>
     </div>
 </div>
+@push('js')
+<script>
+// Change plan prorated preview
+var previewUrl = '{{ route("super-admin.tenants.change-plan.preview", $tenant) }}';
+var previewTimer = null;
+
+function formatRp(val) {
+    return 'Rp ' + Math.round(val).toLocaleString('id-ID');
+}
+
+function loadProratedPreview(planId) {
+    $('#proratedPreview').addClass('d-none');
+    $('#proratedLoading').removeClass('d-none');
+
+    $.get(previewUrl, { plan_id: planId }, function(data) {
+        $('#proratedLoading').addClass('d-none');
+        $('#previewRemainingDays').text(data.remaining_days + ' hari');
+        $('#previewRemainingValue').text(formatRp(data.remaining_value));
+        $('#previewNewPrice').text(formatRp(data.new_plan_price));
+        $('#previewProratedCost').text(data.prorated_cost === 0 ? 'Rp 0 (kredit cukup)' : formatRp(data.prorated_cost));
+
+        if (data.extra_days > 0) {
+            $('#previewExtraDaysRow').removeClass('d-none');
+            $('#previewExtraDays').text('+' + data.extra_days + ' hari bonus');
+        } else {
+            $('#previewExtraDaysRow').addClass('d-none');
+        }
+        $('#previewTotalDuration').text(data.total_duration + ' hari');
+        $('#proratedPreview').removeClass('d-none');
+    }).fail(function() {
+        $('#proratedLoading').addClass('d-none');
+    });
+}
+
+$('#changePlanModal').on('show.bs.modal', function() {
+    var planId = $('#changePlanSelect').val();
+    if (planId) loadProratedPreview(planId);
+});
+
+$('#changePlanSelect').on('change', function() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(function() {
+        loadProratedPreview($('#changePlanSelect').val());
+    }, 300);
+});
+</script>
+@endpush
+
 @endsection

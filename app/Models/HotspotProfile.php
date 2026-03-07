@@ -51,6 +51,25 @@ class HotspotProfile extends Model
         return $this->belongsTo(ProfileGroup::class);
     }
 
+    /**
+     * Hitung expired_at dari titik waktu tertentu berdasarkan masa_aktif profil.
+     * Kembalikan null jika profil tidak punya masa_aktif.
+     */
+    public function computeExpiredAt(\Carbon\Carbon $from): ?\Carbon\Carbon
+    {
+        if (! $this->masa_aktif_value || ! $this->masa_aktif_unit) {
+            return null;
+        }
+
+        return match ($this->masa_aktif_unit) {
+            'menit'  => $from->copy()->addMinutes($this->masa_aktif_value),
+            'jam'    => $from->copy()->addHours($this->masa_aktif_value),
+            'hari'   => $from->copy()->addDays($this->masa_aktif_value),
+            'bulan'  => $from->copy()->addMonths($this->masa_aktif_value),
+            default  => null,
+        };
+    }
+
     public function scopeAccessibleBy(Builder $query, User $user): Builder
     {
         if ($user->isSuperAdmin()) {

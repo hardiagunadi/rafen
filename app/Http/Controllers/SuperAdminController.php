@@ -86,11 +86,17 @@ class SuperAdminController extends Controller
 
         $tenant->load([
             'subscriptionPlan',
-            'subscriptions' => fn($q) => $q->orderByDesc('created_at')->limit(10),
+            'subscriptions' => fn($q) => $q->with('plan')->orderByDesc('created_at')->limit(10),
             'mikrotikConnections',
             'pppUsers',
             'tenantSettings',
         ]);
+
+        $pendingSubscriptions = $tenant->subscriptions()
+            ->with('plan')
+            ->where('status', 'pending')
+            ->orderByDesc('created_at')
+            ->get();
 
         $stats = [
             'mikrotik_count' => $tenant->mikrotikConnections()->count(),
@@ -101,7 +107,7 @@ class SuperAdminController extends Controller
             'total_revenue' => $tenant->invoices()->paid()->sum('total'),
         ];
 
-        return view('super-admin.tenants.show', compact('tenant', 'stats'));
+        return view('super-admin.tenants.show', compact('tenant', 'stats', 'pendingSubscriptions'));
     }
 
     public function editTenant(User $tenant)
@@ -153,6 +159,9 @@ class SuperAdminController extends Controller
         $plan = SubscriptionPlan::findOrFail($request->plan_id);
         $duration = $request->duration_days ?? $plan->duration_days;
 
+        // Expire all previous active/pending subscriptions
+        $tenant->subscriptions()->whereIn('status', ['active', 'pending'])->update(['status' => 'expired']);
+
         $tenant->activateSubscription($plan, $duration);
 
         // Create subscription record
@@ -189,6 +198,155 @@ class SuperAdminController extends Controller
         $tenant->extendSubscription($request->days);
 
         return back()->with('success', "Langganan diperpanjang {$request->days} hari.");
+    }
+
+    public function changePlanPreview(Request $request, User $tenant)
+    {
+        $request->validate(['plan_id' => 'required|exists:subscription_plans,id']);
+
+        $plan    = SubscriptionPlan::findOrFail($request->plan_id);
+        $oldPlan = $tenant->subscriptionPlan;
+
+        $remainingDays  = 0;
+        $remainingValue = 0;
+
+        if ($tenant->subscription_expires_at && $tenant->subscription_expires_at->isFuture() && $oldPlan) {
+            $remainingDays  = (int) now()->diffInDays($tenant->subscription_expires_at, false);
+            $remainingDays  = max(0, $remainingDays);
+            $pricePerDay    = $oldPlan->duration_days > 0 ? ($oldPlan->price / $oldPlan->duration_days) : 0;
+            $remainingValue = round($pricePerDay * $remainingDays);
+        }
+
+        $proratedCost = max(0, $plan->price - $remainingValue);
+        $extraDays    = 0;
+        if ($remainingValue > $plan->price) {
+            $newPricePerDay = $plan->duration_days > 0 ? ($plan->price / $plan->duration_days) : 1;
+            $extraDays      = (int) floor(($remainingValue - $plan->price) / $newPricePerDay);
+        }
+        $totalDuration = $plan->duration_days + $extraDays;
+
+        return response()->json([
+            'remaining_days'   => $remainingDays,
+            'remaining_value'  => $remainingValue,
+            'prorated_cost'    => $proratedCost,
+            'extra_days'       => $extraDays,
+            'total_duration'   => $totalDuration,
+            'new_plan_price'   => (float) $plan->price,
+            'new_plan_name'    => $plan->name,
+            'new_plan_days'    => $plan->duration_days,
+        ]);
+    }
+
+    public function changePlan(Request $request, User $tenant)
+    {
+        if ($tenant->isSuperAdmin()) {
+            abort(404);
+        }
+
+        $request->validate([
+            'plan_id'        => 'required|exists:subscription_plans,id',
+            'payment_method' => 'nullable|string|max:100',
+            'notes'          => 'nullable|string|max:500',
+        ]);
+
+        $plan    = SubscriptionPlan::findOrFail($request->plan_id);
+        $oldPlan = $tenant->subscriptionPlan;
+
+        // Calculate prorated values
+        $remainingDays  = 0;
+        $remainingValue = 0;
+
+        if ($tenant->subscription_expires_at && $tenant->subscription_expires_at->isFuture() && $oldPlan) {
+            $remainingDays  = max(0, (int) now()->diffInDays($tenant->subscription_expires_at, false));
+            $pricePerDay    = $oldPlan->duration_days > 0 ? ($oldPlan->price / $oldPlan->duration_days) : 0;
+            $remainingValue = round($pricePerDay * $remainingDays);
+        }
+
+        $proratedCost = max(0, $plan->price - $remainingValue);
+        $extraDays    = 0;
+        if ($remainingValue > $plan->price) {
+            $newPricePerDay = $plan->duration_days > 0 ? ($plan->price / $plan->duration_days) : 1;
+            $extraDays      = (int) floor(($remainingValue - $plan->price) / $newPricePerDay);
+        }
+        $totalDuration = $plan->duration_days + $extraDays;
+
+        $newExpiry = now()->addDays($totalDuration);
+
+        // Expire all previous active/pending subscriptions
+        $tenant->subscriptions()->whereIn('status', ['active', 'pending'])->update(['status' => 'expired']);
+
+        $tenant->update([
+            'subscription_plan_id'    => $plan->id,
+            'subscription_status'     => 'active',
+            'subscription_expires_at' => $newExpiry,
+        ]);
+
+        $subscription = Subscription::create([
+            'user_id'              => $tenant->id,
+            'subscription_plan_id' => $plan->id,
+            'start_date'           => now(),
+            'end_date'             => $newExpiry,
+            'status'               => 'active',
+            'amount_paid'          => $proratedCost,
+            'activated_at'         => now(),
+        ]);
+
+        // Record payment (prorated)
+        if ($proratedCost > 0) {
+            Payment::create([
+                'payment_number'  => Payment::generatePaymentNumber(),
+                'payment_type'    => 'subscription',
+                'user_id'         => $tenant->id,
+                'subscription_id' => $subscription->id,
+                'payment_channel' => 'manual',
+                'payment_method'  => $request->input('payment_method', 'Transfer Manual'),
+                'amount'          => $proratedCost,
+                'fee'             => 0,
+                'total_amount'    => $proratedCost,
+                'status'          => 'paid',
+                'paid_at'         => now(),
+                'notes'           => $request->input('notes') ?: "Perubahan paket: {$oldPlan?->name} → {$plan->name}. Sisa nilai: Rp " . number_format($remainingValue, 0, ',', '.'),
+            ]);
+        }
+
+        return back()->with('success', "Paket berhasil diubah ke {$plan->name}. Tagihan prorated: Rp " . number_format($proratedCost, 0, ',', '.') . ". Aktif hingga: " . $newExpiry->format('d M Y') . ".");
+    }
+
+    public function confirmSubscriptionPayment(Request $request, User $tenant, Subscription $subscription)
+    {
+        if ($subscription->user_id !== $tenant->id) {
+            abort(403);
+        }
+
+        if ($subscription->status !== 'pending') {
+            return back()->with('error', 'Langganan ini sudah diproses.');
+        }
+
+        $request->validate([
+            'payment_method' => 'nullable|string|max:100',
+            'notes'          => 'nullable|string|max:500',
+        ]);
+
+        // Create a manual payment record
+        Payment::create([
+            'payment_number'  => Payment::generatePaymentNumber(),
+            'payment_type'    => 'subscription',
+            'user_id'         => $tenant->id,
+            'subscription_id' => $subscription->id,
+            'payment_channel' => 'manual',
+            'payment_method'  => $request->input('payment_method', 'Transfer Manual'),
+            'amount'          => $subscription->amount_paid,
+            'fee'             => 0,
+            'total_amount'    => $subscription->amount_paid,
+            'status'          => 'paid',
+            'paid_at'         => now(),
+            'notes'           => $request->input('notes'),
+        ]);
+
+        // Activate subscription
+        $subscription->activate();
+
+        return back()->with('success', 'Pembayaran berhasil dikonfirmasi dan langganan telah diaktifkan.');
     }
 
     public function createTenant()

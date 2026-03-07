@@ -35,7 +35,7 @@ class VoucherController extends Controller
             $query->where('status', $status);
         }
 
-        if ($batch !== '') {
+        if ($batch !== '' && $batch !== 'null' && $batch !== 'undefined') {
             $query->where('batch_name', $batch);
         }
 

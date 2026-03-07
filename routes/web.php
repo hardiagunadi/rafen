@@ -37,7 +37,7 @@ Route::get('logout', function () {
 Route::get('register', [RegisterController::class, 'show'])->name('register');
 Route::post('register', [RegisterController::class, 'register']);
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('api-dashboard', [DashboardController::class, 'apiDashboard'])->name('dashboard.api');
     Route::get('api-dashboard/data', [DashboardController::class, 'apiDashboardData'])->name('dashboard.api.data');
@@ -267,6 +267,9 @@ Route::middleware(['auth', \App\Http\Middleware\SuperAdminMiddleware::class])->p
     Route::post('/tenants/{tenant}/activate', [SuperAdminController::class, 'activateTenant'])->name('tenants.activate');
     Route::post('/tenants/{tenant}/suspend', [SuperAdminController::class, 'suspendTenant'])->name('tenants.suspend');
     Route::post('/tenants/{tenant}/extend', [SuperAdminController::class, 'extendTenant'])->name('tenants.extend');
+    Route::post('/tenants/{tenant}/subscriptions/{subscription}/confirm-payment', [SuperAdminController::class, 'confirmSubscriptionPayment'])->name('tenants.subscriptions.confirm-payment');
+    Route::get('/tenants/{tenant}/change-plan/preview', [SuperAdminController::class, 'changePlanPreview'])->name('tenants.change-plan.preview');
+    Route::post('/tenants/{tenant}/change-plan', [SuperAdminController::class, 'changePlan'])->name('tenants.change-plan');
 
     // Tenant VPN Management
     Route::get('/tenants/{tenant}/vpn', [SuperAdminController::class, 'vpnSettings'])->name('tenants.vpn');

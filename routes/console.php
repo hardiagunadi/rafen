@@ -38,7 +38,25 @@ Schedule::command('billing:reset-status')
     ->runInBackground();
 
 // Generate invoice untuk user PPP yang jatuh tempo dalam 14 hari ke depan (setiap hari jam 07:00)
-Schedule::command('invoice:generate-upcoming --days=14')
+Schedule::command('invoice:generate-upcoming --days=15')
     ->dailyAt('07:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Deteksi voucher yang sudah digunakan berdasarkan radacct (setiap menit)
+Schedule::command('vouchers:mark-used')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Hapus voucher expired dari DB dan RADIUS (setiap hari jam 07:05)
+Schedule::command('vouchers:expire')
+    ->dailyAt('07:05')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Kirim WA reminder perpanjangan subscription (7 hari & 1 hari sebelum expired) — jam 09:00
+Schedule::command('subscription:send-reminders')
+    ->dailyAt('09:00')
     ->withoutOverlapping()
     ->runInBackground();
