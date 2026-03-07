@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\PaymentGatewayInterface;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Subscription;
@@ -9,7 +10,7 @@ use App\Models\TenantSettings;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class TripayService
+class TripayService implements PaymentGatewayInterface
 {
     protected string $apiKey;
     protected string $privateKey;

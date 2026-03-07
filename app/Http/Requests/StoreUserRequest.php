@@ -27,7 +27,7 @@ class StoreUserRequest extends FormRequest
             'password'     => array_filter(['required', 'string', 'min:8', $this->routeIs('register') ? 'confirmed' : null]),
             'phone'        => ['sometimes', 'nullable', 'string', 'max:20'],
             'company_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'role'         => ['sometimes', 'required', 'string', 'in:administrator,it_support,noc,keuangan,mitra'],
+            'role'         => ['sometimes', 'required', 'string', 'in:administrator,it_support,noc,keuangan,mitra,teknisi'],
         ];
     }
 

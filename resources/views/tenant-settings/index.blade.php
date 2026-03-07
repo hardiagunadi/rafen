@@ -172,32 +172,144 @@
                     </div>
 
                     <hr>
-                    <h5>Integrasi Tripay</h5>
-                    <p class="text-muted small">Untuk pembayaran otomatis via QRIS dan Virtual Account</p>
+                    <h5>Payment Gateway</h5>
+                    <p class="text-muted small">Pilih gateway untuk pembayaran otomatis via QRIS dan Virtual Account</p>
 
                     <div class="form-group">
-                        <label>API Key</label>
-                        <input type="password" name="tripay_api_key" class="form-control" value="{{ old('tripay_api_key', $settings->tripay_api_key) }}" placeholder="Masukkan API Key Tripay">
+                        <label>Gateway Aktif</label>
+                        <select name="active_gateway" id="active_gateway" class="form-control" onchange="showGatewayForm(this.value)">
+                            <option value="tripay" {{ ($settings->active_gateway ?? 'tripay') === 'tripay' ? 'selected' : '' }}>Tripay</option>
+                            <option value="midtrans" {{ ($settings->active_gateway ?? '') === 'midtrans' ? 'selected' : '' }}>Midtrans</option>
+                            <option value="duitku" {{ ($settings->active_gateway ?? '') === 'duitku' ? 'selected' : '' }}>Duitku</option>
+                            <option value="ipaymu" {{ ($settings->active_gateway ?? '') === 'ipaymu' ? 'selected' : '' }}>iPaymu</option>
+                            <option value="xendit" {{ ($settings->active_gateway ?? '') === 'xendit' ? 'selected' : '' }}>Xendit</option>
+                        </select>
                     </div>
-                    <div class="form-group">
-                        <label>Private Key</label>
-                        <input type="password" name="tripay_private_key" class="form-control" value="{{ old('tripay_private_key', $settings->tripay_private_key) }}" placeholder="Masukkan Private Key Tripay">
-                    </div>
-                    <div class="form-group">
-                        <label>Merchant Code</label>
-                        <input type="text" name="tripay_merchant_code" class="form-control" value="{{ old('tripay_merchant_code', $settings->tripay_merchant_code) }}" placeholder="Masukkan Merchant Code">
-                    </div>
-                    <div class="form-group">
-                        <div class="custom-control custom-switch">
-                            <input type="checkbox" class="custom-control-input" id="tripay_sandbox" name="tripay_sandbox" value="1" {{ $settings->tripay_sandbox ? 'checked' : '' }}>
-                            <label class="custom-control-label" for="tripay_sandbox">Mode Sandbox (Testing)</label>
+
+                    {{-- Tripay --}}
+                    <div id="gateway-tripay" class="gateway-form">
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" name="tripay_api_key" class="form-control" value="{{ old('tripay_api_key', $settings->tripay_api_key) }}" placeholder="Masukkan API Key Tripay">
                         </div>
+                        <div class="form-group">
+                            <label>Private Key</label>
+                            <input type="password" name="tripay_private_key" class="form-control" value="{{ old('tripay_private_key', $settings->tripay_private_key) }}" placeholder="Masukkan Private Key Tripay">
+                        </div>
+                        <div class="form-group">
+                            <label>Merchant Code</label>
+                            <input type="text" name="tripay_merchant_code" class="form-control" value="{{ old('tripay_merchant_code', $settings->tripay_merchant_code) }}" placeholder="Masukkan Merchant Code">
+                        </div>
+                        <div class="form-group">
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="tripay_sandbox" name="tripay_sandbox" value="1" {{ $settings->tripay_sandbox ? 'checked' : '' }}>
+                                <label class="custom-control-label" for="tripay_sandbox">Mode Sandbox (Testing)</label>
+                            </div>
+                        </div>
+                        <p class="text-muted small">
+                            Callback URL: <code>{{ url('/payment/callback') }}</code>
+                        </p>
+                        <button type="button" class="btn btn-info btn-sm mb-3" onclick="testTripay()">
+                            <i class="fas fa-plug"></i> Test Koneksi
+                        </button>
+                        <div id="tripay-test-result"></div>
                     </div>
 
-                    <button type="button" class="btn btn-info btn-sm mb-3" onclick="testTripay()">
-                        <i class="fas fa-plug"></i> Test Koneksi
-                    </button>
-                    <div id="tripay-test-result"></div>
+                    {{-- Midtrans --}}
+                    <div id="gateway-midtrans" class="gateway-form" style="display:none;">
+                        <div class="form-group">
+                            <label>Server Key</label>
+                            <input type="password" name="midtrans_server_key" class="form-control" value="{{ old('midtrans_server_key', $settings->midtrans_server_key) }}" placeholder="SB-Mid-server-...">
+                        </div>
+                        <div class="form-group">
+                            <label>Client Key</label>
+                            <input type="text" name="midtrans_client_key" class="form-control" value="{{ old('midtrans_client_key', $settings->midtrans_client_key) }}" placeholder="SB-Mid-client-...">
+                        </div>
+                        <div class="form-group">
+                            <label>Merchant ID <span class="text-muted small">(opsional)</span></label>
+                            <input type="text" name="midtrans_merchant_id" class="form-control" value="{{ old('midtrans_merchant_id', $settings->midtrans_merchant_id) }}" placeholder="G12345678">
+                        </div>
+                        <div class="form-group">
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="midtrans_sandbox" name="midtrans_sandbox" value="1" {{ ($settings->midtrans_sandbox ?? true) ? 'checked' : '' }}>
+                                <label class="custom-control-label" for="midtrans_sandbox">Mode Sandbox (Testing)</label>
+                            </div>
+                        </div>
+                        <p class="text-muted small">
+                            Notification URL di Midtrans Dashboard: <code>{{ url('/payment/callback/midtrans') }}</code>
+                        </p>
+                        <button type="button" class="btn btn-info btn-sm mb-3" onclick="testGateway('midtrans')">
+                            <i class="fas fa-plug"></i> Test Koneksi
+                        </button>
+                        <div id="midtrans-test-result"></div>
+                    </div>
+
+                    {{-- Duitku --}}
+                    <div id="gateway-duitku" class="gateway-form" style="display:none;">
+                        <div class="form-group">
+                            <label>Merchant Code</label>
+                            <input type="text" name="duitku_merchant_code" class="form-control" value="{{ old('duitku_merchant_code', $settings->duitku_merchant_code) }}" placeholder="DSxxxxx">
+                        </div>
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" name="duitku_api_key" class="form-control" value="{{ old('duitku_api_key', $settings->duitku_api_key) }}" placeholder="Masukkan API Key Duitku">
+                        </div>
+                        <div class="form-group">
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="duitku_sandbox" name="duitku_sandbox" value="1" {{ ($settings->duitku_sandbox ?? true) ? 'checked' : '' }}>
+                                <label class="custom-control-label" for="duitku_sandbox">Mode Sandbox (Testing)</label>
+                            </div>
+                        </div>
+                        <p class="text-muted small">
+                            Callback URL di Duitku Dashboard: <code>{{ url('/payment/callback/duitku') }}</code>
+                        </p>
+                        <button type="button" class="btn btn-info btn-sm mb-3" onclick="testGateway('duitku')">
+                            <i class="fas fa-plug"></i> Test Koneksi
+                        </button>
+                        <div id="duitku-test-result"></div>
+                    </div>
+
+                    {{-- iPaymu --}}
+                    <div id="gateway-ipaymu" class="gateway-form" style="display:none;">
+                        <div class="form-group">
+                            <label>Virtual Account (VA)</label>
+                            <input type="text" name="ipaymu_va" class="form-control" value="{{ old('ipaymu_va', $settings->ipaymu_va) }}" placeholder="0000000000000000">
+                        </div>
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="password" name="ipaymu_api_key" class="form-control" value="{{ old('ipaymu_api_key', $settings->ipaymu_api_key) }}" placeholder="Masukkan API Key iPaymu">
+                        </div>
+                        <div class="form-group">
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="ipaymu_sandbox" name="ipaymu_sandbox" value="1" {{ ($settings->ipaymu_sandbox ?? true) ? 'checked' : '' }}>
+                                <label class="custom-control-label" for="ipaymu_sandbox">Mode Sandbox (Testing)</label>
+                            </div>
+                        </div>
+                        <p class="text-muted small text-warning">
+                            <i class="fas fa-info-circle"></i> iPaymu belum terintegrasi penuh. Gunakan Midtrans atau Duitku untuk hasil terbaik.
+                        </p>
+                    </div>
+
+                    {{-- Xendit --}}
+                    <div id="gateway-xendit" class="gateway-form" style="display:none;">
+                        <div class="form-group">
+                            <label>Secret Key</label>
+                            <input type="password" name="xendit_secret_key" class="form-control" value="{{ old('xendit_secret_key', $settings->xendit_secret_key) }}" placeholder="xnd_development_...">
+                        </div>
+                        <div class="form-group">
+                            <label>Webhook Token <span class="text-muted small">(dari Xendit Dashboard)</span></label>
+                            <input type="text" name="xendit_webhook_token" class="form-control" value="{{ old('xendit_webhook_token', $settings->xendit_webhook_token) }}" placeholder="Webhook verification token">
+                        </div>
+                        <div class="form-group">
+                            <div class="custom-control custom-switch">
+                                <input type="checkbox" class="custom-control-input" id="xendit_sandbox" name="xendit_sandbox" value="1" {{ ($settings->xendit_sandbox ?? true) ? 'checked' : '' }}>
+                                <label class="custom-control-label" for="xendit_sandbox">Mode Sandbox (Testing)</label>
+                            </div>
+                        </div>
+                        <p class="text-muted small text-warning">
+                            <i class="fas fa-info-circle"></i> Xendit belum terintegrasi penuh. Gunakan Midtrans atau Duitku untuk hasil terbaik.
+                        </p>
+                    </div>
 
                     <hr>
 
@@ -501,6 +613,46 @@ function testWaGateway() {
                 '<strong><i class="fas fa-times-circle mr-1"></i> Permintaan Gagal</strong><br>' +
                 '<span class="small">' + escapeHtml(error.message) + '</span>' +
             '</div>';
+    });
+}
+
+function showGatewayForm(gateway) {
+    document.querySelectorAll('.gateway-form').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    var form = document.getElementById('gateway-' + gateway);
+    if (form) form.style.display = 'block';
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    var activeGateway = document.getElementById('active_gateway');
+    if (activeGateway) showGatewayForm(activeGateway.value);
+});
+
+var gatewayTestUrls = {
+    midtrans: '{{ route("tenant-settings.test-midtrans") }}',
+    duitku:   '{{ route("tenant-settings.test-duitku") }}'
+};
+
+function testGateway(gateway) {
+    var resultDiv = document.getElementById(gateway + '-test-result');
+    resultDiv.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Menguji koneksi...</div>';
+
+    fetch(gatewayTestUrls[gateway], {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> ' + data.message + '</div>';
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times"></i> ' + data.message + '</div>';
+        }
+    })
+    .catch(function() {
+        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times"></i> Gagal menguji koneksi</div>';
     });
 }
 

@@ -175,6 +175,7 @@ class UserManagementController extends Controller
             'noc'           => 'NOC',
             'keuangan'      => 'Keuangan',
             'mitra'         => 'Mitra',
+            'teknisi'       => 'Teknisi',
         ];
     }
 
@@ -185,6 +186,7 @@ class UserManagementController extends Controller
             'noc'        => 'NOC',
             'keuangan'   => 'Keuangan',
             'mitra'      => 'Mitra',
+            'teknisi'    => 'Teknisi',
         ];
     }
 }

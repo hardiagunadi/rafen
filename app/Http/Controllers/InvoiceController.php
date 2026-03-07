@@ -126,7 +126,7 @@ class InvoiceController extends Controller
             abort(403);
         }
 
-        $invoice->load(['pppUser', 'owner', 'payment']);
+        $invoice->load(['pppUser', 'owner', 'payment', 'paidBy']);
 
         $bankAccounts = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
         $settings = $invoice->owner?->getSettings();
@@ -134,7 +134,7 @@ class InvoiceController extends Controller
         return view('invoices.nota', compact('invoice', 'bankAccounts', 'settings'));
     }
 
-    public function pay(Invoice $invoice): JsonResponse|RedirectResponse
+    public function pay(Request $request, Invoice $invoice): JsonResponse|RedirectResponse
     {
         $user = auth()->user();
 
@@ -142,7 +142,14 @@ class InvoiceController extends Controller
             abort(403);
         }
 
-        $invoice->update(['status' => 'paid', 'paid_at' => now()]);
+        $invoice->update([
+            'status'          => 'paid',
+            'paid_at'         => now(),
+            'paid_by'         => $user->id,
+            'cash_received'   => $request->input('cash_received') ?: null,
+            'transfer_amount' => $request->input('transfer_amount') ?: null,
+            'payment_note'    => $request->input('payment_note') ?: null,
+        ]);
         if ($invoice->pppUser) {
             $wasOnProcess = $invoice->pppUser->status_registrasi === 'on_process';
 
@@ -227,6 +234,10 @@ class InvoiceController extends Controller
     public function destroy(Invoice $invoice): JsonResponse|RedirectResponse
     {
         $user = auth()->user();
+
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
 
         if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);

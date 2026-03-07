@@ -12,10 +12,19 @@ use Illuminate\View\View;
 
 class LogController extends Controller
 {
+    private function denyTeknisi(): void
+    {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
+    }
+
     // ── Log Login ─────────────────────────────────────────────────────────────
 
     public function loginIndex(): View
     {
+        $this->denyTeknisi();
+
         return view('logs.login');
     }
 
@@ -64,6 +73,8 @@ class LogController extends Controller
 
     public function activityIndex(): View
     {
+        $this->denyTeknisi();
+
         return view('logs.activity');
     }
 
@@ -184,6 +195,8 @@ class LogController extends Controller
 
     public function radiusAuthIndex(): View
     {
+        $this->denyTeknisi();
+
         return view('logs.radius-auth');
     }
 
@@ -229,6 +242,8 @@ class LogController extends Controller
 
     public function waBlastIndex(): View
     {
+        $this->denyTeknisi();
+
         return view('logs.wa-blast');
     }
 

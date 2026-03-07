@@ -329,6 +329,10 @@ class PppUserController extends Controller
     {
         $currentUser = auth()->user();
 
+        if ($currentUser->role === 'teknisi') {
+            abort(403);
+        }
+
         if (! $currentUser->isSuperAdmin() && $pppUser->owner_id !== $currentUser->effectiveOwnerId()) {
             abort(403);
         }

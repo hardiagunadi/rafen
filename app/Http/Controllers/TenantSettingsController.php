@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
 use App\Models\TenantSettings;
+use App\Services\DuitkuService;
+use App\Services\MidtransService;
 use App\Services\TripayService;
 use App\Services\WaGatewayService;
 use Illuminate\Http\Request;
@@ -51,10 +53,30 @@ class TenantSettingsController extends Controller
             'enable_qris_payment' => 'boolean',
             'enable_va_payment' => 'boolean',
             'enable_manual_payment' => 'boolean',
+            'active_gateway' => 'nullable|string|in:tripay,midtrans,duitku,ipaymu,xendit',
+            // Tripay
             'tripay_api_key' => 'nullable|string|max:255',
             'tripay_private_key' => 'nullable|string|max:255',
             'tripay_merchant_code' => 'nullable|string|max:50',
             'tripay_sandbox' => 'boolean',
+            // Midtrans
+            'midtrans_server_key' => 'nullable|string|max:255',
+            'midtrans_client_key' => 'nullable|string|max:255',
+            'midtrans_merchant_id' => 'nullable|string|max:50',
+            'midtrans_sandbox' => 'boolean',
+            // Duitku
+            'duitku_merchant_code' => 'nullable|string|max:50',
+            'duitku_api_key' => 'nullable|string|max:255',
+            'duitku_sandbox' => 'boolean',
+            // iPaymu
+            'ipaymu_va' => 'nullable|string|max:50',
+            'ipaymu_api_key' => 'nullable|string|max:255',
+            'ipaymu_sandbox' => 'boolean',
+            // Xendit
+            'xendit_secret_key' => 'nullable|string|max:255',
+            'xendit_webhook_token' => 'nullable|string|max:255',
+            'xendit_sandbox' => 'boolean',
+            // Common
             'enabled_payment_channels' => 'nullable|array',
             'payment_expiry_hours' => 'integer|min:1|max:168',
             'auto_isolate_unpaid' => 'boolean',
@@ -93,6 +115,50 @@ class TenantSettingsController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Koneksi Tripay berhasil!',
+            'channels' => $channels,
+        ]);
+    }
+
+    public function testMidtrans(Request $request)
+    {
+        $user = $request->user();
+        $settings = $user->getSettings();
+
+        if (!$settings->hasMidtransConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kredensial Midtrans belum dikonfigurasi.',
+            ]);
+        }
+
+        $midtrans = MidtransService::forTenant($settings);
+        $channels = $midtrans->getPaymentChannels();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Koneksi Midtrans berhasil!',
+            'channels' => $channels,
+        ]);
+    }
+
+    public function testDuitku(Request $request)
+    {
+        $user = $request->user();
+        $settings = $user->getSettings();
+
+        if (!$settings->hasDuitkuConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kredensial Duitku belum dikonfigurasi.',
+            ]);
+        }
+
+        $duitku = DuitkuService::forTenant($settings);
+        $channels = $duitku->getPaymentChannels();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Koneksi Duitku berhasil! ' . count($channels) . ' channel tersedia.',
             'channels' => $channels,
         ]);
     }

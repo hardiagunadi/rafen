@@ -240,6 +240,15 @@
                             </li>
                         </ul>
                     </li>
+                    @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'keuangan', 'teknisi']))
+                    <li class="nav-item">
+                        <a href="{{ route('teknisi-setoran.index') }}" class="nav-link {{ request()->routeIs('teknisi-setoran.*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-hand-holding-usd"></i>
+                            <p>Rekonsiliasi Nota</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if(auth()->user()->role !== 'teknisi')
                     <li class="nav-item has-treeview">
                         <a href="#" class="nav-link">
                             <i class="nav-icon fas fa-dollar-sign"></i>
@@ -281,7 +290,8 @@
                             </li>
                         </ul>
                     </li>
-                    @php $isSuperAdmin = auth()->user()->isSuperAdmin(); $isAdminOrAbove = $isSuperAdmin || (auth()->user()->isAdmin() && !auth()->user()->isSubUser()); @endphp
+                    @endif
+                    @php $isSuperAdmin = auth()->user()->isSuperAdmin(); $isAdminOrAbove = $isSuperAdmin || (auth()->user()->isAdmin() && !auth()->user()->isSubUser()); $isTeknisi = auth()->user()->role === 'teknisi'; @endphp
                     @if($isAdminOrAbove)
                     <li class="nav-item has-treeview {{ request()->is('tools*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->is('tools*') ? 'active' : '' }}">
@@ -339,6 +349,7 @@
                         </ul>
                     </li>
                     @endif
+                    @if(!$isTeknisi)
                     <li class="nav-item has-treeview {{ request()->routeIs('logs.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('logs.*') ? 'active' : '' }}">
                             <i class="nav-icon far fa-file-alt"></i>
@@ -383,6 +394,7 @@
                             </li>
                         </ul>
                     </li>
+                    @endif
                     <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-cog"></i>

@@ -222,6 +222,24 @@
 
     <div class="mt-3 bold"><em>{{ $terbilang }} rupiah</em></div>
 
+    {{-- INFO PENERIMA BAYAR --}}
+    @if($invoice->paid_by && $invoice->paidBy)
+    <div class="mt-3" style="font-size:11px;">
+        Diterima oleh: <strong>{{ $invoice->paidBy->name }}</strong>
+        @if($invoice->paid_at)
+            &mdash; {{ $invoice->paid_at->translatedFormat('d F Y H:i') }}
+        @endif
+        @if($invoice->cash_received)
+            <br>Tunai: Rp {{ number_format($invoice->cash_received, 0, ',', '.') }}
+        @endif
+        @if($invoice->transfer_amount)
+            &nbsp;&nbsp;Transfer: Rp {{ number_format($invoice->transfer_amount, 0, ',', '.') }}
+        @endif
+        @if($invoice->payment_note)
+            <br>Catatan: {{ $invoice->payment_note }}
+        @endif
+    </div>
+    @endif
 
     {{-- FOOTER --}}
     @if($footer)

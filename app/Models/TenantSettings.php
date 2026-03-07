@@ -56,6 +56,21 @@ class TenantSettings extends Model
         'isolir_page_contact',
         'isolir_page_bg_color',
         'isolir_page_accent_color',
+        // Payment Gateways
+        'active_gateway',
+        'midtrans_server_key',
+        'midtrans_client_key',
+        'midtrans_merchant_id',
+        'midtrans_sandbox',
+        'duitku_merchant_code',
+        'duitku_api_key',
+        'duitku_sandbox',
+        'ipaymu_va',
+        'ipaymu_api_key',
+        'ipaymu_sandbox',
+        'xendit_secret_key',
+        'xendit_webhook_token',
+        'xendit_sandbox',
     ];
 
     protected function casts(): array
@@ -79,6 +94,10 @@ class TenantSettings extends Model
             'wa_antispam_max_per_minute' => 'integer',
             'wa_msg_randomize' => 'boolean',
             'billing_date' => 'integer',
+            'midtrans_sandbox' => 'boolean',
+            'duitku_sandbox' => 'boolean',
+            'ipaymu_sandbox' => 'boolean',
+            'xendit_sandbox' => 'boolean',
         ];
     }
 
@@ -101,6 +120,10 @@ class TenantSettings extends Model
     protected $hidden = [
         'tripay_api_key',
         'tripay_private_key',
+        'midtrans_server_key',
+        'duitku_api_key',
+        'ipaymu_api_key',
+        'xendit_secret_key',
     ];
 
     public function user(): BelongsTo
@@ -151,9 +174,45 @@ class TenantSettings extends Model
         return ! empty($custom) ? $custom : $this->getDefaultTemplate($type);
     }
 
+    public function hasMidtransConfigured(): bool
+    {
+        return !empty($this->midtrans_server_key) && !empty($this->midtrans_client_key);
+    }
+
+    public function hasDuitkuConfigured(): bool
+    {
+        return !empty($this->duitku_merchant_code) && !empty($this->duitku_api_key);
+    }
+
+    public function hasIPaymuConfigured(): bool
+    {
+        return !empty($this->ipaymu_va) && !empty($this->ipaymu_api_key);
+    }
+
+    public function hasXenditConfigured(): bool
+    {
+        return !empty($this->xendit_secret_key);
+    }
+
+    public function hasActiveGateway(): bool
+    {
+        return match ($this->active_gateway ?? 'tripay') {
+            'midtrans' => $this->hasMidtransConfigured(),
+            'duitku'   => $this->hasDuitkuConfigured(),
+            'ipaymu'   => $this->hasIPaymuConfigured(),
+            'xendit'   => $this->hasXenditConfigured(),
+            default    => $this->hasTripayConfigured(),
+        };
+    }
+
+    public function getActiveGateway(): string
+    {
+        return $this->active_gateway ?? 'tripay';
+    }
+
     public function hasPaymentGateway(): bool
     {
-        return $this->hasTripayConfigured() && ($this->enable_qris_payment || $this->enable_va_payment);
+        return $this->hasActiveGateway() && ($this->enable_qris_payment || $this->enable_va_payment);
     }
 
     public function getTripayApiUrl(): string

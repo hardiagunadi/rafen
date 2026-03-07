@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\PaymentGatewayInterface;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\TenantSettings;
+use App\Services\DuitkuService;
+use App\Services\MidtransService;
 use App\Services\TripayService;
 use App\Services\WaNotificationService;
 use Illuminate\Http\Request;
@@ -12,6 +15,15 @@ use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
+    private function resolveGateway(TenantSettings $settings): PaymentGatewayInterface
+    {
+        return match ($settings->getActiveGateway()) {
+            'midtrans' => MidtransService::forTenant($settings),
+            'duitku'   => DuitkuService::forTenant($settings),
+            default    => TripayService::forTenant($settings),
+        };
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -68,32 +80,41 @@ class PaymentController extends Controller
             return view('payments.manual', compact('invoice', 'settings', 'bankAccounts'));
         }
 
-        // Get available channels
-        $tripay      = TripayService::forTenant($settings);
-        $allChannels = $tripay->getPaymentChannels();
+        // Get available channels from active gateway
+        $gateway     = $this->resolveGateway($settings);
+        $allChannels = $gateway->getPaymentChannels();
 
         // Filter to only enabled channels
         $enabledCodes = $settings->getEnabledChannels();
-        $channels     = [];
+        $channels = empty($enabledCodes)
+            ? $allChannels
+            : array_values(array_filter($allChannels, fn($ch) => in_array($ch['code'], $enabledCodes)));
 
-        foreach ($allChannels as $channel) {
-            if (in_array($channel['code'], $enabledCodes)) {
-                $channels[] = $channel;
-            }
-        }
-
-        // Group channels
-        $channelGroups  = TripayService::getChannelGroups();
+        // Group channels (Tripay has static groups; other gateways return flat list)
         $groupedChannels = [];
-
-        foreach ($channelGroups as $groupKey => $group) {
-            $groupChannels = array_filter($channels, fn($ch) => in_array($ch['code'], $group['codes']));
-            if (!empty($groupChannels)) {
-                $groupedChannels[$groupKey] = [
-                    'name'        => $group['name'],
-                    'description' => $group['description'],
-                    'channels'    => array_values($groupChannels),
-                ];
+        if ($settings->getActiveGateway() === 'tripay') {
+            foreach (TripayService::getChannelGroups() as $groupKey => $group) {
+                $groupChannels = array_filter($channels, fn($ch) => in_array($ch['code'], $group['codes']));
+                if (!empty($groupChannels)) {
+                    $groupedChannels[$groupKey] = [
+                        'name'        => $group['name'],
+                        'description' => $group['description'],
+                        'channels'    => array_values($groupChannels),
+                    ];
+                }
+            }
+        } else {
+            // For other gateways, group by type (QRIS vs VA)
+            $qris = array_values(array_filter($channels, fn($ch) => str_contains(strtolower($ch['type'] ?? $ch['name'] ?? ''), 'qris')));
+            $va   = array_values(array_filter($channels, fn($ch) => !str_contains(strtolower($ch['type'] ?? $ch['name'] ?? ''), 'qris')));
+            if (!empty($qris)) {
+                $groupedChannels['qris'] = ['name' => 'QRIS', 'description' => 'Bayar via QRIS', 'channels' => $qris];
+            }
+            if (!empty($va)) {
+                $groupedChannels['va'] = ['name' => 'Virtual Account', 'description' => 'Transfer ke Virtual Account', 'channels' => $va];
+            }
+            if (empty($groupedChannels)) {
+                $groupedChannels['other'] = ['name' => 'Metode Pembayaran', 'description' => '', 'channels' => $channels];
             }
         }
 
@@ -118,9 +139,9 @@ class PaymentController extends Controller
         ]);
 
         $settings = $invoice->owner->getSettings();
-        $tripay = TripayService::forTenant($settings);
+        $gateway  = $this->resolveGateway($settings);
 
-        $result = $tripay->createInvoicePayment(
+        $result = $gateway->createInvoicePayment(
             $invoice,
             $request->payment_channel,
             $settings->payment_expiry_hours
@@ -185,6 +206,91 @@ class PaymentController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function callbackMidtrans(Request $request)
+    {
+        $callbackData = $request->all();
+        Log::info('Midtrans callback received', $callbackData);
+
+        $orderId = $callbackData['order_id'] ?? '';
+
+        $payment = Payment::where('merchant_ref', $orderId)->first();
+        if (!$payment) {
+            Log::warning('Midtrans: payment not found', ['order_id' => $orderId]);
+            return response()->json(['success' => false, 'message' => 'Payment not found'], 404);
+        }
+
+        $settings = null;
+        if ($payment->payment_type === 'invoice' && $payment->invoice) {
+            $settings = $payment->invoice->owner->getSettings();
+        }
+
+        $midtrans = $settings ? MidtransService::forTenant($settings) : MidtransService::forSystem();
+
+        if (!$midtrans->verifyCallback($callbackData)) {
+            Log::warning('Midtrans: invalid signature', ['order_id' => $orderId]);
+            return response()->json(['success' => false, 'message' => 'Invalid signature'], 400);
+        }
+
+        $transactionStatus = $callbackData['transaction_status'] ?? '';
+        $fraudStatus       = $callbackData['fraud_status'] ?? 'accept';
+
+        if (in_array($transactionStatus, ['capture', 'settlement']) && $fraudStatus !== 'deny') {
+            $payment->markAsPaid($callbackData);
+            Log::info('Midtrans: payment marked as paid', ['payment_id' => $payment->id]);
+
+            if ($payment->payment_type === 'invoice' && $payment->invoice) {
+                $invSettings = TenantSettings::getOrCreate((int) $payment->invoice->owner_id);
+                WaNotificationService::notifyInvoicePaid($invSettings, $payment->invoice->fresh()->load('pppUser'));
+            }
+        } elseif (in_array($transactionStatus, ['cancel', 'deny', 'expire'])) {
+            $payment->markAsExpired();
+            Log::info('Midtrans: payment expired/cancelled', ['payment_id' => $payment->id]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    public function callbackDuitku(Request $request)
+    {
+        $callbackData = $request->all();
+        Log::info('Duitku callback received', $callbackData);
+
+        $merchantOrderId = $callbackData['merchantOrderId'] ?? '';
+        $resultCode      = $callbackData['resultCode'] ?? '';
+
+        $payment = Payment::where('merchant_ref', $merchantOrderId)->first();
+        if (!$payment) {
+            Log::warning('Duitku: payment not found', ['merchantOrderId' => $merchantOrderId]);
+            return response()->json(['success' => false, 'message' => 'Payment not found'], 404);
+        }
+
+        $settings = null;
+        if ($payment->payment_type === 'invoice' && $payment->invoice) {
+            $settings = $payment->invoice->owner->getSettings();
+        }
+
+        $duitku = $settings ? DuitkuService::forTenant($settings) : DuitkuService::forSystem();
+
+        if (!$duitku->verifyCallback($callbackData)) {
+            Log::warning('Duitku: invalid signature', ['merchantOrderId' => $merchantOrderId]);
+            return response()->json(['success' => false, 'message' => 'Invalid signature'], 400);
+        }
+
+        if ($resultCode === '00') {
+            $payment->markAsPaid($callbackData);
+            Log::info('Duitku: payment marked as paid', ['payment_id' => $payment->id]);
+
+            if ($payment->payment_type === 'invoice' && $payment->invoice && $settings) {
+                WaNotificationService::notifyInvoicePaid($settings, $payment->invoice->fresh()->load('pppUser'));
+            }
+        } elseif (in_array($resultCode, ['01', '02'])) {
+            $payment->markAsFailed();
+            Log::info('Duitku: payment failed', ['payment_id' => $payment->id, 'resultCode' => $resultCode]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
     public function checkStatus(Payment $payment)
     {
         $user = auth()->user();
@@ -200,12 +306,12 @@ class PaymentController extends Controller
         // Get settings
         if ($payment->payment_type === 'invoice' && $payment->invoice) {
             $settings = $payment->invoice->owner->getSettings();
-            $tripay = TripayService::forTenant($settings);
+            $gateway  = $this->resolveGateway($settings);
         } else {
-            $tripay = TripayService::forSystem();
+            $gateway = TripayService::forSystem();
         }
 
-        $result = $tripay->getTransactionDetail($payment->reference);
+        $result = $gateway->getTransactionDetail($payment->reference);
 
         if ($result['success']) {
             $data = $result['data'];

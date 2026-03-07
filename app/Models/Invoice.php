@@ -35,6 +35,10 @@ class Invoice extends Model
         'payment_reference',
         'paid_at',
         'payment_id',
+        'paid_by',
+        'cash_received',
+        'transfer_amount',
+        'payment_note',
     ];
 
     protected function casts(): array
@@ -61,6 +65,11 @@ class Invoice extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function paidBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'paid_by');
     }
 
     public function payment(): BelongsTo

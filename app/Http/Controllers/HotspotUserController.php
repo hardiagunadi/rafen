@@ -207,6 +207,10 @@ class HotspotUserController extends Controller
     {
         $currentUser = auth()->user();
 
+        if ($currentUser->role === 'teknisi') {
+            abort(403);
+        }
+
         if (! $currentUser->isSuperAdmin() && $hotspotUser->owner_id !== $currentUser->effectiveOwnerId()) {
             abort(403);
         }

@@ -26,6 +26,7 @@ use App\Http\Controllers\SystemToolController;
 use App\Http\Controllers\WaBlastController;
 use App\Http\Controllers\IsolirPageController;
 use App\Http\Controllers\WaWebhookController;
+use App\Http\Controllers\TeknisiSetoranController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('login', [LoginController::class, 'show'])->name('login');
@@ -87,6 +88,13 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::post('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
     Route::post('invoices/{invoice}/send-wa', [InvoiceController::class, 'sendWa'])->name('invoices.send-wa');
     Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
+    Route::get('teknisi-setoran/datatable', [TeknisiSetoranController::class, 'datatable'])->name('teknisi-setoran.datatable');
+    Route::get('teknisi-setoran/teknisi-list', [TeknisiSetoranController::class, 'teknisiList'])->name('teknisi-setoran.teknisi-list');
+    Route::get('teknisi-setoran/{teknisiSetoran}', [TeknisiSetoranController::class, 'show'])->name('teknisi-setoran.show');
+    Route::get('teknisi-setoran', [TeknisiSetoranController::class, 'index'])->name('teknisi-setoran.index');
+    Route::post('teknisi-setoran', [TeknisiSetoranController::class, 'store'])->name('teknisi-setoran.store');
+    Route::post('teknisi-setoran/{teknisiSetoran}/submit', [TeknisiSetoranController::class, 'submit'])->name('teknisi-setoran.submit');
+    Route::post('teknisi-setoran/{teknisiSetoran}/verify', [TeknisiSetoranController::class, 'verify'])->name('teknisi-setoran.verify');
     Route::get('users/datatable', [UserManagementController::class, 'datatable'])->name('users.datatable');
     Route::resource('users', UserManagementController::class);
     Route::get('ppp-profiles/datatable', [\App\Http\Controllers\PppProfileController::class, 'datatable'])->name('ppp-profiles.datatable');
@@ -175,6 +183,8 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::put('/business', [TenantSettingsController::class, 'updateBusiness'])->name('update-business');
         Route::put('/payment', [TenantSettingsController::class, 'updatePayment'])->name('update-payment');
         Route::post('/test-tripay', [TenantSettingsController::class, 'testTripay'])->name('test-tripay');
+        Route::post('/test-midtrans', [TenantSettingsController::class, 'testMidtrans'])->name('test-midtrans');
+        Route::post('/test-duitku', [TenantSettingsController::class, 'testDuitku'])->name('test-duitku');
         Route::get('/payment-channels', [TenantSettingsController::class, 'getPaymentChannels'])->name('payment-channels');
         Route::post('/logo', [TenantSettingsController::class, 'uploadLogo'])->name('upload-logo');
 
@@ -248,6 +258,8 @@ Route::get('/isolir/{userId}', [IsolirPageController::class, 'show'])->name('iso
 
 // Payment Callbacks (no auth required)
 Route::post('/payment/callback', [PaymentController::class, 'callback'])->name('payment.callback');
+Route::post('/payment/callback/midtrans', [PaymentController::class, 'callbackMidtrans'])->name('payment.callback.midtrans');
+Route::post('/payment/callback/duitku', [PaymentController::class, 'callbackDuitku'])->name('payment.callback.duitku');
 Route::post('/subscription/payment/callback', [SubscriptionController::class, 'paymentCallback'])->name('subscription.payment.callback');
 
 // WA Gateway Webhooks (no auth required)
