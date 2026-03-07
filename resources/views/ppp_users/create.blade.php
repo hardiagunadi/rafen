@@ -174,9 +174,20 @@
                                 @error('odp_pop')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="form-group col-md-6">
-                                <label>ID Pelanggan</label>
-                                <input type="text" name="customer_id" value="{{ old('customer_id') }}" class="form-control @error('customer_id') is-invalid @enderror" required>
-                                @error('customer_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                <label>ID Pelanggan <span class="badge badge-info" style="font-size:10px">Auto</span></label>
+                                <div class="input-group">
+                                    <input type="text" name="customer_id" id="customer_id" value="{{ old('customer_id') }}" class="form-control @error('customer_id') is-invalid @enderror" placeholder="Memuat..." readonly>
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-secondary" id="btn-generate-customer-id" title="Generate ulang ID">
+                                            <i class="fas fa-sync-alt"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary" id="btn-unlock-customer-id" title="Edit manual">
+                                            <i class="fas fa-lock"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                @error('customer_id')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                                <small class="text-muted" id="customer-id-hint">ID otomatis di-generate. Klik <i class="fas fa-lock"></i> untuk edit manual.</small>
                             </div>
                         </div>
                         <div class="form-row">
@@ -325,5 +336,57 @@
                 }
             }
         });
+
     </script>
 @endsection
+
+@push('scripts')
+<script>
+$(function() {
+    var $field = $('#customer_id');
+    var $btnGen = $('#btn-generate-customer-id');
+    var $btnUnlock = $('#btn-unlock-customer-id');
+    var $hint = $('#customer-id-hint');
+    var isLocked = true;
+
+    function fetchCustomerId() {
+        $btnGen.prop('disabled', true).find('i').addClass('fa-spin');
+        $.get('{{ route('ppp-users.generate-customer-id') }}', function(res) {
+            $field.val(res.customer_id);
+        }).always(function() {
+            $btnGen.prop('disabled', false).find('i').removeClass('fa-spin');
+        });
+    }
+
+    function setLocked(locked) {
+        isLocked = locked;
+        $field.prop('readonly', locked);
+        if (locked) {
+            $btnUnlock.html('<i class="fas fa-lock"></i>').attr('title', 'Edit manual');
+            $btnGen.show();
+            $hint.html('ID otomatis di-generate. Klik <i class="fas fa-lock"></i> untuk edit manual.');
+        } else {
+            $btnUnlock.html('<i class="fas fa-lock-open"></i>').attr('title', 'Kunci & generate otomatis');
+            $btnGen.hide();
+            $hint.text('Mode edit manual aktif.');
+            $field.focus();
+        }
+    }
+
+    if (!$field.val()) {
+        fetchCustomerId();
+    }
+
+    $btnGen.on('click', fetchCustomerId);
+
+    $btnUnlock.on('click', function() {
+        if (isLocked) {
+            setLocked(false);
+        } else {
+            setLocked(true);
+            if (!$field.val()) fetchCustomerId();
+        }
+    });
+});
+</script>
+@endpush

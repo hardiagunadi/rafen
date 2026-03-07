@@ -48,6 +48,8 @@ class TenantSettings extends Model
         'wa_template_registration',
         'wa_template_invoice',
         'wa_template_payment',
+        'wa_notify_on_process',
+        'wa_template_on_process',
         'billing_date',
         'isolir_page_title',
         'isolir_page_body',
@@ -70,6 +72,7 @@ class TenantSettings extends Model
             'wa_notify_registration' => 'boolean',
             'wa_notify_invoice' => 'boolean',
             'wa_notify_payment' => 'boolean',
+            'wa_notify_on_process' => 'boolean',
             'wa_broadcast_enabled' => 'boolean',
             'wa_antispam_enabled' => 'boolean',
             'wa_antispam_delay_ms' => 'integer',
@@ -127,6 +130,7 @@ class TenantSettings extends Model
             'registration' => "*#Konfirmasi Registrasi Pelanggan*\n\n*Kepada Yth Bapak/Ibu {name}*,\nTerima kasih telah menjadi pelanggan kami. Kami sangat berterima kasih dan berharap kami dapat memberikan layanan terbaik kepada Anda\nBerikut informasi data registrasi anda :\n\n*Nama Lengkap : {name}*\n*Id Pelanggan : {customer_id}*\n*Paket Layanan : {profile}*\n*Tipe Pengguna : {service}*\n*Harga Paket : {total}*\n\nUntuk menghindari terisolirnya layanan anda, harap selalu bayarkan tagihan sebelum tanggal jatuh tempo\n\nUntuk informasi lainnya silahkan hubungi nomor *_Whatsapp {cs_number}_* untuk bantuan Customer Service\n\n*_Salam Hormat_*.",
             'invoice'      => "*##Invoice anda sudah diterbitkan*\n\nKepada Yth Bapak/Ibu *{name}*,\nBerikut ini merupakan pengingat tagihan anda dengan nomor invoice : {invoice_no}\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJatuh Tempo : *{due_date}*\nJumlah : *{total}*\n\nUntuk menghindari penangguhan layanan dan pemutusan layanan, harap bayarkan tagihan anda melalui nomor rekening dibawah atau pengambilan dirumah oleh Tim kolektor kami sebelum tanggal jatuh tempo pembayaran\n\nMohon sertakan ID PELANGGAN pada konfirmasi pembayaran anda\n{bank_account}\n\nUntuk informasi lainnya silahkan hubungi nomor *_Whatsapp {cs_number}_* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
             'payment'      => "*### Terima kasih atas pembayaran anda*\n\nKepada Yth Bapak/Ibu *{name}*,\nTerima kasih telah melunasi pembayaran invoice {invoice_no}\nBerikut informasi perpanjangan paket anda :\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJumlah Dibayarkan: *{total}*\n\n_Silahkan hubungi kami jika layanan anda masih terputus setelah membaca pesan ini_\n\nUntuk informasi lainnya silahkan hubungi nomor *Whatsapp {cs_number}* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
+            'on_process'   => "*#Pendaftaran Sedang Diproses*\n\nHalo *{name}*,\n\nTerima kasih telah mendaftar sebagai pelanggan kami. Pendaftaran Anda sedang dalam proses verifikasi.\n\nDetail layanan:\n- ID Pelanggan: *{customer_id}*\n- Paket: *{profile}*\n- Tipe: *{service}*\n- Tagihan: *Rp {total}*\n\nSilakan lakukan pembayaran ke rekening berikut agar layanan Anda segera diaktifkan:\n\n{bank_account}\n\nMohon sertakan *ID Pelanggan* pada keterangan transfer.\n\nInfo & bantuan: *{cs_number}*\n\n_*Salam Hormat*_.",
             default        => '',
         };
     }
@@ -140,6 +144,7 @@ class TenantSettings extends Model
             'registration' => $this->wa_template_registration,
             'invoice'      => $this->wa_template_invoice,
             'payment'      => $this->wa_template_payment,
+            'on_process'   => $this->wa_template_on_process,
             default        => null,
         };
 

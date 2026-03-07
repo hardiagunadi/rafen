@@ -54,30 +54,6 @@
                 </div>
             </div>
 
-            {{-- Filter status & batch --}}
-            <div class="d-flex flex-wrap mb-3">
-                <div class="form-group mb-2 mr-2">
-                    <select id="filter-status" class="form-control form-control-sm">
-                        <option value="">- Semua Status -</option>
-                        <option value="unused">UNUSED</option>
-                        <option value="used">USED</option>
-                        <option value="expired">EXPIRED</option>
-                    </select>
-                </div>
-                <div class="form-group mb-2 mr-2">
-                    <select id="filter-batch" class="form-control form-control-sm">
-                        <option value="">- Semua Batch -</option>
-                        @foreach($batches as $b)
-                            <option value="{{ $b }}">{{ $b }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div id="print-batch-btn" class="mb-2" style="display:none;">
-                    <a id="print-batch-link" href="#" class="btn btn-sm btn-outline-secondary" target="_blank">
-                        <i class="fas fa-print"></i> Print Batch
-                    </a>
-                </div>
-            </div>
 
             <div class="table-responsive">
                 <table id="vouchers-table" class="table table-striped table-hover mb-0" style="width:100%;">
@@ -117,10 +93,7 @@
                 ajax: {
                     url: '{{ route("vouchers.datatable") }}',
                     type: 'GET',
-                    data: function (d) {
-                        d.status = $('#filter-status').val() || '';
-                        d.batch  = $('#filter-batch').val() || '';
-                    },
+                    data: function (d) { },
                 },
                 columns: [
                     { data: 'checkbox', orderable: false, searchable: false, width: '40px' },
@@ -143,44 +116,9 @@
                 lengthMenu: [[20, 50, 100, 200], [20, 50, 100, 200]],
                 order: [[1, 'asc']],
                 stateSave: false,
-                drawCallback: function () {
-                    document.querySelectorAll('[data-ajax-delete]').forEach(function (btn) {
-                        if (btn._bound) return;
-                        btn._bound = true;
-                        btn.addEventListener('click', function () {
-                            if (!confirm(btn.dataset.confirm || 'Hapus?')) return;
-                            fetch(btn.dataset.ajaxDelete, {
-                                method: 'POST',
-                                headers: {
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                                },
-                                body: new URLSearchParams({ _method: 'DELETE' }),
-                            }).then(function (r) { return r.json(); }).then(function (data) {
-                                if (typeof AppAjax !== 'undefined') AppAjax.showToast(data.status || 'Dihapus.', 'success');
-                                if (dtTable) dtTable.ajax.reload(null, false);
-                            });
-                        });
-                    });
-                },
+                drawCallback: function () { },
             });
 
-            $('#filter-status').off('change.voucher').on('change.voucher', function () {
-                if (dtTable) dtTable.ajax.reload(null, true);
-            });
-
-            $('#filter-batch').off('change.voucher').on('change.voucher', function () {
-                var batchVal = $(this).val();
-                if (batchVal) {
-                    $('#print-batch-btn').show();
-                    $('#print-batch-link')
-                        .attr('href', '{{ url("vouchers") }}/' + encodeURIComponent(batchVal) + '/print')
-                        .html('<i class="fas fa-print"></i> Print Batch "' + $('<span>').text(batchVal).html() + '"');
-                } else {
-                    $('#print-batch-btn').hide();
-                }
-                if (dtTable) dtTable.ajax.reload(null, true);
-            });
 
             $('#select-all').off('change.voucher').on('change.voucher', function () {
                 $('#vouchers-table tbody input[type="checkbox"]:not(:disabled)').prop('checked', this.checked);

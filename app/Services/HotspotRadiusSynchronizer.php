@@ -33,6 +33,13 @@ class HotspotRadiusSynchronizer
             return;
         }
 
+        if ($user->status_registrasi === 'on_process') {
+            // Belum aktif — hapus dari RADIUS agar tidak bisa login
+            DB::table('radcheck')->where('username', $user->username)->delete();
+            DB::table('radreply')->where('username', $user->username)->delete();
+            return;
+        }
+
         if ($user->status_akun !== 'enable' || ! $user->hotspot_password) {
             DB::table('radcheck')->where('username', $user->username)->delete();
             DB::table('radreply')->where('username', $user->username)->delete();

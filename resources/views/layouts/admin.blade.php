@@ -548,6 +548,9 @@
         @if (session('status'))
             <script>window.__flashStatus = {{ Js::from(session('status')) }};</script>
         @endif
+        @if (session('success'))
+            <script>window.__flashStatus = {{ Js::from(session('success')) }};</script>
+        @endif
         @if (session('error'))
             <script>window.__flashError = {{ Js::from(session('error')) }};</script>
         @endif
@@ -765,6 +768,7 @@ window.AppAjax = (function () {
 
             request('DELETE', url).then(function (data) {
                 showToast(data.message || data.status || 'Data berhasil dihapus.', 'success');
+                document.dispatchEvent(new CustomEvent('rafen:ajax-success'));
                 if (row) {
                     row.style.transition = 'opacity .3s';
                     row.style.opacity = '0';
@@ -793,6 +797,7 @@ window.AppAjax = (function () {
                 btn.disabled = false;
                 btn.innerHTML = origText;
                 showToast(data.message || data.status || 'Berhasil.', 'success');
+                document.dispatchEvent(new CustomEvent('rafen:ajax-success'));
                 if (btn.dataset.reloadRow) {
                     var row = btn.closest('tr');
                     if (row && data.row_html) row.outerHTML = data.row_html;

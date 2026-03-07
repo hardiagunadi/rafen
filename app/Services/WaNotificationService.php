@@ -20,7 +20,10 @@ class WaNotificationService
         }
 
         $phone = $user->nomor_hp ?? '';
+        $context = ['event' => 'registration', 'user_id' => $user->id, 'username' => $user->username];
+
         if (empty(trim($phone))) {
+            Log::info('WA skip: nomor HP kosong', $context);
             return;
         }
 
@@ -50,7 +53,7 @@ class WaNotificationService
                 $template
             );
 
-            $service->sendMessage($phone, $message);
+            $service->sendMessage($phone, $message, $context);
         } catch (\Throwable $e) {
             Log::warning('WA notifyRegistration failed', ['error' => $e->getMessage(), 'user_id' => $user->id]);
         }
@@ -66,7 +69,10 @@ class WaNotificationService
         }
 
         $phone = $user->nomor_hp ?? '';
+        $context = ['event' => 'invoice_created', 'invoice_id' => $invoice->id, 'invoice_number' => $invoice->invoice_number, 'user_id' => $user->id];
+
         if (empty(trim($phone))) {
+            Log::info('WA skip: nomor HP kosong', $context);
             return;
         }
 
@@ -104,9 +110,61 @@ class WaNotificationService
                 $template
             );
 
-            $service->sendMessage($phone, $message);
+            $service->sendMessage($phone, $message, $context);
         } catch (\Throwable $e) {
             Log::warning('WA notifyInvoiceCreated failed', ['error' => $e->getMessage(), 'invoice_id' => $invoice->id]);
+        }
+    }
+
+    /**
+     * Notifikasi saat pelanggan didaftarkan dengan status ON PROCESS.
+     * Berisi info tagihan + instruksi pembayaran agar layanan bisa diaktifkan.
+     */
+    public static function notifyOnProcess(TenantSettings $settings, PppUser|HotspotUser $user, ?Invoice $invoice = null): void
+    {
+        if (! ($settings->wa_notify_on_process ?? true)) {
+            return;
+        }
+
+        $phone = $user->nomor_hp ?? '';
+        $context = ['event' => 'on_process', 'user_id' => $user->id, 'username' => $user->username];
+
+        if (empty(trim($phone))) {
+            Log::info('WA skip: nomor HP kosong', $context);
+            return;
+        }
+
+        try {
+            $service = WaGatewayService::forTenant($settings);
+            if (! $service) {
+                return;
+            }
+
+            $template = $settings->getTemplate('on_process');
+
+            $isPpp = $user instanceof PppUser;
+            $profileName = $isPpp
+                ? ($user->profile->name ?? '-')
+                : ($user->hotspotProfile->name ?? '-');
+            $serviceLabel = $isPpp ? 'PPPoE' : 'Hotspot';
+            $customerId = $user->customer_id ?? $user->username ?? '-';
+            $csNumber = $settings->business_phone ?? '-';
+
+            $bankAccounts = $user->owner?->bankAccounts()->active()->get()
+                ?? \App\Models\BankAccount::where('user_id', $settings->user_id)->where('is_active', true)->get();
+            $bankLines = $bankAccounts->map(fn ($b) => $b->bank_name . ' ' . $b->account_number . ' a/n ' . $b->account_name)->join("\n");
+
+            $total = $invoice ? 'Rp ' . number_format($invoice->total, 0, ',', '.') : '-';
+
+            $message = str_replace(
+                ['{name}', '{customer_id}', '{profile}', '{service}', '{total}', '{cs_number}', '{bank_account}'],
+                [$user->customer_name, $customerId, $profileName, $serviceLabel, $total, $csNumber, $bankLines],
+                $template
+            );
+
+            $service->sendMessage($phone, $message, $context);
+        } catch (\Throwable $e) {
+            Log::warning('WA notifyOnProcess failed', ['error' => $e->getMessage(), 'user_id' => $user->id]);
         }
     }
 
@@ -119,12 +177,17 @@ class WaNotificationService
             return;
         }
 
-        $phone = '';
-        if ($invoice->pppUser) {
-            $phone = $invoice->pppUser->nomor_hp ?? '';
+        $context = ['event' => 'invoice_paid', 'invoice_id' => $invoice->id, 'invoice_number' => $invoice->invoice_number];
+
+        if (! $invoice->pppUser) {
+            Log::info('WA skip: pelanggan (pppUser) tidak ditemukan', $context);
+            return;
         }
 
+        $phone = $invoice->pppUser->nomor_hp ?? '';
+
         if (empty(trim($phone))) {
+            Log::info('WA skip: nomor HP kosong', array_merge($context, ['user_id' => $invoice->pppUser->id]));
             return;
         }
 
@@ -157,7 +220,7 @@ class WaNotificationService
                 $template
             );
 
-            $service->sendMessage($phone, $message);
+            $service->sendMessage($phone, $message, array_merge($context, ['user_id' => $invoice->pppUser->id]));
         } catch (\Throwable $e) {
             Log::warning('WA notifyInvoicePaid failed', ['error' => $e->getMessage(), 'invoice_id' => $invoice->id]);
         }

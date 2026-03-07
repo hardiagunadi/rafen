@@ -54,6 +54,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('radius-auth', [\App\Http\Controllers\LogController::class, 'radiusAuthIndex'])->name('radius-auth');
         Route::get('radius-auth/datatable', [\App\Http\Controllers\LogController::class, 'radiusAuthDatatable'])->name('radius-auth.datatable');
         Route::get('wa-blast', [\App\Http\Controllers\LogController::class, 'waBlastIndex'])->name('wa-blast');
+        Route::get('wa-blast/datatable', [\App\Http\Controllers\LogController::class, 'waBlastDatatable'])->name('wa-blast.datatable');
     });
     Route::post('mikrotik-connections/test', [MikrotikConnectionController::class, 'test'])->name('mikrotik-connections.test');
     Route::post('mikrotik-connections/{mikrotikConnection}/ping', [MikrotikConnectionController::class, 'pingNow'])->name('mikrotik-connections.ping-now');
@@ -82,8 +83,8 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('invoices/nota-bulk', [InvoiceController::class, 'notaBulk'])->name('invoices.nota-bulk');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
-    Route::patch('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
-    Route::patch('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
+    Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
+    Route::post('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
     Route::post('invoices/{invoice}/send-wa', [InvoiceController::class, 'sendWa'])->name('invoices.send-wa');
     Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
     Route::get('users/datatable', [UserManagementController::class, 'datatable'])->name('users.datatable');
@@ -105,6 +106,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::delete('ppp-profiles/bulk-destroy', [\App\Http\Controllers\PppProfileController::class, 'bulkDestroy'])->name('ppp-profiles.bulk-destroy');
     Route::resource('ppp-profiles', \App\Http\Controllers\PppProfileController::class);
     Route::get('ppp-users/datatable', [\App\Http\Controllers\PppUserController::class, 'datatable'])->name('ppp-users.datatable');
+    Route::get('ppp-users/generate-customer-id', [\App\Http\Controllers\PppUserController::class, 'generateCustomerId'])->name('ppp-users.generate-customer-id');
     Route::delete('ppp-users/bulk-destroy', [\App\Http\Controllers\PppUserController::class, 'bulkDestroy'])->name('ppp-users.bulk-destroy');
     Route::post('ppp-users/{pppUser}/toggle-status', [\App\Http\Controllers\PppUserController::class, 'toggleStatus'])->name('ppp-users.toggle-status');
     Route::get('ppp-users/{pppUser}/invoice-datatable', [\App\Http\Controllers\PppUserController::class, 'invoiceDatatable'])->name('ppp-users.invoice-datatable');
@@ -113,6 +115,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::post('ppp-users/{pppUser}/disconnect', [\App\Http\Controllers\PppUserController::class, 'disconnect'])->name('ppp-users.disconnect');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::get('hotspot-users/datatable', [HotspotUserController::class, 'datatable'])->name('hotspot-users.datatable');
+    Route::get('hotspot-users/generate-customer-id', [HotspotUserController::class, 'generateCustomerId'])->name('hotspot-users.generate-customer-id');
     Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');
     Route::post('hotspot-users/{hotspotUser}/renew', [HotspotUserController::class, 'renew'])->name('hotspot-users.renew');
     Route::post('hotspot-users/{hotspotUser}/toggle-status', [HotspotUserController::class, 'toggleStatus'])->name('hotspot-users.toggle-status');

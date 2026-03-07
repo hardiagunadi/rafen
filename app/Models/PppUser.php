@@ -95,6 +95,20 @@ class PppUser extends Model
     }
 
     /**
+     * Generate unique customer_id for PPP users.
+     * Format: 12-digit angka sequential (000000000001, 000000000002, ...)
+     */
+    public static function generateCustomerId(?int $ownerId = null): string
+    {
+        $max = static::query()
+            ->whereRaw("customer_id REGEXP '^[0-9]{12}$'")
+            ->selectRaw('MAX(CAST(customer_id AS UNSIGNED)) as max_num')
+            ->value('max_num');
+        $next = ($max ?? 0) + 1;
+        return str_pad((string) $next, 12, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * Hide sensitive credentials from non-super admins
      */
     public function getHiddenCredentialsAttribute(): array

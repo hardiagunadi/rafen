@@ -101,7 +101,13 @@
                 processing: true,
                 serverSide: true,
                 responsive: true,
-                ajax: { url: '{{ route('hotspot-users.datatable') }}', type: 'GET' },
+                ajax: {
+                    url: '{{ route('hotspot-users.datatable') }}',
+                    type: 'GET',
+                    data: function (d) {
+                        d.filter_on_process = $('#filter-on-process').is(':checked') ? '1' : '';
+                    }
+                },
                 columns: [
                     { data: 'checkbox',    orderable: false, searchable: false, width: '40px' },
                     { data: 'customer_id', orderable: true },
@@ -125,6 +131,18 @@
                 pageLength: 10,
                 lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
                 order: [[1, 'asc']],
+                initComplete: function () {
+                    var filters = '<div class="d-flex align-items-center mr-2" style="gap:.75rem;">'
+                        + '<div class="custom-control custom-switch mb-0">'
+                        +   '<input type="checkbox" class="custom-control-input" id="filter-on-process">'
+                        +   '<label class="custom-control-label text-info font-weight-bold" for="filter-on-process">On Process</label>'
+                        + '</div>'
+                        + '</div>';
+                    $('#hotspot-users-table_filter').css('display','flex').css('align-items','center').prepend(filters);
+                    $('#filter-on-process').on('change', function () {
+                        table.ajax.reload();
+                    });
+                },
             });
 
             $('#select-all').on('change', function () {

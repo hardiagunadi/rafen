@@ -30,6 +30,7 @@ class HotspotUser extends Model
         'email',
         'alamat',
         'username',
+        'metode_login',
         'hotspot_password',
         'catatan',
         'mixradius_id',
@@ -69,6 +70,23 @@ class HotspotUser extends Model
         }
 
         return $query->where('owner_id', $user->effectiveOwnerId());
+    }
+
+    /**
+     * Generate unique customer_id for Hotspot users.
+     * Format: MX-XXXXXX (sequential per owner, 6-digit zero-padded) — mengikuti format data existing.
+     */
+    public static function generateCustomerId(?int $ownerId = null): string
+    {
+        $prefix = 'MX-';
+        $prefixLen = strlen($prefix) + 1;
+        // Global sequence — tidak filter per owner agar tidak ada duplikat antar tenant
+        $max = static::query()
+            ->where('customer_id', 'like', $prefix.'%')
+            ->selectRaw("MAX(CAST(SUBSTRING(customer_id, {$prefixLen}) AS UNSIGNED)) as max_num")
+            ->value('max_num');
+        $next = ($max ?? 0) + 1;
+        return $prefix.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
     }
 
     public function getMaskedPasswordAttribute(): string

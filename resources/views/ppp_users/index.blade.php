@@ -111,8 +111,9 @@
                     url: '{{ route('ppp-users.datatable') }}',
                     type: 'GET',
                     data: function (d) {
-                        d.filter_isolir  = $('#filter-isolir').is(':checked') ? '1' : '';
-                        d.filter_tagihan = $('#filter-tagihan').is(':checked') ? '1' : '';
+                        d.filter_isolir     = $('#filter-isolir').is(':checked') ? '1' : '';
+                        d.filter_tagihan    = $('#filter-tagihan').is(':checked') ? '1' : '';
+                        d.filter_on_process = $('#filter-on-process').is(':checked') ? '1' : '';
                     }
                 },
                 columns: [
@@ -151,9 +152,13 @@
                         +   '<input type="checkbox" class="custom-control-input" id="filter-tagihan">'
                         +   '<label class="custom-control-label text-danger font-weight-bold" for="filter-tagihan">Jatuh Tempo</label>'
                         + '</div>'
+                        + '<div class="custom-control custom-switch mb-0">'
+                        +   '<input type="checkbox" class="custom-control-input" id="filter-on-process">'
+                        +   '<label class="custom-control-label text-info font-weight-bold" for="filter-on-process">On Process</label>'
+                        + '</div>'
                         + '</div>';
                     $('#ppp-users-table_filter').css('display','flex').css('align-items','center').prepend(filters);
-                    $('#filter-isolir, #filter-tagihan').on('change', function () {
+                    $('#filter-isolir, #filter-tagihan, #filter-on-process').on('change', function () {
                         table.ajax.reload();
                     });
                 },

@@ -247,7 +247,7 @@ class User extends Authenticatable
 
     public function getSettings(): TenantSettings
     {
-        return TenantSettings::getOrCreate($this->id);
+        return TenantSettings::getOrCreate($this->effectiveOwnerId());
     }
 
     // Scopes

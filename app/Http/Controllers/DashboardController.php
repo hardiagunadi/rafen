@@ -40,7 +40,7 @@ class DashboardController extends Controller
             ->whereBetween('created_at', [$monthStart, $monthEnd])
             ->get();
         $incomeToday = $invoicesMonth->where('status', 'paid')->whereBetween('updated_at', [$now->copy()->startOfDay(), $now->copy()->endOfDay()])->sum('total');
-        $invoiceCountMonth = $invoicesMonth->count();
+        $invoiceCountMonth = $invoicesMonth->where('status', 'unpaid')->count();
 
         $stats = [
             'income_today'      => $incomeToday,

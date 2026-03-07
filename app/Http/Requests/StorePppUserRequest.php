@@ -40,7 +40,7 @@ class StorePppUserRequest extends FormRequest
             'profile_group_id' => ['nullable', 'integer', 'exists:profile_groups,id'],
             'ip_static' => ['nullable', 'string', 'max:120'],
             'odp_pop' => ['nullable', 'string', 'max:120'],
-            'customer_id' => ['required', 'string', 'max:120'],
+            'customer_id' => ['nullable', 'string', 'max:120'],
             'customer_name' => ['required', 'string', 'max:150'],
             'nik' => ['required', 'string', 'max:191'],
             'nomor_hp' => ['required', 'string', 'max:30'],

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\TenantSettings;
+use App\Models\WaBlastLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -27,6 +28,12 @@ class WaGatewayService
      * U+200D) are invisible to recipients but make the raw string unique.
      */
     private bool $randomize = false;
+
+    private ?int $ownerId = null;
+
+    private ?int $sentById = null;
+
+    private ?string $sentByName = null;
 
     public function __construct(
         private string $url,
@@ -61,6 +68,13 @@ class WaGatewayService
         }
 
         $instance->randomize = (bool) ($settings->wa_msg_randomize ?? true);
+        $instance->ownerId   = $settings->user_id ?? null;
+
+        // Auto-set sent_by dari user yang sedang login (jika ada)
+        if ($authUser = auth()->user()) {
+            $instance->sentById   = $authUser->id;
+            $instance->sentByName = $authUser->name;
+        }
 
         return $instance;
     }
@@ -148,15 +162,39 @@ class WaGatewayService
     }
 
     /**
+     * Validate that a normalized phone number looks like a valid WA number.
+     * Rules: starts with 62, total length 10–15 digits, digits only.
+     */
+    public function isValidPhone(string $normalized): bool
+    {
+        return (bool) preg_match('/^62\d{8,13}$/', $normalized);
+    }
+
+    /**
      * Send a single WhatsApp message.
      */
-    public function sendMessage(string $phone, string $message): bool
+    public function sendMessage(string $phone, string $message, array $context = []): bool
     {
-        $phone = $this->normalizePhone($phone);
-
-        if (empty($phone)) {
+        if (empty(trim($phone))) {
+            Log::info('WA skip: nomor HP kosong', $context);
+            $this->writeLog('skip', '', '', $context, 'Nomor HP kosong');
             return false;
         }
+
+        $normalized = $this->normalizePhone($phone);
+
+        if (! $this->isValidPhone($normalized)) {
+            $reason = 'Format nomor tidak valid sebagai nomor WA (harus 62xxxxxxxx, 10-15 digit)';
+            Log::info('WA skip: format nomor tidak valid sebagai nomor WA', array_merge($context, [
+                'phone_raw'        => $phone,
+                'phone_normalized' => $normalized,
+                'reason'           => $reason,
+            ]));
+            $this->writeLog('skip', $phone, $normalized, $context, $reason);
+            return false;
+        }
+
+        $phone = $normalized;
 
         $this->applyAntiSpamDelay();
 
@@ -180,15 +218,30 @@ class WaGatewayService
             $this->sentThisMinute++;
 
             if ($response->successful()) {
-                $body = $response->json();
+                $body      = $response->json();
+                $msgData   = $body['data']['messages'][0] ?? [];
+                $refId     = $msgData['ref_id'] ?? null;
+                $msgStatus = $msgData['status'] ?? null;
+
+                Log::info('WA sent', array_merge($context, [
+                    'phone'      => $phone,
+                    'ref_id'     => $refId,
+                    'msg_status' => $msgStatus,
+                    'note'       => 'Gateway hanya konfirmasi pesan diterima server (fire-and-forget). Delivery ke perangkat tidak dapat dikonfirmasi — nomor mungkin tidak terdaftar WA jika pelanggan tidak menerima.',
+                ]));
+
+                $this->writeLog('sent', $phone, $phone, $context, null, $refId);
+
                 return $body['status'] ?? false;
             }
 
+            $errReason = 'HTTP error dari gateway: ' . $response->status();
             Log::warning('WA Gateway: send-message HTTP error', [
                 'status' => $response->status(),
                 'body'   => $response->body(),
                 'phone'  => $phone,
             ]);
+            $this->writeLog('failed', $phone, $phone, $context, $errReason);
 
             return false;
         } catch (\Throwable $e) {
@@ -196,8 +249,37 @@ class WaGatewayService
                 'error' => $e->getMessage(),
                 'phone' => $phone,
             ]);
+            $this->writeLog('failed', $phone, $phone, $context, 'Exception: ' . $e->getMessage());
 
             return false;
+        }
+    }
+
+    /**
+     * Write a log entry to wa_blast_logs table.
+     */
+    private function writeLog(string $status, string $phone, string $phoneNormalized, array $context, ?string $reason, ?string $refId = null): void
+    {
+        try {
+            WaBlastLog::create([
+                'owner_id'         => $this->ownerId,
+                'sent_by_id'       => $this->sentById,
+                'sent_by_name'     => $this->sentByName,
+                'event'            => $context['event'] ?? 'unknown',
+                'phone'            => $phone ?: null,
+                'phone_normalized' => $phoneNormalized ?: null,
+                'status'           => $status,
+                'reason'           => $reason,
+                'invoice_number'   => $context['invoice_number'] ?? null,
+                'invoice_id'       => $context['invoice_id'] ?? null,
+                'user_id'          => $context['user_id'] ?? null,
+                'username'         => $context['username'] ?? null,
+                'customer_name'    => $context['name'] ?? null,
+                'ref_id'           => $refId,
+                'created_at'       => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('WA: gagal menulis wa_blast_logs', ['error' => $e->getMessage()]);
         }
     }
 
@@ -216,21 +298,26 @@ class WaGatewayService
         foreach ($recipients as $recipient) {
             $phone   = $recipient['phone'] ?? '';
             $message = $recipient['message'] ?? '';
+            $context = ['event' => 'blast', 'name' => $recipient['name'] ?? null];
 
-            if (empty($phone) || empty($message)) {
+            if (empty($message)) {
                 $failed++;
-                $results[] = ['phone' => $phone, 'status' => false, 'reason' => 'Empty phone or message'];
+                $results[] = ['phone' => $phone, 'status' => false, 'reason' => 'Pesan kosong'];
                 continue;
             }
 
-            $sent = $this->sendMessage($phone, $message);
+            $sent = $this->sendMessage($phone, $message, $context);
 
             if ($sent) {
                 $success++;
                 $results[] = ['phone' => $this->normalizePhone($phone), 'status' => true];
             } else {
+                $normalized = $this->normalizePhone($phone);
+                $reason = empty(trim($phone))
+                    ? 'Nomor HP kosong'
+                    : (! $this->isValidPhone($normalized) ? 'Format nomor tidak valid sebagai nomor WA' : 'Gagal terkirim');
                 $failed++;
-                $results[] = ['phone' => $this->normalizePhone($phone), 'status' => false, 'reason' => 'Send failed'];
+                $results[] = ['phone' => $phone, 'status' => false, 'reason' => $reason];
             }
         }
 

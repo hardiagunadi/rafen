@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use App\Models\TenantSettings;
+use App\Services\RadiusReplySynchronizer;
 use App\Services\WaNotificationService;
 use App\Traits\LogsActivity;
 use Carbon\Carbon;
@@ -58,7 +59,7 @@ class InvoiceController extends Controller
                 'owner_name'      => $r->owner?->name ?? '-',
                 'status'          => $r->status,
                 'can_pay'         => $r->status === 'unpaid',
-                'can_renew'       => $r->status === 'unpaid' && $r->created_at->equalTo($r->updated_at),
+                'can_renew'       => $r->status === 'unpaid' && abs($r->created_at->diffInSeconds($r->updated_at)) < 5,
                 'pay_url'         => route('invoices.pay', $r->id),
                 'renew_url'       => route('invoices.renew', $r->id),
                 'destroy_url'     => route('invoices.destroy', $r->id),
@@ -141,17 +142,29 @@ class InvoiceController extends Controller
             abort(403);
         }
 
-        $invoice->update(['status' => 'paid']);
+        $invoice->update(['status' => 'paid', 'paid_at' => now()]);
         if ($invoice->pppUser) {
+            $wasOnProcess = $invoice->pppUser->status_registrasi === 'on_process';
+
             $invoice->pppUser->update([
                 'status_bayar' => 'sudah_bayar',
                 'jatuh_tempo' => $this->extendDueDate($invoice),
             ]);
+
+            if ($wasOnProcess) {
+                $invoice->pppUser->update(['status_registrasi' => 'aktif']);
+                app(RadiusReplySynchronizer::class)->syncSingleUser($invoice->pppUser->fresh());
+            }
         }
 
         $this->logActivity('paid', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
 
         $settings = TenantSettings::getOrCreate((int) $invoice->owner_id);
+
+        if (isset($wasOnProcess) && $wasOnProcess) {
+            WaNotificationService::notifyRegistration($settings, $invoice->pppUser->fresh()->load('profile'));
+        }
+
         WaNotificationService::notifyInvoicePaid($settings, $invoice->fresh()->load('pppUser'));
 
         if (request()->wantsJson()) {
@@ -176,7 +189,7 @@ class InvoiceController extends Controller
             return redirect()->back()->with('status', 'Invoice sudah dibayar.');
         }
 
-        if (! $invoice->created_at->equalTo($invoice->updated_at)) {
+        if (abs($invoice->created_at->diffInSeconds($invoice->updated_at)) >= 5) {
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Layanan sudah diperpanjang untuk periode ini.'], 422);
             }
@@ -197,6 +210,12 @@ class InvoiceController extends Controller
         }
 
         $this->logActivity('renewed', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
+
+        $settings = TenantSettings::getOrCreate((int) $invoice->owner_id);
+        $freshInvoice = $invoice->fresh()->load('pppUser');
+        if ($freshInvoice->pppUser) {
+            WaNotificationService::notifyInvoiceCreated($settings, $freshInvoice, $freshInvoice->pppUser);
+        }
 
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Layanan diperpanjang, status bayar tetap BELUM BAYAR.']);
@@ -307,6 +326,11 @@ class InvoiceController extends Controller
     private function extendDueDate(Invoice $invoice): Carbon
     {
         $base = $invoice->due_date ? Carbon::parse($invoice->due_date) : now();
+
+        // Jika due_date sudah lewat, hitung dari hari ini agar tidak extend ke masa lalu
+        if ($base->isPast()) {
+            $base = now();
+        }
 
         return $base->copy()->addMonthNoOverflow()->endOfDay();
     }

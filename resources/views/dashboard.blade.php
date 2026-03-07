@@ -22,7 +22,7 @@
             <div class="small-box bg-warning">
                 <div class="inner">
                     <h3>{{ $stats['invoice_count'] }} Invoice</h3>
-                    <p>Data Tagihan</p>
+                    <p>Tagihan Belum Lunas</p>
                 </div>
                 <div class="icon">
                     <i class="fas fa-file-invoice"></i>

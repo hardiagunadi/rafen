@@ -21,6 +21,8 @@ class TenantSettingsController extends Controller
 
     public function updateBusiness(Request $request)
     {
+        if ($request->user()->isSubUser()) abort(403);
+
         $validated = $request->validate([
             'business_name' => 'nullable|string|max:255',
             'business_phone' => 'nullable|string|max:20',
@@ -43,6 +45,8 @@ class TenantSettingsController extends Controller
 
     public function updatePayment(Request $request)
     {
+        if ($request->user()->isSubUser()) abort(403);
+
         $validated = $request->validate([
             'enable_qris_payment' => 'boolean',
             'enable_va_payment' => 'boolean',
@@ -215,6 +219,8 @@ class TenantSettingsController extends Controller
 
     public function updateWa(Request $request)
     {
+        if ($request->user()->isSubUser()) abort(403);
+
         $validated = $request->validate([
             'wa_gateway_url'              => 'nullable|url|max:255',
             'wa_gateway_token'            => 'nullable|string|max:500',
@@ -231,6 +237,8 @@ class TenantSettingsController extends Controller
             'wa_template_registration'    => 'nullable|string|max:2000',
             'wa_template_invoice'         => 'nullable|string|max:2000',
             'wa_template_payment'         => 'nullable|string|max:2000',
+            'wa_notify_on_process'        => 'boolean',
+            'wa_template_on_process'      => 'nullable|string|max:2000',
         ]);
 
         $user = $request->user();
@@ -332,6 +340,8 @@ class TenantSettingsController extends Controller
 
     public function uploadLogo(Request $request)
     {
+        if ($request->user()->isSubUser()) abort(403);
+
         $request->validate([
             'business_logo' => 'required|image|max:2048',
         ]);
@@ -353,6 +363,8 @@ class TenantSettingsController extends Controller
 
     public function updateIsolir(Request $request)
     {
+        if ($request->user()->isSubUser()) abort(403);
+
         $validated = $request->validate([
             'isolir_page_title'        => 'nullable|string|max:255',
             'isolir_page_body'         => 'nullable|string|max:2000',

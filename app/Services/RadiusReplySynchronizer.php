@@ -186,6 +186,13 @@ class RadiusReplySynchronizer
             return;
         }
 
+        if ($user->status_registrasi === 'on_process') {
+            // Belum aktif — hapus dari RADIUS agar tidak bisa login
+            DB::table('radcheck')->where('username', $user->username)->delete();
+            DB::table('radreply')->where('username', $user->username)->delete();
+            return;
+        }
+
         // User isolir: pertahankan radcheck (agar bisa reconnect) tapi jangan overwrite
         // radreply — IsolirSynchronizer yang menangani radreply isolir.
         if ($user->status_akun === 'isolir') {

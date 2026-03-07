@@ -189,11 +189,26 @@ function sendBlast() {
     })
     .then(r => r.json())
     .then(data => {
-        if (data.success) {
-            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> ' + data.message + '</div>';
-        } else {
-            resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times"></i> ' + data.message + '</div>';
+        var alertClass = data.success ? 'alert-success' : 'alert-danger';
+        var icon = data.success ? 'fa-check' : 'fa-times';
+        var html = '<div class="alert ' + alertClass + '"><i class="fas ' + icon + '"></i> ' + data.message + '</div>';
+
+        if (data.results && data.results.length > 0) {
+            var failed = data.results.filter(function(r) { return !r.status; });
+            if (failed.length > 0) {
+                html += '<div class="mt-2">'
+                    + '<strong>Log Skip / Gagal (' + failed.length + ' penerima):</strong>'
+                    + '<div class="table-responsive mt-1">'
+                    + '<table class="table table-sm table-bordered mb-0">'
+                    + '<thead class="thead-light"><tr><th>Nomor</th><th>Alasan</th></tr></thead><tbody>';
+                failed.forEach(function(r) {
+                    html += '<tr><td>' + (r.phone || '-') + '</td><td class="text-danger">' + (r.reason || 'Gagal terkirim') + '</td></tr>';
+                });
+                html += '</tbody></table></div></div>';
+            }
         }
+
+        resultDiv.innerHTML = html;
     })
     .catch(() => {
         resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times"></i> Terjadi kesalahan, coba lagi.</div>';

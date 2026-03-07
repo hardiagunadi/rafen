@@ -25,7 +25,7 @@ class WaBlastController extends Controller
         }
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): View|\Illuminate\Http\RedirectResponse
     {
         $this->authorizeAccess();
 
@@ -33,7 +33,8 @@ class WaBlastController extends Controller
         $settings = TenantSettings::getOrCreate($currentUser->effectiveOwnerId());
 
         if (! $settings->wa_broadcast_enabled && ! $currentUser->isSuperAdmin()) {
-            abort(403, 'Fitur WA Blast belum diaktifkan. Aktifkan di Pengaturan → WhatsApp.');
+            return redirect()->route('wa-gateway.index')
+                ->with('error', 'Fitur WA Blast belum diaktifkan. Aktifkan toggle "Aktifkan Fitur WA Blast" di halaman ini lalu simpan.');
         }
 
         $pppProfiles = PppProfile::query()->accessibleBy($currentUser)->orderBy('name')->get();
@@ -106,10 +107,11 @@ class WaBlastController extends Controller
         $result = $waService->sendBulk($recipients);
 
         return response()->json([
-            'success' => true,
-            'message' => "Pesan terkirim ke {$result['success']} penerima. Gagal: {$result['failed']}.",
+            'success'       => true,
+            'message'       => "Pesan terkirim ke {$result['success']} penerima. Gagal/Skip: {$result['failed']}.",
             'success_count' => $result['success'],
             'failed_count'  => $result['failed'],
+            'results'       => $result['results'],
         ]);
     }
 

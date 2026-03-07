@@ -26,6 +26,12 @@ use Illuminate\View\View;
 class PppUserController extends Controller
 {
     use LogsActivity;
+    public function generateCustomerId(Request $request): JsonResponse
+    {
+        $ownerId = $request->input('owner_id') ? (int) $request->input('owner_id') : $request->user()->effectiveOwnerId();
+        return response()->json(['customer_id' => PppUser::generateCustomerId($ownerId)]);
+    }
+
     public function datatable(Request $request): JsonResponse
     {
         $currentUser = $request->user();
@@ -35,6 +41,7 @@ class PppUserController extends Controller
         $search       = $request->input('search.value', '');
         $filterIsolir = $request->input('filter_isolir', '');
         $filterTagihan = $request->input('filter_tagihan', '');
+        $filterOnProcess = $request->input('filter_on_process', '');
 
         $query = PppUser::query()
             ->with(['owner', 'profile', 'invoices' => fn ($q) => $q->where('status', 'unpaid')->latest()->limit(1)])
@@ -46,6 +53,10 @@ class PppUserController extends Controller
 
         if ($filterTagihan === '1') {
             $query->whereHas('invoices', fn ($q) => $q->overdue());
+        }
+
+        if ($filterOnProcess === '1') {
+            $query->where('status_registrasi', 'on_process');
         }
 
         $total = (clone $query)->count();
@@ -207,8 +218,20 @@ class PppUserController extends Controller
 
         $user = PppUser::create($data);
 
-        if ($data['status_bayar'] === 'belum_bayar') {
-            $this->createInvoiceForUser($user, null, false, true);
+        if ($data['status_registrasi'] === 'on_process') {
+            // ON PROCESS: buat invoice (jika belum bayar) tapi tahan WA registrasi
+            $invoice = null;
+            if ($data['status_bayar'] === 'belum_bayar') {
+                $invoice = $this->createInvoiceForUser($user, null, false, true);
+            }
+            $settings = TenantSettings::getOrCreate((int) $user->owner_id);
+            WaNotificationService::notifyOnProcess($settings, $user->load('profile'), $invoice);
+        } else {
+            if ($data['status_bayar'] === 'belum_bayar') {
+                $this->createInvoiceForUser($user, null, false, true);
+            }
+            $settings = TenantSettings::getOrCreate((int) $user->owner_id);
+            WaNotificationService::notifyRegistration($settings, $user->load('profile'));
         }
 
         app(RadiusReplySynchronizer::class)->syncSingleUser($user);
@@ -218,9 +241,6 @@ class PppUserController extends Controller
         }
 
         $this->logActivity('created', 'PppUser', $user->id, $user->customer_name, (int) $user->owner_id);
-
-        $settings = TenantSettings::getOrCreate((int) $user->owner_id);
-        WaNotificationService::notifyRegistration($settings, $user->load('profile'));
 
         return redirect()->route('ppp-users.index')->with('status', 'User PPP ditambahkan.');
     }
@@ -260,10 +280,20 @@ class PppUserController extends Controller
         $originalStatus = $pppUser->status_bayar;
         $originalStatus = $pppUser->status_bayar;
         $originalStatusAkun = $pppUser->status_akun;
+        $originalStatusRegistrasi = $pppUser->status_registrasi;
         $originalDue = $pppUser->jatuh_tempo;
         $data = $this->prepareData($request->validated(), $pppUser);
 
         $pppUser->update($data);
+
+        // ON PROCESS → AKTIF: trigger invoice + WA registrasi
+        if ($originalStatusRegistrasi === 'on_process' && $pppUser->status_registrasi === 'aktif') {
+            if ($pppUser->status_bayar === 'belum_bayar' && ! $pppUser->invoices()->exists()) {
+                $this->createInvoiceForUser($pppUser, null, false, true);
+            }
+            $settings = TenantSettings::getOrCreate((int) $pppUser->owner_id);
+            WaNotificationService::notifyRegistration($settings, $pppUser->load('profile'));
+        }
 
         if ($data['status_bayar'] === 'belum_bayar' && $originalStatus !== 'belum_bayar') {
             $this->createInvoiceForUser($pppUser);
@@ -533,6 +563,12 @@ class PppUserController extends Controller
      */
     private function prepareData(array $data, ?PppUser $existing = null): array
     {
+        // Auto-generate customer_id jika kosong
+        if (empty($data['customer_id'])) {
+            $ownerId = isset($data['owner_id']) ? (int) $data['owner_id'] : ($existing?->owner_id ? (int) $existing->owner_id : null);
+            $data['customer_id'] = PppUser::generateCustomerId($ownerId);
+        }
+
         if (($data['tipe_ip'] ?? '') !== 'static') {
             $data['profile_group_id'] = null;
             $data['ip_static'] = null;
@@ -708,20 +744,20 @@ class PppUserController extends Controller
         return now()->addMonthNoOverflow()->endOfDay();
     }
 
-    private function createInvoiceForUser(PppUser $user, ?Carbon $dueOverride = null, bool $forceNew = false, bool $applyProrata = false): void
+    private function createInvoiceForUser(PppUser $user, ?Carbon $dueOverride = null, bool $forceNew = false, bool $applyProrata = false): ?Invoice
     {
         if ($forceNew) {
             $user->invoices()->where('status', 'unpaid')->delete();
         } else {
             $hasUnpaid = $user->invoices()->where('status', 'unpaid')->exists();
             if ($hasUnpaid) {
-                return;
+                return null;
             }
         }
 
         $profile = $user->profile;
         if (! $profile) {
-            return;
+            return null;
         }
 
         $promoMonths = (int) ($user->durasi_promo_bulan ?? 0);
@@ -778,6 +814,8 @@ class PppUserController extends Controller
             'due_date' => $dueDate,
             'status' => 'unpaid',
         ]);
+
+        return $user->invoices()->latest()->first();
     }
 
     private function markInvoicePaid(PppUser $user): void

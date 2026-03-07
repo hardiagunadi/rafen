@@ -19,6 +19,12 @@ use Illuminate\View\View;
 
 class HotspotUserController extends Controller
 {
+    public function generateCustomerId(Request $request): JsonResponse
+    {
+        $ownerId = $request->input('owner_id') ? (int) $request->input('owner_id') : $request->user()->effectiveOwnerId();
+        return response()->json(['customer_id' => HotspotUser::generateCustomerId($ownerId)]);
+    }
+
     public function datatable(Request $request): JsonResponse
     {
         $currentUser = $request->user();
@@ -26,10 +32,15 @@ class HotspotUserController extends Controller
         $start  = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
         $search = $request->input('search.value', '');
+        $filterOnProcess = $request->input('filter_on_process', '');
 
         $query = HotspotUser::query()
             ->with(['owner', 'hotspotProfile'])
             ->accessibleBy($currentUser);
+
+        if ($filterOnProcess === '1') {
+            $query->where('status_registrasi', 'on_process');
+        }
 
         $total = (clone $query)->count();
 
@@ -142,7 +153,12 @@ class HotspotUserController extends Controller
         $user = HotspotUser::create($data);
 
         $settings = TenantSettings::getOrCreate((int) ($user->owner_id ?? auth()->user()->effectiveOwnerId()));
-        WaNotificationService::notifyRegistration($settings, $user->load('hotspotProfile'));
+
+        if ($data['status_registrasi'] === 'on_process') {
+            WaNotificationService::notifyOnProcess($settings, $user->load('hotspotProfile'));
+        } else {
+            WaNotificationService::notifyRegistration($settings, $user->load('hotspotProfile'));
+        }
 
         app(HotspotRadiusSynchronizer::class)->syncSingleUser($user);
 
@@ -172,8 +188,15 @@ class HotspotUserController extends Controller
 
     public function update(UpdateHotspotUserRequest $request, HotspotUser $hotspotUser): RedirectResponse
     {
+        $originalStatusRegistrasi = $hotspotUser->status_registrasi;
         $data = $this->prepareData($request->validated());
         $hotspotUser->update($data);
+
+        // ON PROCESS → AKTIF: kirim WA registrasi
+        if ($originalStatusRegistrasi === 'on_process' && $hotspotUser->status_registrasi === 'aktif') {
+            $settings = TenantSettings::getOrCreate((int) ($hotspotUser->owner_id ?? auth()->user()->effectiveOwnerId()));
+            WaNotificationService::notifyRegistration($settings, $hotspotUser->load('hotspotProfile'));
+        }
 
         app(HotspotRadiusSynchronizer::class)->syncSingleUser($hotspotUser);
 
@@ -271,6 +294,16 @@ class HotspotUserController extends Controller
      */
     private function prepareData(array $data): array
     {
+        // Auto-generate customer_id jika kosong
+        if (empty($data['customer_id'])) {
+            $ownerId = isset($data['owner_id']) ? (int) $data['owner_id'] : null;
+            $data['customer_id'] = HotspotUser::generateCustomerId($ownerId);
+        }
+
+        if (($data['metode_login'] ?? '') === 'username_equals_password') {
+            $data['hotspot_password'] = $data['username'] ?? $data['hotspot_password'] ?? null;
+        }
+
         if (! empty($data['nomor_hp'])) {
             $data['nomor_hp'] = $this->normalizePhone($data['nomor_hp']);
         }

@@ -134,17 +134,26 @@
                 <hr>
                 <h6 class="text-uppercase text-muted">Kredensial Hotspot</h6>
 
+                <div class="form-group">
+                    <label>Metode Login</label>
+                    <select name="metode_login" id="metode-login-select" class="form-control @error('metode_login') is-invalid @enderror" required>
+                        <option value="username_equals_password" @selected(old('metode_login', $hotspotUser->metode_login ?? 'username_equals_password') === 'username_equals_password')>HANYA USERNAME ( PASSWORD = USERNAME )</option>
+                        <option value="username_password" @selected(old('metode_login', $hotspotUser->metode_login) === 'username_password')>USERNAME &amp; PASSWORD</option>
+                    </select>
+                    @error('metode_login')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+
                 <div class="form-row">
                     <div class="form-group col-md-6">
                         <label>Username <span class="text-danger">*</span></label>
                         <input type="text" name="username" class="form-control @error('username') is-invalid @enderror"
-                            value="{{ old('username', $hotspotUser->username) }}" required>
+                            value="{{ old('username', $hotspotUser->username) }}" required placeholder="Username">
                         @error('username')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
-                    <div class="form-group col-md-6">
-                        <label>Password Hotspot</label>
-                        <input type="text" name="hotspot_password" class="form-control @error('hotspot_password') is-invalid @enderror"
-                            value="{{ old('hotspot_password', $hotspotUser->masked_password) }}">
+                    <div class="form-group col-md-6" id="password-field-row">
+                        <label>Password Hotspot <span class="text-danger">*</span></label>
+                        <input type="text" name="hotspot_password" id="hotspot-password-input" class="form-control @error('hotspot_password') is-invalid @enderror"
+                            value="{{ old('hotspot_password', $hotspotUser->masked_password) }}" placeholder="Password">
                         @error('hotspot_password')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -162,4 +171,27 @@
             </div>
         </form>
     </div>
+
+@push('scripts')
+<script>
+$(function() {
+    var $metodeSelect = $('#metode-login-select');
+    var $passwordRow = $('#password-field-row');
+    var $passwordInput = $('#hotspot-password-input');
+
+    function togglePasswordField() {
+        if ($metodeSelect.val() === 'username_equals_password') {
+            $passwordRow.hide();
+            $passwordInput.prop('required', false).val('');
+        } else {
+            $passwordRow.show();
+            $passwordInput.prop('required', true);
+        }
+    }
+
+    $metodeSelect.on('change', togglePasswordField);
+    togglePasswordField();
+});
+</script>
+@endpush
 @endsection

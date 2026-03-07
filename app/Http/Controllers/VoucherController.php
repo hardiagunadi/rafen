@@ -51,7 +51,15 @@ class VoucherController extends Controller
                 'expired' => 'secondary',
                 default   => 'light',
             };
-            $statusBadge = '<span class="badge badge-'.$statusColor.'">'.strtoupper((string) $voucher->status).'</span>';
+            if ($voucher->status === 'unused') {
+                $statusLabel = 'Belum Login';
+            } elseif ($voucher->status === 'used') {
+                $loginDate = $voucher->used_at?->format('d/m/Y H:i') ?? '-';
+                $statusLabel = 'Aktif ('.$loginDate.')';
+            } else {
+                $statusLabel = strtoupper((string) $voucher->status);
+            }
+            $statusBadge = '<span class="badge badge-'.$statusColor.'">'.$statusLabel.'</span>';
 
             $isUnused = $voucher->status === 'unused';
             $checkbox = '<input type="checkbox" name="ids[]" value="'.$voucher->id.'"'.($isUnused ? '' : ' disabled').'>';

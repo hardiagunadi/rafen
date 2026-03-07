@@ -34,8 +34,9 @@ class StoreHotspotUserRequest extends FormRequest
             'nomor_hp'           => ['nullable', 'string', 'max:30'],
             'email'              => ['nullable', 'email', 'max:191'],
             'alamat'             => ['nullable', 'string'],
+            'metode_login'       => ['required', 'string', 'in:username_password,username_equals_password'],
             'username'           => ['required', 'string', 'max:120', 'unique:hotspot_users,username'],
-            'hotspot_password'   => ['nullable', 'string', 'max:120'],
+            'hotspot_password'   => ['nullable', 'string', 'max:120', 'required_if:metode_login,username_password'],
             'catatan'            => ['nullable', 'string'],
         ];
     }

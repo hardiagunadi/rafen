@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Models\LoginLog;
 use App\Models\PppUser;
+use App\Models\WaBlastLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -229,6 +230,50 @@ class LogController extends Controller
     public function waBlastIndex(): View
     {
         return view('logs.wa-blast');
+    }
+
+    public function waBlastDatatable(Request $request): JsonResponse
+    {
+        $user   = auth()->user();
+        $search = $request->input('search.value', $request->input('search', ''));
+
+        $query = WaBlastLog::query()
+            ->accessibleBy($user)
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($request->filled('event'), fn($q) => $q->where('event', $request->event))
+            ->when($request->filled('sent_by_id'), fn($q) => $q->where('sent_by_id', $request->sent_by_id))
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('phone', 'like', "%{$search}%")
+                   ->orWhere('customer_name', 'like', "%{$search}%")
+                   ->orWhere('username', 'like', "%{$search}%")
+                   ->orWhere('invoice_number', 'like', "%{$search}%")
+                   ->orWhere('sent_by_name', 'like', "%{$search}%");
+            }))
+            ->orderByDesc('created_at');
+
+        $total    = WaBlastLog::query()->accessibleBy($user)->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(fn($r) => [
+                'created_at'    => $r->created_at?->format('Y-m-d H:i:s') ?? '-',
+                'event'         => $r->event,
+                'sent_by'       => $r->sent_by_name ?? ($r->sent_by_id ? '#' . $r->sent_by_id : 'Sistem'),
+                'phone'         => $r->phone ?? '-',
+                'customer_name' => $r->customer_name ?? '-',
+                'username'      => $r->username ?? '-',
+                'invoice_number'=> $r->invoice_number ?? '-',
+                'status'        => $r->status,
+                'reason'        => $r->reason ?? '-',
+                'ref_id'        => $r->ref_id ?? '-',
+            ]),
+        ]);
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

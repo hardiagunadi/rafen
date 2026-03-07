@@ -114,7 +114,7 @@
 
         $('#filter-status').on('change', function () { table.ajax.reload(); });
 
-        $(document).on('ajax:success', function () { table.ajax.reload(null, false); });
+        document.addEventListener('rafen:ajax-success', function () { table.ajax.reload(null, false); });
 
         // Check-all
         $(document).on('change', '#check-all', function () {
