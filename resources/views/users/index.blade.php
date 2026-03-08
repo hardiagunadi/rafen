@@ -19,6 +19,9 @@
                         <th>Nama</th>
                         <th>Email</th>
                         <th>Role</th>
+                        @if(auth()->user()->isSuperAdmin())
+                        <th>Tenant / Induk</th>
+                        @endif
                         <th>Terakhir Login</th>
                         <th class="text-right" style="width:110px;">Aksi</th>
                     </tr>
@@ -42,6 +45,9 @@
                 { data: 'name' },
                 { data: 'email' },
                 { data: 'role', orderable: false },
+                @if(auth()->user()->isSuperAdmin())
+                { data: 'tenant', orderable: false, render: function(d) { return d || '-'; } },
+                @endif
                 { data: 'last_login_at', orderable: false },
                 { data: null, orderable: false, render: function(d, t, row) {
                     return '<div class="text-right">'

@@ -51,6 +51,7 @@ class UserManagementController extends Controller
         $search = $request->input('search.value', '');
 
         $query = User::query()
+            ->with('parent')
             ->when(! $user->isSuperAdmin(), fn($q) => $q->where('parent_id', $user->id))
             ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('name', 'like', "%{$search}%")
@@ -75,6 +76,11 @@ class UserManagementController extends Controller
                 'name'          => $r->name,
                 'email'         => $r->email,
                 'role'          => strtoupper(str_replace('_', ' ', $r->role ?? '-')),
+                'tenant'        => $r->is_super_admin
+                    ? '<span class="badge badge-dark">Super Admin</span>'
+                    : ($r->parent_id === null
+                        ? '<span class="badge badge-primary">Tenant Admin</span>'
+                        : e($r->parent->name ?? '-')),
                 'last_login_at' => $r->last_login_at?->format('Y-m-d H:i:s') ?? '-',
                 'edit_url'      => route('users.edit', $r->id),
                 'destroy_url'   => route('users.destroy', $r->id),
@@ -103,6 +109,11 @@ class UserManagementController extends Controller
         if (! $user->isSuperAdmin()) {
             // Tenant admin creates sub-users under themselves
             $data['parent_id'] = $user->id;
+            // Inherit subscription from parent tenant
+            $data['subscription_status']    = $user->subscription_status;
+            $data['subscription_expires_at'] = $user->subscription_expires_at;
+            $data['subscription_plan_id']   = $user->subscription_plan_id;
+            $data['trial_days_remaining']   = $user->trial_days_remaining;
             // Prevent creating administrator-level or super admin accounts
             if (($data['role'] ?? '') === 'administrator') {
                 $data['role'] = 'it_support';
