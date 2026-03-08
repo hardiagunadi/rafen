@@ -89,6 +89,9 @@ class HotspotProfileController extends Controller
     public function create(): View
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         return view('hotspot_profiles.create', [
             'owners'     => $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]),
             'groups'     => ProfileGroup::query()->accessibleBy($user)->orderBy('name')->get(),
@@ -101,6 +104,9 @@ class HotspotProfileController extends Controller
      */
     public function store(StoreHotspotProfileRequest $request): RedirectResponse
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
         HotspotProfile::create($this->sanitizeData($request->validated()));
 
         return redirect()->route('hotspot-profiles.index')->with('status', 'Profil Hotspot ditambahkan.');
@@ -120,6 +126,9 @@ class HotspotProfileController extends Controller
     public function edit(HotspotProfile $hotspotProfile): View
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         if (! $user->isSuperAdmin() && $hotspotProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
@@ -137,6 +146,9 @@ class HotspotProfileController extends Controller
     public function update(UpdateHotspotProfileRequest $request, HotspotProfile $hotspotProfile): RedirectResponse
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         if (! $user->isSuperAdmin() && $hotspotProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
@@ -151,6 +163,9 @@ class HotspotProfileController extends Controller
     public function destroy(HotspotProfile $hotspotProfile): JsonResponse|RedirectResponse
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         if (! $user->isSuperAdmin() && $hotspotProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
@@ -166,6 +181,9 @@ class HotspotProfileController extends Controller
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $user = $request->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         $ids  = $request->input('ids', []);
         if (! empty($ids)) {
             HotspotProfile::query()->accessibleBy($user)->whereIn('id', $ids)->delete();

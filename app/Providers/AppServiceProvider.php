@@ -25,7 +25,15 @@ class AppServiceProvider extends ServiceProvider
         Route::aliasMiddleware('role', RoleMiddleware::class);
 
         view()->composer('layouts.admin', function ($view) {
-            $view->with('sidebarOwners', User::query()->orderBy('name')->get());
+            $authUser = auth()->user();
+            if (! $authUser) {
+                $view->with('sidebarOwners', collect());
+                return;
+            }
+            $owners = $authUser->isSuperAdmin()
+                ? User::query()->where('is_super_admin', false)->whereNull('parent_id')->orderBy('name')->get()
+                : collect();
+            $view->with('sidebarOwners', $owners);
         });
     }
 }

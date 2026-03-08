@@ -614,17 +614,17 @@
                             <option value="hotspot">Hotspot</option>
                         </select>
                     </div>
+                    @if(auth()->user()->isSuperAdmin())
                     <div class="form-group">
                         <label for="invoice-owner">Owner Data</label>
                         <select class="form-control" id="invoice-owner" name="owner_id">
                             <option value="">- Semua Owner -</option>
-                            @isset($sidebarOwners)
-                                @foreach($sidebarOwners as $owner)
-                                    <option value="{{ $owner->id }}">{{ $owner->name }}</option>
-                                @endforeach
-                            @endisset
+                            @foreach($sidebarOwners as $owner)
+                                <option value="{{ $owner->id }}">{{ $owner->name }}</option>
+                            @endforeach
                         </select>
                     </div>
+                    @endif
                     <div class="text-right">
                         <button type="submit" class="btn btn-primary">Lihat Laporan</button>
                     </div>
@@ -653,17 +653,17 @@
                             <option value="pppoe">PPPoE</option>
                         </select>
                     </div>
+                    @if(auth()->user()->isSuperAdmin())
                     <div class="form-group">
                         <label for="modal-owner">Owner Data</label>
                         <select class="form-control" id="modal-owner" name="owner_id">
                             <option value="">- Semua Owner -</option>
-                            @isset($sidebarOwners)
-                                @foreach($sidebarOwners as $owner)
-                                    <option value="{{ $owner->id }}">{{ $owner->name }}</option>
-                                @endforeach
-                            @endisset
+                            @foreach($sidebarOwners as $owner)
+                                <option value="{{ $owner->id }}">{{ $owner->name }}</option>
+                            @endforeach
                         </select>
                     </div>
+                    @endif
                     <div class="text-right">
                         <button type="submit" class="btn btn-primary">Lihat Laporan</button>
                     </div>
@@ -703,17 +703,17 @@
                             <option value="hotspot">HOTSPOT</option>
                         </select>
                     </div>
+                    @if(auth()->user()->isSuperAdmin())
                     <div class="form-group">
                         <label for="period-owner">Owner Data</label>
                         <select class="form-control" id="period-owner" name="owner_id">
                             <option value="">- Semua Owner -</option>
-                            @isset($sidebarOwners)
-                                @foreach($sidebarOwners as $owner)
-                                    <option value="{{ $owner->id }}">{{ $owner->name }}</option>
-                                @endforeach
-                            @endisset
+                            @foreach($sidebarOwners as $owner)
+                                <option value="{{ $owner->id }}">{{ $owner->name }}</option>
+                            @endforeach
                         </select>
                     </div>
+                    @endif
                     <div class="text-right mt-4">
                         <button type="submit" class="btn btn-primary">Lihat Laporan</button>
                     </div>

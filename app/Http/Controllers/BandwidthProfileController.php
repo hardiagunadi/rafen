@@ -59,6 +59,9 @@ class BandwidthProfileController extends Controller
     public function create(): View
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
 
         return view('bandwidth_profiles.create', [
             'users' => $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]),
@@ -70,6 +73,9 @@ class BandwidthProfileController extends Controller
      */
     public function store(StoreBandwidthProfileRequest $request): RedirectResponse
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
         BandwidthProfile::create($request->validated());
 
         return redirect()->route('bandwidth-profiles.index')->with('status', 'Bandwidth profile ditambahkan.');
@@ -89,6 +95,9 @@ class BandwidthProfileController extends Controller
     public function edit(BandwidthProfile $bandwidthProfile): View
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
 
         if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
@@ -106,6 +115,9 @@ class BandwidthProfileController extends Controller
     public function update(UpdateBandwidthProfileRequest $request, BandwidthProfile $bandwidthProfile): RedirectResponse
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
@@ -120,6 +132,9 @@ class BandwidthProfileController extends Controller
     public function destroy(BandwidthProfile $bandwidthProfile): JsonResponse|RedirectResponse
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
 
         if (! $user->isSuperAdmin() && $bandwidthProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
@@ -137,6 +152,9 @@ class BandwidthProfileController extends Controller
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         $ids = $request->input('ids', []);
         if (! empty($ids)) {
             BandwidthProfile::query()->whereIn('id', $ids)->accessibleBy($user)->delete();

@@ -68,6 +68,9 @@ class PppProfileController extends Controller
     public function create(): View
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         return view('ppp_profiles.create', [
             'owners'     => $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$user]),
             'groups'     => ProfileGroup::query()->accessibleBy($user)->orderBy('name')->get(),
@@ -80,6 +83,9 @@ class PppProfileController extends Controller
      */
     public function store(StorePppProfileRequest $request): RedirectResponse
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
         $profile = PppProfile::create($request->validated());
 
         $this->logActivity('created', 'PppProfile', $profile->id, $profile->name, (int) $profile->owner_id);
@@ -101,6 +107,9 @@ class PppProfileController extends Controller
     public function edit(PppProfile $pppProfile): View
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         if (! $user->isSuperAdmin() && $pppProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
@@ -118,6 +127,9 @@ class PppProfileController extends Controller
     public function update(UpdatePppProfileRequest $request, PppProfile $pppProfile): RedirectResponse
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         if (! $user->isSuperAdmin() && $pppProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
@@ -134,6 +146,9 @@ class PppProfileController extends Controller
     public function destroy(PppProfile $pppProfile): JsonResponse|RedirectResponse
     {
         $user = auth()->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         if (! $user->isSuperAdmin() && $pppProfile->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
@@ -150,6 +165,9 @@ class PppProfileController extends Controller
     public function bulkDestroy(Request $request): JsonResponse|RedirectResponse
     {
         $user = $request->user();
+        if ($user->role === 'teknisi') {
+            abort(403);
+        }
         $ids  = $request->input('ids', []);
         if (! empty($ids)) {
             PppProfile::query()
