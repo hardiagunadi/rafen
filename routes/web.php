@@ -54,6 +54,10 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::put('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserUpdate'])->name('dashboard.api.hotspot-user.update');
     Route::delete('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserDestroy'])->name('dashboard.api.hotspot-user.destroy');
     Route::post('api-dashboard/hotspot-active/{id}/disconnect', [DashboardController::class, 'hotspotActiveDisconnect'])->name('dashboard.api.hotspot-active.disconnect');
+    // PPPoE Server CRUD via MikroTik API
+    Route::post('api-dashboard/pppoe-server', [DashboardController::class, 'pppoeServerStore'])->name('dashboard.api.pppoe-server.store');
+    Route::put('api-dashboard/pppoe-server/{id}', [DashboardController::class, 'pppoeServerUpdate'])->name('dashboard.api.pppoe-server.update');
+    Route::delete('api-dashboard/pppoe-server/{id}', [DashboardController::class, 'pppoeServerDestroy'])->name('dashboard.api.pppoe-server.destroy');
     Route::get('reports/income', IncomeReportController::class)->name('reports.income');
 
     // Log Aplikasi
@@ -97,6 +101,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
+    Route::get('invoices/{invoice}/pay', fn($invoice) => redirect()->route('invoices.show', $invoice));
     Route::post('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
     Route::post('invoices/{invoice}/send-wa', [InvoiceController::class, 'sendWa'])->name('invoices.send-wa');
     Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
@@ -175,6 +180,8 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     // Payment routes
     Route::prefix('payments')->name('payments.')->group(function () {
         Route::get('/', [PaymentController::class, 'index'])->name('index');
+        Route::get('/pending', [PaymentController::class, 'pendingIndex'])->name('pending');
+        Route::get('/pending/datatable', [PaymentController::class, 'pendingDatatable'])->name('pending.datatable');
         Route::get('/{payment}', [PaymentController::class, 'show'])->name('show');
         Route::get('/invoice/{invoice}/create', [PaymentController::class, 'createForInvoice'])->name('create-for-invoice');
         Route::post('/invoice/{invoice}', [PaymentController::class, 'storeForInvoice'])->name('store-for-invoice');
@@ -185,9 +192,6 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('/{payment}/reject', [PaymentController::class, 'rejectManual'])->name('reject-manual');
     });
     Route::get('/payment/success', [PaymentController::class, 'success'])->name('payment.success');
-
-    // Invoice payment integration
-    Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
 
     // Tenant Settings
     Route::prefix('settings/tenant')->name('tenant-settings.')->group(function () {
@@ -267,6 +271,11 @@ Route::middleware('auth')->prefix('tools')->name('tools.')->group(function () {
 
 // Halaman isolir publik (no auth required) — diakses via DNAT Mikrotik
 Route::get('/isolir/{userId}', [IsolirPageController::class, 'show'])->name('isolir.show')->where('userId', '[0-9]+');
+
+// Portal pembayaran pelanggan (no auth required) — diakses via link WA
+Route::get('/bayar/{token}', [PaymentController::class, 'customerPortal'])->name('customer.invoice');
+Route::post('/bayar/{token}/manual', [PaymentController::class, 'customerManualConfirmation'])->name('customer.invoice.manual');
+Route::post('/bayar/{token}/gateway', [PaymentController::class, 'customerStorePayment'])->name('customer.invoice.gateway');
 
 // Payment Callbacks (no auth required)
 Route::post('/payment/callback', [PaymentController::class, 'callback'])->name('payment.callback');

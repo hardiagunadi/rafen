@@ -62,9 +62,14 @@
         var renew = '<button class="btn btn-primary btn-sm mr-1"'
             + (row.can_renew ? ' data-ajax-post="' + row.renew_url + '" data-confirm="Perpanjang layanan tanpa pembayaran?"' : ' disabled')
             + '><i class="fas fa-bolt"></i></button>';
-        var pay = '<button class="btn btn-success btn-sm mr-1"'
-            + (row.can_pay ? ' data-pay-modal="1" data-pay-url="' + row.pay_url + '" data-invoice-number="' + row.invoice_number + '" data-customer-name="' + row.customer_name + '" data-total="' + row.total + '"' : ' disabled')
-            + '><i class="fas fa-check"></i></button>';
+        var pay;
+        if (row.has_pending) {
+            pay = '<a href="{{ route("payments.pending") }}" class="btn btn-warning btn-sm mr-1" title="Menunggu konfirmasi bukti transfer"><i class="fas fa-clock"></i></a>';
+        } else {
+            pay = '<button class="btn btn-success btn-sm mr-1"'
+                + (row.can_pay ? ' data-pay-modal="1" data-pay-url="' + row.pay_url + '" data-invoice-number="' + row.invoice_number + '" data-customer-name="' + row.customer_name + '" data-total="' + row.total + '"' : ' disabled')
+                + '><i class="fas fa-check"></i></button>';
+        }
         var view = '<a href="' + row.show_url + '" class="btn btn-info btn-sm mr-1" title="Lihat Invoice"><i class="fas fa-eye"></i></a>';
         var nota = '<a href="' + row.nota_url + '" target="_blank" class="btn btn-secondary btn-sm mr-1" title="Cetak Nota"><i class="fas fa-receipt"></i></a>';
         var del = '<button class="btn btn-danger btn-sm"'

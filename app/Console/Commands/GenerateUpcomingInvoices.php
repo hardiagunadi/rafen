@@ -110,6 +110,7 @@ class GenerateUpcomingInvoices extends Command
             'promo_applied'   => $promoActive,
             'due_date'        => $dueDate,
             'status'          => 'unpaid',
+            'payment_token'   => Invoice::generatePaymentToken(),
         ]);
     }
 

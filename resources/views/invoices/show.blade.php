@@ -124,26 +124,47 @@
                 <h3 class="card-title">Pembayaran</h3>
             </div>
             <div class="card-body">
-                @if($settings && $settings->hasPaymentGateway())
-                    <a href="{{ route('payments.create-for-invoice', $invoice) }}" class="btn btn-primary btn-block mb-2">
-                        <i class="fas fa-credit-card"></i> Bayar Online (QRIS/VA)
+                @if(isset($pendingPayment) && $pendingPayment)
+                    {{-- Ada bukti transfer menunggu konfirmasi --}}
+                    <div class="alert alert-warning mb-3">
+                        <i class="fas fa-clock mr-2"></i>
+                        <strong>Menunggu Konfirmasi Admin</strong><br>
+                        <small class="text-muted">Bukti transfer sudah dikirim pelanggan pada {{ $pendingPayment->created_at->format('d/m/Y H:i') }}.</small>
+                    </div>
+                    @if(auth()->user()->isAdmin() || auth()->user()->isSuperAdmin() || auth()->user()->role === 'keuangan')
+                    <a href="{{ route('payments.pending') }}" class="btn btn-warning btn-block mb-2">
+                        <i class="fas fa-check-double mr-1"></i> Konfirmasi Bukti Transfer
                     </a>
-                @endif
+                    @endif
+                    @if(auth()->user()->isAdmin() || auth()->user()->isSuperAdmin())
+                    <form action="{{ route('invoices.pay', $invoice) }}" method="POST" class="mt-1">
+                        @csrf
+                        <button type="submit" class="btn btn-outline-success btn-block btn-sm" onclick="return confirm('Konfirmasi bayar langsung tanpa verifikasi bukti?')">
+                            <i class="fas fa-check"></i> Konfirmasi Langsung
+                        </button>
+                    </form>
+                    @endif
+                @else
+                    @if($settings && $settings->hasPaymentGateway())
+                        <a href="{{ route('payments.create-for-invoice', $invoice) }}" class="btn btn-primary btn-block mb-2">
+                            <i class="fas fa-credit-card"></i> Bayar Online (QRIS/VA)
+                        </a>
+                    @endif
 
-                @if($settings && $settings->enable_manual_payment && $bankAccounts->count() > 0)
-                    <a href="{{ route('payments.manual-form', $invoice) }}" class="btn btn-outline-success btn-block mb-2">
-                        <i class="fas fa-university"></i> Upload Bukti Transfer Bank
-                    </a>
-                @endif
+                    @if($settings && $settings->enable_manual_payment && $bankAccounts->count() > 0)
+                        <a href="{{ route('payments.manual-form', $invoice) }}" class="btn btn-outline-success btn-block mb-2">
+                            <i class="fas fa-university"></i> Upload Bukti Transfer Bank
+                        </a>
+                    @endif
 
-                @if(auth()->user()->isAdmin() || auth()->user()->isSuperAdmin())
-                <form action="{{ route('invoices.pay', $invoice) }}" method="POST" class="mt-1">
-                    @csrf
-                    @method('PATCH')
-                    <button type="submit" class="btn btn-success btn-block" onclick="return confirm('Konfirmasi pembayaran manual?')">
-                        <i class="fas fa-check"></i> Konfirmasi Bayar (Admin)
-                    </button>
-                </form>
+                    @if(auth()->user()->isAdmin() || auth()->user()->isSuperAdmin())
+                    <form action="{{ route('invoices.pay', $invoice) }}" method="POST" class="mt-1">
+                        @csrf
+                        <button type="submit" class="btn btn-success btn-block" onclick="return confirm('Konfirmasi pembayaran manual?')">
+                            <i class="fas fa-check"></i> Konfirmasi Bayar (Admin)
+                        </button>
+                    </form>
+                    @endif
                 @endif
 
                 @if((auth()->user()->isSuperAdmin() || auth()->user()->isAdmin() || auth()->user()->role === 'keuangan') && $settings && $settings->hasWaConfigured())

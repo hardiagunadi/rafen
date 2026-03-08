@@ -94,8 +94,14 @@ class WaNotificationService
                 ?? \App\Models\BankAccount::where('user_id', $invoice->owner_id)->where('is_active', true)->get();
             $bankLines = $bankAccounts->map(fn($b) => $b->bank_name . ' ' . $b->account_number . ' a/n ' . $b->account_name)->join("\n");
 
+            // Payment link (generate token jika belum ada)
+            if (empty($invoice->payment_token)) {
+                $invoice->update(['payment_token' => \App\Models\Invoice::generatePaymentToken()]);
+            }
+            $paymentLink = route('customer.invoice', $invoice->payment_token);
+
             $message = str_replace(
-                ['{name}', '{invoice_no}', '{total}', '{due_date}', '{customer_id}', '{profile}', '{service}', '{cs_number}', '{bank_account}'],
+                ['{name}', '{invoice_no}', '{total}', '{due_date}', '{customer_id}', '{profile}', '{service}', '{cs_number}', '{bank_account}', '{payment_link}'],
                 [
                     $invoice->customer_name,
                     $invoice->invoice_number,
@@ -106,6 +112,7 @@ class WaNotificationService
                     $serviceType,
                     $csNumber,
                     $bankLines,
+                    $paymentLink,
                 ],
                 $template
             );

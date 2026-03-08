@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 
@@ -39,6 +40,7 @@ class Invoice extends Model
         'cash_received',
         'transfer_amount',
         'payment_note',
+        'payment_token',
     ];
 
     protected function casts(): array
@@ -77,9 +79,9 @@ class Invoice extends Model
         return $this->belongsTo(Payment::class);
     }
 
-    public function payments(): HasOne
+    public function payments(): HasMany
     {
-        return $this->hasOne(Payment::class);
+        return $this->hasMany(Payment::class);
     }
 
     public function isPaid(): bool
@@ -131,6 +133,11 @@ class Invoice extends Model
      * Generate nomor invoice berurutan per-tenant per-bulan.
      * Format: PREFIX-YYYYMMnnnn  contoh: INV-2026030001
      */
+    public static function generatePaymentToken(): string
+    {
+        return bin2hex(random_bytes(24));
+    }
+
     public static function generateNumber(int $ownerId, string $prefix): string
     {
         return DB::transaction(function () use ($ownerId, $prefix) {

@@ -29,6 +29,7 @@ class InvoiceController extends Controller
 
         $query = Invoice::query()
             ->with(['pppUser.profile', 'owner'])
+            ->withCount(['payments as pending_count' => fn($q) => $q->where('status', 'pending')])
             ->accessibleBy($user)
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
             ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
@@ -59,7 +60,8 @@ class InvoiceController extends Controller
                 'due_date'        => $r->due_date ? \Carbon\Carbon::parse($r->due_date)->format('Y-m-d') : '-',
                 'owner_name'      => $r->owner?->name ?? '-',
                 'status'          => $r->status,
-                'can_pay'         => $r->status === 'unpaid',
+                'has_pending'     => ($r->pending_count ?? 0) > 0,
+                'can_pay'         => $r->status === 'unpaid' && ($r->pending_count ?? 0) === 0,
                 'can_renew'       => $r->status === 'unpaid' && abs($r->created_at->diffInSeconds($r->updated_at)) < 5,
                 'pay_url'         => route('invoices.pay', $r->id),
                 'renew_url'       => route('invoices.renew', $r->id),
@@ -81,10 +83,14 @@ class InvoiceController extends Controller
 
         $invoice->load(['pppUser.profile', 'owner', 'payment']);
 
-        $bankAccounts = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
-        $settings = $invoice->owner?->getSettings();
+        $bankAccounts   = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
+        $settings       = $invoice->owner?->getSettings();
+        $pendingPayment = \App\Models\Payment::where('invoice_id', $invoice->id)
+            ->where('status', 'pending')
+            ->latest()
+            ->first();
 
-        return view('invoices.show', compact('invoice', 'bankAccounts', 'settings'));
+        return view('invoices.show', compact('invoice', 'bankAccounts', 'settings', 'pendingPayment'));
     }
 
     public function print(Invoice $invoice): View

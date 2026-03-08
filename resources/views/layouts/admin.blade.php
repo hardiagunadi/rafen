@@ -220,8 +220,8 @@
                         </ul>
                     </li>
                     
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    <li class="nav-item has-treeview {{ request()->routeIs('payments.pending*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('payments.pending*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-file-invoice"></i>
                             <p>
                                 Data Tagihan
@@ -241,6 +241,14 @@
                                     <p>Semua Tagihan (Invoice)</p>
                                 </a>
                             </li>
+                            @if(auth()->user()->isSuperAdmin() || auth()->user()->isAdmin() || auth()->user()->role === 'keuangan')
+                            <li class="nav-item">
+                                <a href="{{ route('payments.pending') }}" class="nav-link {{ request()->routeIs('payments.pending*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Konfirmasi Transfer</p>
+                                </a>
+                            </li>
+                            @endif
                         </ul>
                     </li>
                     @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'keuangan', 'teknisi']))

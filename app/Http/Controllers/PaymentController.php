@@ -397,6 +397,207 @@ class PaymentController extends Controller
             ->with('success', 'Bukti pembayaran berhasil dikirim. Menunggu konfirmasi.');
     }
 
+    public function customerPortal(string $token)
+    {
+        $invoice = Invoice::where('payment_token', $token)
+            ->with(['pppUser', 'owner', 'payment'])
+            ->firstOrFail();
+
+        $settings     = $invoice->owner?->getSettings();
+        $bankAccounts = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
+
+        $channels        = [];
+        $groupedChannels = [];
+
+        if ($settings && $settings->hasPaymentGateway() && $invoice->isUnpaid()) {
+            try {
+                $gateway     = $this->resolveGateway($settings);
+                $allChannels = $gateway->getPaymentChannels();
+                $enabledCodes = $settings->getEnabledChannels();
+                $channels = empty($enabledCodes)
+                    ? $allChannels
+                    : array_values(array_filter($allChannels, fn($ch) => in_array($ch['code'], $enabledCodes)));
+
+                if ($settings->getActiveGateway() === 'tripay') {
+                    foreach (TripayService::getChannelGroups() as $groupKey => $group) {
+                        $groupChannels = array_filter($channels, fn($ch) => in_array($ch['code'], $group['codes']));
+                        if (!empty($groupChannels)) {
+                            $groupedChannels[$groupKey] = ['name' => $group['name'], 'channels' => array_values($groupChannels)];
+                        }
+                    }
+                } else {
+                    $qris = array_values(array_filter($channels, fn($ch) => str_contains(strtolower($ch['type'] ?? $ch['name'] ?? ''), 'qris')));
+                    $va   = array_values(array_filter($channels, fn($ch) => !str_contains(strtolower($ch['type'] ?? $ch['name'] ?? ''), 'qris')));
+                    if (!empty($qris)) $groupedChannels['qris'] = ['name' => 'QRIS', 'channels' => $qris];
+                    if (!empty($va))   $groupedChannels['va']   = ['name' => 'Virtual Account', 'channels' => $va];
+                    if (empty($groupedChannels) && !empty($channels)) {
+                        $groupedChannels['other'] = ['name' => 'Metode Pembayaran', 'channels' => $channels];
+                    }
+                }
+            } catch (\Throwable) {
+                // gateway unavailable — lanjut tanpa channel
+            }
+        }
+
+        return view('customer.invoice', compact('invoice', 'settings', 'bankAccounts', 'groupedChannels', 'token'));
+    }
+
+    public function customerManualConfirmation(string $token, Request $request)
+    {
+        $invoice = Invoice::where('payment_token', $token)->firstOrFail();
+
+        if ($invoice->isPaid()) {
+            return back()->with('error', 'Invoice sudah dibayar.');
+        }
+
+        $settings = $invoice->owner?->getSettings();
+        if (!$settings || !$settings->enable_manual_payment) {
+            return back()->with('error', 'Pembayaran manual tidak tersedia.');
+        }
+
+        $request->validate([
+            'payment_proof'      => 'required|image|max:5120',
+            'bank_account_id'    => 'required|exists:bank_accounts,id',
+            'amount_transferred' => 'required|numeric|min:0',
+            'transfer_date'      => 'required|date',
+            'notes'              => 'nullable|string|max:500',
+        ]);
+
+        // Cek tidak ada pending payment yang sudah ada
+        $existingPending = Payment::where('invoice_id', $invoice->id)->where('status', 'pending')->exists();
+        if ($existingPending) {
+            return back()->with('error', 'Bukti transfer sudah pernah dikirim dan masih menunggu konfirmasi admin.');
+        }
+
+        $path = $request->file('payment_proof')->store('payment-proofs', 'public');
+
+        Payment::create([
+            'payment_number'  => Payment::generatePaymentNumber(),
+            'payment_type'    => 'invoice',
+            'user_id'         => $invoice->owner_id,
+            'invoice_id'      => $invoice->id,
+            'payment_method'  => 'bank_transfer',
+            'payment_channel' => 'manual',
+            'amount'          => $invoice->total,
+            'fee'             => 0,
+            'total_amount'    => $invoice->total,
+            'status'          => 'pending',
+            'merchant_ref'    => 'MANUAL-' . $invoice->id . '-' . time(),
+            'notes'           => "Bukti transfer: {$path}\nJumlah: {$request->amount_transferred}\nTanggal: {$request->transfer_date}\nCatatan: {$request->notes}",
+        ]);
+
+        return redirect()->route('customer.invoice', $token)
+            ->with('success', 'Bukti pembayaran berhasil dikirim. Admin akan mengkonfirmasi dalam 1x24 jam.');
+    }
+
+    public function customerStorePayment(string $token, Request $request)
+    {
+        $invoice = Invoice::where('payment_token', $token)->firstOrFail();
+
+        if ($invoice->isPaid()) {
+            return back()->with('error', 'Invoice sudah dibayar.');
+        }
+
+        $request->validate(['payment_channel' => 'required|string']);
+
+        $settings = $invoice->owner?->getSettings();
+        if (!$settings || !$settings->hasPaymentGateway()) {
+            return back()->with('error', 'Pembayaran online tidak tersedia.');
+        }
+
+        $gateway = $this->resolveGateway($settings);
+        $result  = $gateway->createInvoicePayment($invoice, $request->payment_channel, $settings->payment_expiry_hours);
+
+        if ($result['success']) {
+            $payment = $result['payment'];
+            $data    = $result['data'];
+            return view('payments.detail', compact('invoice', 'payment', 'data'));
+        }
+
+        return back()->with('error', $result['message'] ?? 'Gagal membuat pembayaran.');
+    }
+
+    public function pendingIndex(Request $request)
+    {
+        $user = auth()->user();
+
+        if ($user->isSubUser() && !in_array($user->role, ['keuangan'])) {
+            abort(403);
+        }
+
+        return view('payments.pending');
+    }
+
+    public function pendingDatatable(Request $request)
+    {
+        $user   = auth()->user();
+        $search = $request->input('search.value', '');
+
+        $query = Payment::query()
+            ->where('payment_method', 'bank_transfer')
+            ->where('status', 'pending')
+            ->whereHas('invoice', fn($q) => $q->accessibleBy($user))
+            ->with(['invoice.pppUser', 'invoice.hotspotUser'])
+            ->when($search !== '', function ($q) use ($search) {
+                $q->whereHas('invoice', fn($qi) => $qi->where('invoice_number', 'like', "%{$search}%")
+                    ->orWhere('customer_name', 'like', "%{$search}%"));
+            })
+            ->orderByDesc('created_at');
+
+        $total    = Payment::query()
+            ->where('payment_method', 'bank_transfer')
+            ->where('status', 'pending')
+            ->whereHas('invoice', fn($q) => $q->accessibleBy($user))
+            ->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(function ($p) {
+                $notes        = $p->notes ?? '';
+                $proofPath    = null;
+                $amountTransferred = null;
+                $transferDate = null;
+                $catatan      = null;
+
+                foreach (explode("\n", $notes) as $line) {
+                    if (str_starts_with($line, 'Bukti transfer: ')) {
+                        $proofPath = trim(substr($line, strlen('Bukti transfer: ')));
+                    } elseif (str_starts_with($line, 'Jumlah: ')) {
+                        $amountTransferred = trim(substr($line, strlen('Jumlah: ')));
+                    } elseif (str_starts_with($line, 'Tanggal: ')) {
+                        $transferDate = trim(substr($line, strlen('Tanggal: ')));
+                    } elseif (str_starts_with($line, 'Catatan: ')) {
+                        $catatan = trim(substr($line, strlen('Catatan: ')));
+                    }
+                }
+
+                $invoice = $p->invoice;
+                return [
+                    'id'                => $p->id,
+                    'payment_number'    => $p->payment_number,
+                    'invoice_number'    => $invoice?->invoice_number ?? '-',
+                    'customer_name'     => $invoice?->customer_name ?? '-',
+                    'customer_id'       => $invoice?->customer_id ?? '-',
+                    'amount'            => number_format($p->amount, 0, ',', '.'),
+                    'amount_transferred'=> $amountTransferred ? number_format((float)$amountTransferred, 0, ',', '.') : '-',
+                    'transfer_date'     => $transferDate ?? '-',
+                    'proof_url'         => $proofPath ? asset('storage/' . $proofPath) : null,
+                    'uploaded_at'       => $p->created_at->format('Y-m-d H:i'),
+                    'confirm_url'       => route('payments.confirm-manual', $p->id),
+                    'reject_url'        => route('payments.reject-manual', $p->id),
+                    'invoice_url'       => $invoice ? route('invoices.show', $invoice->id) : null,
+                    'catatan'           => $catatan,
+                ];
+            }),
+        ]);
+    }
+
     public function confirmManual(Request $request, Payment $payment)
     {
         $user = auth()->user();
@@ -417,6 +618,10 @@ class PaymentController extends Controller
         if ($payment->invoice) {
             $invSettings = TenantSettings::getOrCreate((int) $payment->invoice->owner_id);
             WaNotificationService::notifyInvoicePaid($invSettings, $payment->invoice->fresh()->load('pppUser'));
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['message' => 'Pembayaran berhasil dikonfirmasi.']);
         }
 
         return back()->with('success', 'Pembayaran berhasil dikonfirmasi.');
@@ -441,6 +646,10 @@ class PaymentController extends Controller
             'status' => 'failed',
             'notes' => $payment->notes . "\n\nDitolak: " . $request->rejection_reason,
         ]);
+
+        if ($request->wantsJson()) {
+            return response()->json(['message' => 'Pembayaran ditolak.']);
+        }
 
         return back()->with('success', 'Pembayaran ditolak.');
     }

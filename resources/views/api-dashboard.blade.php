@@ -306,6 +306,52 @@
     </div>
 </div>
 
+{{-- Modal PPPoE Server --}}
+<div class="modal fade" id="modal-pppoe-server" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-pppoe-server-title">Tambah PPPoE Server</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <form id="form-pppoe-server">
+                <input type="hidden" id="pppoe-server-id" value="">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Name <span class="text-danger">*</span></label>
+                        <input type="text" id="pppoe-server-name" class="form-control form-control-sm" placeholder="pppoe-in1">
+                    </div>
+                    <div class="form-group">
+                        <label>Interface <span class="text-danger">*</span></label>
+                        <input type="text" id="pppoe-server-interface" class="form-control form-control-sm" placeholder="ether1">
+                    </div>
+                    <div class="form-group">
+                        <label>Service Name</label>
+                        <input type="text" id="pppoe-server-service-name" class="form-control form-control-sm" placeholder="(kosong = semua)">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Sessions</label>
+                        <input type="text" id="pppoe-server-max-sessions" class="form-control form-control-sm" placeholder="0 = unlimited">
+                    </div>
+                    <div class="form-group">
+                        <label>Keepalive Timeout</label>
+                        <input type="text" id="pppoe-server-keepalive" class="form-control form-control-sm" placeholder="10s">
+                    </div>
+                    <div class="form-group">
+                        <label>Default Profile</label>
+                        <input type="text" id="pppoe-server-default-profile" class="form-control form-control-sm" placeholder="default">
+                    </div>
+                    <div id="pppoe-server-error" class="alert alert-danger d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btn-pppoe-server-save">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {{-- Modal Hotspot User --}}
 <div class="modal fade" id="modal-hotspot-user" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
@@ -365,9 +411,10 @@
     const pppActiveBaseUrl      = '{{ url("api-dashboard/ppp-active") }}';
     const hotspotUserBaseUrl    = '{{ url("api-dashboard/hotspot-user") }}';
     const hotspotActiveBaseUrl  = '{{ url("api-dashboard/hotspot-active") }}';
+    const pppoeServerBaseUrl    = '{{ url("api-dashboard/pppoe-server") }}';
 
     // Menus that support CRUD actions
-    const crudMenus       = ['ppp_setting', 'hotspot_setting'];
+    const crudMenus       = ['ppp_setting', 'hotspot_setting', 'pppoe_server'];
     const disconnectMenus = ['ppp_active', 'hotspot_active'];
 
     const menuLabels = {
@@ -569,6 +616,7 @@
     document.getElementById('btn-create-record').addEventListener('click', function () {
         if (currentMenu === 'ppp_setting')     openPppSecretModal(null);
         if (currentMenu === 'hotspot_setting') openHotspotUserModal(null);
+        if (currentMenu === 'pppoe_server')    openPppoeServerModal(null);
     });
 
     // ── Delegated: Edit / Delete / Disconnect ────────────────────────────────
@@ -581,6 +629,7 @@
             const row = JSON.parse(editBtn.dataset.row);
             if (currentMenu === 'ppp_setting')     openPppSecretModal(row);
             if (currentMenu === 'hotspot_setting') openHotspotUserModal(row);
+            if (currentMenu === 'pppoe_server')    openPppoeServerModal(row);
         }
 
         if (deleteBtn) {
@@ -590,6 +639,7 @@
             let url;
             if (currentMenu === 'ppp_setting')     url = pppSecretBaseUrl + '/' + id + '?connection_id=' + cid;
             if (currentMenu === 'hotspot_setting') url = hotspotUserBaseUrl + '/' + id + '?connection_id=' + cid;
+            if (currentMenu === 'pppoe_server')    url = pppoeServerBaseUrl + '/' + id + '?connection_id=' + cid;
             if (!url) return;
             deleteBtn.disabled = true;
             apiRequest('DELETE', url).then(function (json) {
@@ -713,6 +763,59 @@
             const json = await apiRequest(isEdit ? 'PUT' : 'POST', url, body);
             AppAjax.showToast(json.message || 'Berhasil.', 'success');
             $hotspotModal.modal('hide');
+            loadMenu(currentMenu);
+        } catch (err) {
+            errEl.textContent = err.message || 'Gagal menyimpan.';
+            errEl.classList.remove('d-none');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+
+    // ── PPPoE Server Modal ───────────────────────────────────────────────────
+    const $pppoeServerModal = $('#modal-pppoe-server');
+
+    function openPppoeServerModal(row) {
+        const isEdit = row !== null;
+        document.getElementById('modal-pppoe-server-title').textContent = isEdit ? 'Edit PPPoE Server' : 'Tambah PPPoE Server';
+        document.getElementById('pppoe-server-id').value               = isEdit ? (row['.id'] || '') : '';
+        document.getElementById('pppoe-server-name').value             = isEdit ? (row['name'] || '') : '';
+        document.getElementById('pppoe-server-interface').value        = isEdit ? (row['interface'] || '') : '';
+        document.getElementById('pppoe-server-service-name').value     = isEdit ? (row['service-name'] || '') : '';
+        document.getElementById('pppoe-server-max-sessions').value     = isEdit ? (row['max-sessions'] || '') : '';
+        document.getElementById('pppoe-server-keepalive').value        = isEdit ? (row['keepalive-timeout'] || '') : '';
+        document.getElementById('pppoe-server-default-profile').value  = isEdit ? (row['default-profile'] || '') : '';
+        document.getElementById('pppoe-server-name').readOnly          = isEdit;
+        document.getElementById('pppoe-server-error').classList.add('d-none');
+        $pppoeServerModal.modal('show');
+    }
+
+    document.getElementById('form-pppoe-server').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const id      = document.getElementById('pppoe-server-id').value;
+        const isEdit  = id !== '';
+        const cid     = getConnectionId();
+        const errEl   = document.getElementById('pppoe-server-error');
+        const saveBtn = document.getElementById('btn-pppoe-server-save');
+
+        const body = {
+            connection_id       : cid,
+            name                : document.getElementById('pppoe-server-name').value,
+            interface           : document.getElementById('pppoe-server-interface').value,
+            'service-name'      : document.getElementById('pppoe-server-service-name').value,
+            'max-sessions'      : document.getElementById('pppoe-server-max-sessions').value,
+            'keepalive-timeout' : document.getElementById('pppoe-server-keepalive').value,
+            'default-profile'   : document.getElementById('pppoe-server-default-profile').value,
+        };
+
+        errEl.classList.add('d-none');
+        saveBtn.disabled = true;
+
+        try {
+            const url  = isEdit ? pppoeServerBaseUrl + '/' + id : pppoeServerBaseUrl;
+            const json = await apiRequest(isEdit ? 'PUT' : 'POST', url, body);
+            AppAjax.showToast(json.message || 'Berhasil.', 'success');
+            $pppoeServerModal.modal('hide');
             loadMenu(currentMenu);
         } catch (err) {
             errEl.textContent = err.message || 'Gagal menyimpan.';

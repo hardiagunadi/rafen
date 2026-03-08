@@ -816,6 +816,7 @@ class PppUserController extends Controller
             'prorata_applied' => $prorataApplied,
             'due_date' => $dueDate,
             'status' => 'unpaid',
+            'payment_token' => Invoice::generatePaymentToken(),
         ]);
 
         return $user->invoices()->latest()->first();

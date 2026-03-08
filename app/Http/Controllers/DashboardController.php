@@ -606,6 +606,80 @@ class DashboardController extends Controller
         }
     }
 
+    public function pppoeServerStore(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        $name = trim($request->string('name')->toString());
+        $interface = trim($request->string('interface')->toString());
+        if ($name === '' || $interface === '') {
+            return response()->json(['error' => 'Name dan Interface wajib diisi.'], 422);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['name' => $name, 'interface' => $interface];
+            if ($request->filled('service-name'))        $attrs['service-name']        = $request->string('service-name')->toString();
+            if ($request->filled('max-sessions'))        $attrs['max-sessions']        = $request->string('max-sessions')->toString();
+            if ($request->filled('keepalive-timeout'))   $attrs['keepalive-timeout']   = $request->string('keepalive-timeout')->toString();
+            if ($request->filled('default-profile'))     $attrs['default-profile']     = $request->string('default-profile')->toString();
+            $client->command('/interface/pppoe-server/server/add', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'PPPoE Server berhasil ditambahkan.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pppoeServerUpdate(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['.id' => $id];
+            if ($request->filled('interface'))           $attrs['interface']           = $request->string('interface')->toString();
+            if ($request->filled('service-name'))        $attrs['service-name']        = $request->string('service-name')->toString();
+            if ($request->filled('max-sessions'))        $attrs['max-sessions']        = $request->string('max-sessions')->toString();
+            if ($request->filled('keepalive-timeout'))   $attrs['keepalive-timeout']   = $request->string('keepalive-timeout')->toString();
+            if ($request->filled('default-profile'))     $attrs['default-profile']     = $request->string('default-profile')->toString();
+            $client->command('/interface/pppoe-server/server/set', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'PPPoE Server berhasil diperbarui.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pppoeServerDestroy(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $client->command('/interface/pppoe-server/server/remove', ['.id' => $id]);
+            $client->disconnect();
+
+            return response()->json(['message' => 'PPPoE Server berhasil dihapus.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
     public function apiDashboardTraffic(Request $request): JsonResponse
     {
         $user = auth()->user();
