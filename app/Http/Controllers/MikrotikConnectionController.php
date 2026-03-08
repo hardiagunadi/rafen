@@ -52,11 +52,13 @@ class MikrotikConnectionController extends Controller
             ->limit(max(1, $request->integer('length', 20)))
             ->get();
 
+        $isReadOnly = $user->role === 'teknisi';
+
         return response()->json([
             'draw'            => $request->integer('draw'),
             'recordsTotal'    => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(function ($r) use ($staleSeconds) {
+            'data'            => $rows->map(function ($r) use ($staleSeconds, $isReadOnly) {
                 $isStale = $r->last_ping_at && $r->last_ping_at->diffInSeconds(now()) > $staleSeconds;
 
                 if ($r->is_online === null) {
@@ -88,6 +90,7 @@ class MikrotikConnectionController extends Controller
                     'api_url'          => route('dashboard.api').'?connection_id='.$r->id,
                     'edit_url'         => route('mikrotik-connections.edit', $r->id),
                     'destroy_url'      => route('mikrotik-connections.destroy', $r->id),
+                    'can_edit'         => ! $isReadOnly,
                 ];
             }),
         ]);
@@ -98,6 +101,10 @@ class MikrotikConnectionController extends Controller
      */
     public function create(): View
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
+
         return view('mikrotik_connections.create');
     }
 
@@ -106,6 +113,10 @@ class MikrotikConnectionController extends Controller
      */
     public function store(StoreMikrotikConnectionRequest $request): RedirectResponse
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
+
         $data = $request->validated();
         $data['owner_id'] = auth()->id();
         $data['use_ssl'] = $request->boolean('use_ssl');
@@ -135,6 +146,10 @@ class MikrotikConnectionController extends Controller
      */
     public function edit(MikrotikConnection $mikrotikConnection): View
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
+
         $this->authorizeAccess($mikrotikConnection);
 
         // Resolve the PUBLIC IP/host of the FreeRADIUS server for script generation.
@@ -208,6 +223,10 @@ class MikrotikConnectionController extends Controller
      */
     public function update(UpdateMikrotikConnectionRequest $request, MikrotikConnection $mikrotikConnection): RedirectResponse
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
+
         $this->authorizeAccess($mikrotikConnection);
 
         $data = $request->validated();
@@ -238,6 +257,10 @@ class MikrotikConnectionController extends Controller
      */
     public function destroy(MikrotikConnection $mikrotikConnection): JsonResponse|RedirectResponse
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
+
         $this->authorizeAccess($mikrotikConnection);
 
         $mikrotikConnection->delete();
@@ -301,6 +324,10 @@ class MikrotikConnectionController extends Controller
 
     public function isolirReset(MikrotikConnection $mikrotikConnection): RedirectResponse
     {
+        if (auth()->user()->role === 'teknisi') {
+            abort(403);
+        }
+
         $this->authorizeAccess($mikrotikConnection);
 
         app(IsolirSynchronizer::class)->resetSetup($mikrotikConnection);

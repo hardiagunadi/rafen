@@ -54,6 +54,10 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::put('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserUpdate'])->name('dashboard.api.hotspot-user.update');
     Route::delete('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserDestroy'])->name('dashboard.api.hotspot-user.destroy');
     Route::post('api-dashboard/hotspot-active/{id}/disconnect', [DashboardController::class, 'hotspotActiveDisconnect'])->name('dashboard.api.hotspot-active.disconnect');
+    // Hotspot IP Binding CRUD via MikroTik API
+    Route::post('api-dashboard/hotspot-ip-binding', [DashboardController::class, 'hotspotIpBindingStore'])->name('dashboard.api.hotspot-ip-binding.store');
+    Route::put('api-dashboard/hotspot-ip-binding/{id}', [DashboardController::class, 'hotspotIpBindingUpdate'])->name('dashboard.api.hotspot-ip-binding.update');
+    Route::delete('api-dashboard/hotspot-ip-binding/{id}', [DashboardController::class, 'hotspotIpBindingDestroy'])->name('dashboard.api.hotspot-ip-binding.destroy');
     // PPPoE Server CRUD via MikroTik API
     Route::post('api-dashboard/pppoe-server', [DashboardController::class, 'pppoeServerStore'])->name('dashboard.api.pppoe-server.store');
     Route::put('api-dashboard/pppoe-server/{id}', [DashboardController::class, 'pppoeServerUpdate'])->name('dashboard.api.pppoe-server.update');

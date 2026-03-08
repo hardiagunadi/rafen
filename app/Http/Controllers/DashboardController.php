@@ -587,6 +587,79 @@ class DashboardController extends Controller
         }
     }
 
+    public function hotspotIpBindingStore(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        $macAddress = trim($request->string('mac-address')->toString());
+        if ($macAddress === '') {
+            return response()->json(['error' => 'MAC Address wajib diisi.'], 422);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['mac-address' => $macAddress, 'type' => 'bypassed'];
+            if ($request->filled('address'))  $attrs['address']  = $request->string('address')->toString();
+            if ($request->filled('server'))   $attrs['server']   = $request->string('server')->toString();
+            if ($request->filled('comment'))  $attrs['comment']  = $request->string('comment')->toString();
+            if ($request->filled('type'))     $attrs['type']     = $request->string('type')->toString();
+            $client->command('/ip/hotspot/ip-binding/add', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'IP Binding berhasil ditambahkan.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function hotspotIpBindingUpdate(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $attrs  = ['.id' => $id];
+            if ($request->filled('mac-address')) $attrs['mac-address'] = $request->string('mac-address')->toString();
+            if ($request->filled('address'))     $attrs['address']     = $request->string('address')->toString();
+            if ($request->filled('server'))      $attrs['server']      = $request->string('server')->toString();
+            if ($request->filled('comment'))     $attrs['comment']     = $request->string('comment')->toString();
+            if ($request->filled('type'))        $attrs['type']        = $request->string('type')->toString();
+            $client->command('/ip/hotspot/ip-binding/set', $attrs);
+            $client->disconnect();
+
+            return response()->json(['message' => 'IP Binding berhasil diperbarui.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function hotspotIpBindingDestroy(Request $request, string $id): JsonResponse
+    {
+        $user = auth()->user();
+        $connection = $this->resolveConnectionForUser($request->integer('connection_id'), $user);
+        if (! $connection) {
+            return response()->json(['error' => 'Router tidak ditemukan.'], 404);
+        }
+
+        try {
+            $client = new \App\Services\MikrotikApiClient($connection);
+            $client->command('/ip/hotspot/ip-binding/remove', ['.id' => $id]);
+            $client->disconnect();
+
+            return response()->json(['message' => 'IP Binding berhasil dihapus.']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
     public function hotspotActiveDisconnect(Request $request, string $id): JsonResponse
     {
         $user = auth()->user();

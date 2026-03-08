@@ -6,9 +6,11 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title mb-0">Router [ NAS ]</h3>
+        @if(auth()->user()->role !== 'teknisi')
         <a href="{{ route('mikrotik-connections.create') }}" class="btn btn-info btn-sm text-white">
             <i class="fas fa-plus"></i> TAMBAH ROUTER [NAS]
         </a>
+        @endif
     </div>
     <div class="card-body">
         <div class="mb-3">
@@ -50,6 +52,9 @@
     }
 
     function renderAksi(d, t, row) {
+        if (!row.can_edit) {
+            return '<div class="text-right"><span class="text-muted small">Read Only</span></div>';
+        }
         return '<div class="text-right">'
             + '<a href="' + row.edit_url + '" class="btn btn-sm btn-warning text-white mr-1"><i class="fas fa-pen"></i></a>'
             + '<button class="btn btn-sm btn-danger" data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus koneksi ini?"><i class="fas fa-trash"></i></button>'

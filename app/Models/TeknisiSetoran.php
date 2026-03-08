@@ -67,6 +67,20 @@ class TeknisiSetoran extends Model
         ]);
     }
 
+    public static function createOrRecalculateForUser(int $userId, int $ownerId, string $date): void
+    {
+        $setoran = static::firstOrCreate(
+            ['owner_id' => $ownerId, 'teknisi_id' => $userId, 'period_date' => $date],
+            ['total_invoices' => 0, 'total_tagihan' => 0, 'total_cash' => 0, 'status' => 'draft']
+        );
+
+        if ($setoran->status !== 'draft') {
+            return;
+        }
+
+        $setoran->recalculate();
+    }
+
     public function scopeAccessibleBy(Builder $query, User $user): Builder
     {
         if ($user->isSuperAdmin()) {

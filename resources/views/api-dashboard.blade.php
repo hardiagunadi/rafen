@@ -53,16 +53,6 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="ppp_setting">
-                        <i class="far fa-circle nav-icon"></i><p>Setting</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="ppp_interface">
-                        <i class="far fa-circle nav-icon"></i><p>Interface</p>
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a href="#" class="nav-link mikrotik-menu-item" data-menu="pppoe_server">
                         <i class="far fa-circle nav-icon"></i><p>PPPoE Servers</p>
                     </a>
@@ -259,53 +249,6 @@
 #mikrotik-content table td { font-size: .8rem; white-space: nowrap; }
 </style>
 
-{{-- Modal PPP Secret --}}
-<div class="modal fade" id="modal-ppp-secret" tabindex="-1" role="dialog">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modal-ppp-secret-title">Tambah PPP Secret</h5>
-                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-            </div>
-            <form id="form-ppp-secret">
-                <input type="hidden" id="ppp-secret-id" value="">
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label>Name <span class="text-danger">*</span></label>
-                        <input type="text" id="ppp-secret-name" class="form-control form-control-sm" placeholder="username">
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="text" id="ppp-secret-password" class="form-control form-control-sm" placeholder="password">
-                    </div>
-                    <div class="form-group">
-                        <label>Service</label>
-                        <select id="ppp-secret-service" class="form-control form-control-sm">
-                            <option value="pppoe">pppoe</option>
-                            <option value="pptp">pptp</option>
-                            <option value="l2tp">l2tp</option>
-                            <option value="any">any</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Profile</label>
-                        <input type="text" id="ppp-secret-profile" class="form-control form-control-sm" placeholder="default">
-                    </div>
-                    <div class="form-group">
-                        <label>Comment</label>
-                        <input type="text" id="ppp-secret-comment" class="form-control form-control-sm">
-                    </div>
-                    <div id="ppp-secret-error" class="alert alert-danger d-none"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-primary btn-sm" id="btn-ppp-secret-save">Simpan</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 {{-- Modal PPPoE Server --}}
 <div class="modal fade" id="modal-pppoe-server" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
@@ -346,6 +289,52 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
                     <button type="submit" class="btn btn-primary btn-sm" id="btn-pppoe-server-save">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{-- Modal Hotspot IP Binding --}}
+<div class="modal fade" id="modal-ip-binding" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-ip-binding-title">Tambah IP Binding</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <form id="form-ip-binding">
+                <input type="hidden" id="ip-binding-id" value="">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>MAC Address <span class="text-danger">*</span></label>
+                        <input type="text" id="ip-binding-mac" class="form-control form-control-sm" placeholder="AA:BB:CC:DD:EE:FF">
+                    </div>
+                    <div class="form-group">
+                        <label>IP Address</label>
+                        <input type="text" id="ip-binding-address" class="form-control form-control-sm" placeholder="192.168.1.100">
+                    </div>
+                    <div class="form-group">
+                        <label>Server</label>
+                        <input type="text" id="ip-binding-server" class="form-control form-control-sm" placeholder="all">
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="ip-binding-type" class="form-control form-control-sm">
+                            <option value="bypassed">bypassed</option>
+                            <option value="blocked">blocked</option>
+                            <option value="regular">regular</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Comment</label>
+                        <input type="text" id="ip-binding-comment" class="form-control form-control-sm">
+                    </div>
+                    <div id="ip-binding-error" class="alert alert-danger d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btn-ip-binding-save">Simpan</button>
                 </div>
             </form>
         </div>
@@ -407,14 +396,14 @@
     const csrfToken        = document.querySelector('meta[name="csrf-token"]').content;
 
     // URL templates for CRUD endpoints
-    const pppSecretBaseUrl      = '{{ url("api-dashboard/ppp-secret") }}';
-    const pppActiveBaseUrl      = '{{ url("api-dashboard/ppp-active") }}';
-    const hotspotUserBaseUrl    = '{{ url("api-dashboard/hotspot-user") }}';
-    const hotspotActiveBaseUrl  = '{{ url("api-dashboard/hotspot-active") }}';
-    const pppoeServerBaseUrl    = '{{ url("api-dashboard/pppoe-server") }}';
+    const pppActiveBaseUrl         = '{{ url("api-dashboard/ppp-active") }}';
+    const hotspotUserBaseUrl       = '{{ url("api-dashboard/hotspot-user") }}';
+    const hotspotActiveBaseUrl     = '{{ url("api-dashboard/hotspot-active") }}';
+    const hotspotIpBindingBaseUrl  = '{{ url("api-dashboard/hotspot-ip-binding") }}';
+    const pppoeServerBaseUrl       = '{{ url("api-dashboard/pppoe-server") }}';
 
     // Menus that support CRUD actions
-    const crudMenus       = ['ppp_setting', 'hotspot_setting', 'pppoe_server'];
+    const crudMenus       = ['hotspot_setting', 'hotspot_ip_binding', 'pppoe_server'];
     const disconnectMenus = ['ppp_active', 'hotspot_active'];
 
     const menuLabels = {
@@ -422,8 +411,6 @@
         interface       : 'Interface',
         traffic         : 'Trafik Live',
         ppp_active      : 'PPP — Active',
-        ppp_setting     : 'PPP — Setting',
-        ppp_interface   : 'PPP — Interface',
         pppoe_server    : 'PPP — PPPoE Servers',
         hotspot_active  : 'Hotspot — Active',
         hotspot_setting : 'Hotspot — Setting',
@@ -581,9 +568,20 @@
             return;
         }
 
-        // Exclude internal .id from visible columns
-        const allKeys = Object.keys(rows[0]);
-        const keys    = allKeys.filter(k => k !== '.id');
+        // Kolom tetap untuk ip-binding agar mac-address selalu tampil di depan
+        let keys;
+        if (menu === 'hotspot_ip_binding') {
+            const priorityCols = ['mac-address', 'address', 'server', 'type', 'comment'];
+            const allKeys = Array.from(new Set([
+                ...priorityCols,
+                ...Object.keys(rows.reduce((acc, r) => Object.assign(acc, r), {}))
+            ])).filter(k => k !== '.id');
+            keys = allKeys;
+        } else {
+            // Exclude internal .id from visible columns
+            const allKeys = Object.keys(rows[0]);
+            keys = allKeys.filter(k => k !== '.id');
+        }
 
         let html = '<div class="table-responsive"><table class="table table-sm table-hover table-bordered mb-0"><thead class="thead-light"><tr>';
         keys.forEach(k => { html += '<th>' + esc(k) + '</th>'; });
@@ -614,9 +612,9 @@
 
     // ── Tombol Tambah (Create) ───────────────────────────────────────────────
     document.getElementById('btn-create-record').addEventListener('click', function () {
-        if (currentMenu === 'ppp_setting')     openPppSecretModal(null);
-        if (currentMenu === 'hotspot_setting') openHotspotUserModal(null);
-        if (currentMenu === 'pppoe_server')    openPppoeServerModal(null);
+        if (currentMenu === 'hotspot_setting')    openHotspotUserModal(null);
+        if (currentMenu === 'hotspot_ip_binding') openIpBindingModal(null);
+        if (currentMenu === 'pppoe_server')       openPppoeServerModal(null);
     });
 
     // ── Delegated: Edit / Delete / Disconnect ────────────────────────────────
@@ -627,9 +625,9 @@
 
         if (editBtn) {
             const row = JSON.parse(editBtn.dataset.row);
-            if (currentMenu === 'ppp_setting')     openPppSecretModal(row);
-            if (currentMenu === 'hotspot_setting') openHotspotUserModal(row);
-            if (currentMenu === 'pppoe_server')    openPppoeServerModal(row);
+            if (currentMenu === 'hotspot_setting')    openHotspotUserModal(row);
+            if (currentMenu === 'hotspot_ip_binding') openIpBindingModal(row);
+            if (currentMenu === 'pppoe_server')       openPppoeServerModal(row);
         }
 
         if (deleteBtn) {
@@ -637,9 +635,9 @@
             const id  = deleteBtn.dataset.id;
             const cid = getConnectionId();
             let url;
-            if (currentMenu === 'ppp_setting')     url = pppSecretBaseUrl + '/' + id + '?connection_id=' + cid;
-            if (currentMenu === 'hotspot_setting') url = hotspotUserBaseUrl + '/' + id + '?connection_id=' + cid;
-            if (currentMenu === 'pppoe_server')    url = pppoeServerBaseUrl + '/' + id + '?connection_id=' + cid;
+            if (currentMenu === 'hotspot_setting')    url = hotspotUserBaseUrl + '/' + id + '?connection_id=' + cid;
+            if (currentMenu === 'hotspot_ip_binding') url = hotspotIpBindingBaseUrl + '/' + id + '?connection_id=' + cid;
+            if (currentMenu === 'pppoe_server')       url = pppoeServerBaseUrl + '/' + id + '?connection_id=' + cid;
             if (!url) return;
             deleteBtn.disabled = true;
             apiRequest('DELETE', url).then(function (json) {
@@ -667,57 +665,6 @@
                 disconnectBtn.disabled = false;
                 AppAjax.showToast(err.message || 'Gagal disconnect.', 'danger');
             });
-        }
-    });
-
-    // ── PPP Secret Modal ─────────────────────────────────────────────────────
-    const $pppModal = $('#modal-ppp-secret');
-
-    function openPppSecretModal(row) {
-        const isEdit = row !== null;
-        document.getElementById('modal-ppp-secret-title').textContent = isEdit ? 'Edit PPP Secret' : 'Tambah PPP Secret';
-        document.getElementById('ppp-secret-id').value       = isEdit ? (row['.id'] || '') : '';
-        document.getElementById('ppp-secret-name').value     = isEdit ? (row['name'] || '') : '';
-        document.getElementById('ppp-secret-password').value = '';
-        document.getElementById('ppp-secret-service').value  = isEdit ? (row['service'] || 'pppoe') : 'pppoe';
-        document.getElementById('ppp-secret-profile').value  = isEdit ? (row['profile'] || '') : '';
-        document.getElementById('ppp-secret-comment').value  = isEdit ? (row['comment'] || '') : '';
-        document.getElementById('ppp-secret-name').readOnly  = isEdit;
-        document.getElementById('ppp-secret-error').classList.add('d-none');
-        $pppModal.modal('show');
-    }
-
-    document.getElementById('form-ppp-secret').addEventListener('submit', async function (e) {
-        e.preventDefault();
-        const id       = document.getElementById('ppp-secret-id').value;
-        const isEdit   = id !== '';
-        const cid      = getConnectionId();
-        const errEl    = document.getElementById('ppp-secret-error');
-        const saveBtn  = document.getElementById('btn-ppp-secret-save');
-
-        const body = {
-            connection_id : cid,
-            name          : document.getElementById('ppp-secret-name').value,
-            password      : document.getElementById('ppp-secret-password').value,
-            service       : document.getElementById('ppp-secret-service').value,
-            profile       : document.getElementById('ppp-secret-profile').value,
-            comment       : document.getElementById('ppp-secret-comment').value,
-        };
-
-        errEl.classList.add('d-none');
-        saveBtn.disabled = true;
-
-        try {
-            const url = isEdit ? pppSecretBaseUrl + '/' + id : pppSecretBaseUrl;
-            const json = await apiRequest(isEdit ? 'PUT' : 'POST', url, body);
-            AppAjax.showToast(json.message || 'Berhasil.', 'success');
-            $pppModal.modal('hide');
-            loadMenu(currentMenu);
-        } catch (err) {
-            errEl.textContent = err.message || 'Gagal menyimpan.';
-            errEl.classList.remove('d-none');
-        } finally {
-            saveBtn.disabled = false;
         }
     });
 
@@ -763,6 +710,57 @@
             const json = await apiRequest(isEdit ? 'PUT' : 'POST', url, body);
             AppAjax.showToast(json.message || 'Berhasil.', 'success');
             $hotspotModal.modal('hide');
+            loadMenu(currentMenu);
+        } catch (err) {
+            errEl.textContent = err.message || 'Gagal menyimpan.';
+            errEl.classList.remove('d-none');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+
+    // ── Hotspot IP Binding Modal ─────────────────────────────────────────────
+    const $ipBindingModal = $('#modal-ip-binding');
+
+    function openIpBindingModal(row) {
+        const isEdit = row !== null;
+        document.getElementById('modal-ip-binding-title').textContent = isEdit ? 'Edit IP Binding' : 'Tambah IP Binding';
+        document.getElementById('ip-binding-id').value          = isEdit ? (row['.id'] || '') : '';
+        document.getElementById('ip-binding-mac').value         = isEdit ? (row['mac-address'] || '') : '';
+        document.getElementById('ip-binding-address').value     = isEdit ? (row['address'] || '') : '';
+        document.getElementById('ip-binding-server').value      = isEdit ? (row['server'] || '') : '';
+        document.getElementById('ip-binding-type').value        = isEdit ? (row['type'] || 'bypassed') : 'bypassed';
+        document.getElementById('ip-binding-comment').value     = isEdit ? (row['comment'] || '') : '';
+        document.getElementById('ip-binding-mac').readOnly      = isEdit;
+        document.getElementById('ip-binding-error').classList.add('d-none');
+        $ipBindingModal.modal('show');
+    }
+
+    document.getElementById('form-ip-binding').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const id      = document.getElementById('ip-binding-id').value;
+        const isEdit  = id !== '';
+        const cid     = getConnectionId();
+        const errEl   = document.getElementById('ip-binding-error');
+        const saveBtn = document.getElementById('btn-ip-binding-save');
+
+        const body = {
+            connection_id  : cid,
+            'mac-address'  : document.getElementById('ip-binding-mac').value,
+            address        : document.getElementById('ip-binding-address').value,
+            server         : document.getElementById('ip-binding-server').value,
+            type           : document.getElementById('ip-binding-type').value,
+            comment        : document.getElementById('ip-binding-comment').value,
+        };
+
+        errEl.classList.add('d-none');
+        saveBtn.disabled = true;
+
+        try {
+            const url  = isEdit ? hotspotIpBindingBaseUrl + '/' + id : hotspotIpBindingBaseUrl;
+            const json = await apiRequest(isEdit ? 'PUT' : 'POST', url, body);
+            AppAjax.showToast(json.message || 'Berhasil.', 'success');
+            $ipBindingModal.modal('hide');
             loadMenu(currentMenu);
         } catch (err) {
             errEl.textContent = err.message || 'Gagal menyimpan.';

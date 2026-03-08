@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Invoice;
+use App\Models\TeknisiSetoran;
 use App\Models\TenantSettings;
 use App\Services\IsolirSynchronizer;
 use App\Services\RadiusReplySynchronizer;
@@ -181,6 +182,15 @@ class InvoiceController extends Controller
         }
 
         $this->logActivity('paid', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
+
+        $cashReceived = $request->input('cash_received');
+        if ($cashReceived && (float) $cashReceived > 0) {
+            TeknisiSetoran::createOrRecalculateForUser(
+                $user->id,
+                (int) $invoice->owner_id,
+                now()->toDateString()
+            );
+        }
 
         $settings = TenantSettings::getOrCreate((int) $invoice->owner_id);
 

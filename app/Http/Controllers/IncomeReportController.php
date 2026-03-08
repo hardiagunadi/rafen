@@ -16,7 +16,10 @@ class IncomeReportController extends Controller
             'owner_id' => $request->input('owner_id'),
         ];
 
-        $owners = User::query()->orderBy('name')->get();
+        $authUser = $request->user();
+        $owners = $authUser->isSuperAdmin()
+            ? User::query()->where('is_super_admin', false)->whereNull('parent_id')->orderBy('name')->get()
+            : User::query()->where('id', $authUser->effectiveOwnerId())->get();
 
         $report = [
             'total' => 0,

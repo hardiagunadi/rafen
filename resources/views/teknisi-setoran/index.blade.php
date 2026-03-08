@@ -7,11 +7,6 @@
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:.5rem;">
         <h4 class="mb-0">Rekonsiliasi Nota Teknisi</h4>
         <div class="d-flex align-items-center" style="gap:.5rem;">
-            @if(auth()->user()->role === 'teknisi')
-                <button class="btn btn-primary btn-sm" id="btn-buat-setoran">
-                    <i class="fas fa-plus mr-1"></i>Buat Setoran Hari Ini
-                </button>
-            @endif
             <select id="filter-status" class="form-control form-control-sm" style="width:160px;">
                 <option value="">Semua Status</option>
                 <option value="draft">Draft</option>
@@ -82,38 +77,6 @@
         });
 
         $('#filter-status').on('change', function () { table.ajax.reload(); });
-
-        // Tombol buat setoran hari ini (teknisi)
-        var btnBuat = document.getElementById('btn-buat-setoran');
-        if (btnBuat) {
-            btnBuat.addEventListener('click', function () {
-                if (!confirm('Buat setoran untuk hari ini?')) return;
-                btnBuat.disabled = true;
-                fetch('{{ route("teknisi-setoran.store") }}', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ period_date: '{{ today()->toDateString() }}' }),
-                })
-                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-                .then(function (res) {
-                    btnBuat.disabled = false;
-                    if (res.ok) {
-                        if (window.showToast) showToast(res.data.status || 'Setoran dibuat.', 'success');
-                        window.location.href = '{{ route("teknisi-setoran.index") }}/' + res.data.id;
-                    } else {
-                        if (window.showToast) showToast(res.data.error || 'Gagal membuat setoran.', 'danger');
-                    }
-                })
-                .catch(function () {
-                    btnBuat.disabled = false;
-                    if (window.showToast) showToast('Terjadi kesalahan.', 'danger');
-                });
-            });
-        }
     }
 
     document.addEventListener('DOMContentLoaded', init);
