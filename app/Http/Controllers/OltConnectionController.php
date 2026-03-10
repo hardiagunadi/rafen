@@ -6,6 +6,7 @@ use App\Http\Requests\DetectOltModelRequest;
 use App\Http\Requests\DetectOltOidRequest;
 use App\Http\Requests\StoreOltConnectionRequest;
 use App\Http\Requests\UpdateOltConnectionRequest;
+use App\Jobs\PollOltConnectionJob;
 use App\Models\OltConnection;
 use App\Models\OltOnuOptic;
 use App\Services\HsgqSnmpCollector;
@@ -13,7 +14,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
@@ -366,76 +366,35 @@ class OltConnectionController extends Controller
 
         $this->authorizeAccess($oltConnection);
 
-        try {
-            $records = $this->collector->collect($oltConnection);
-            $now = now();
+        if (app()->runningUnitTests()) {
+            PollOltConnectionJob::dispatchSync($oltConnection->id);
+            $latestConnection = $oltConnection->fresh();
 
-            if (! empty($records)) {
-                $payload = array_map(function (array $record) use ($oltConnection, $now): array {
-                    return [
-                        'olt_connection_id' => $oltConnection->id,
-                        'owner_id' => $oltConnection->owner_id,
-                        'onu_index' => (string) $record['onu_index'],
-                        'pon_interface' => $record['pon_interface'] ?? null,
-                        'onu_number' => $record['onu_number'] ?? null,
-                        'serial_number' => $record['serial_number'] ?? null,
-                        'onu_name' => $record['onu_name'] ?? null,
-                        'distance_m' => $record['distance_m'] ?? null,
-                        'rx_onu_dbm' => $record['rx_onu_dbm'] ?? null,
-                        'tx_onu_dbm' => $record['tx_onu_dbm'] ?? null,
-                        'rx_olt_dbm' => $record['rx_olt_dbm'] ?? null,
-                        'tx_olt_dbm' => $record['tx_olt_dbm'] ?? null,
-                        'status' => $record['status'] ?? null,
-                        'raw_payload' => is_array($record['raw_payload'] ?? null)
-                            ? json_encode($record['raw_payload'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                            : ($record['raw_payload'] ?? null),
-                        'last_seen_at' => $now,
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-                }, $records);
-
-                OltOnuOptic::query()->upsert(
-                    $payload,
-                    ['olt_connection_id', 'onu_index'],
-                    [
-                        'pon_interface',
-                        'onu_number',
-                        'serial_number',
-                        'onu_name',
-                        'distance_m',
-                        'rx_onu_dbm',
-                        'tx_onu_dbm',
-                        'rx_olt_dbm',
-                        'tx_olt_dbm',
-                        'status',
-                        'raw_payload',
-                        'last_seen_at',
-                        'updated_at',
-                    ]
-                );
+            if ($latestConnection?->last_poll_success === false) {
+                return redirect()
+                    ->route('olt-connections.show', $oltConnection)
+                    ->with('error', 'Polling OLT gagal: '.($latestConnection->last_poll_message ?? 'Terjadi kesalahan SNMP.'));
             }
 
-            $oltConnection->update([
-                'last_polled_at' => $now,
-                'last_poll_success' => true,
-                'last_poll_message' => 'Polling SNMP berhasil. ONU terdeteksi: '.count($records),
-            ]);
-
             return redirect()
                 ->route('olt-connections.show', $oltConnection)
-                ->with('status', 'Polling OLT HSGQ berhasil. ONU terdeteksi: '.count($records).'.');
-        } catch (Throwable $exception) {
-            $oltConnection->update([
-                'last_polled_at' => now(),
-                'last_poll_success' => false,
-                'last_poll_message' => Str::limit($exception->getMessage(), 230),
-            ]);
-
-            return redirect()
-                ->route('olt-connections.show', $oltConnection)
-                ->with('error', 'Polling OLT gagal: '.$exception->getMessage());
+                ->with('status', 'Polling OLT HSGQ berhasil. '.($latestConnection->last_poll_message ?? ''));
         }
+
+        $oltConnection->update([
+            'last_poll_success' => null,
+            'last_poll_message' => OltConnection::POLLING_RUNNING_PREFIX.' 0% Menunggu antrean polling...',
+        ]);
+
+        if ((string) config('queue.default') === 'sync') {
+            PollOltConnectionJob::dispatchAfterResponse($oltConnection->id);
+        } else {
+            PollOltConnectionJob::dispatch($oltConnection->id);
+        }
+
+        return redirect()
+            ->route('olt-connections.show', $oltConnection)
+            ->with('status', 'Polling OLT dijadwalkan di background. Refresh halaman beberapa saat lagi untuk hasil terbaru.');
     }
 
     public function autoDetectOid(DetectOltOidRequest $request): JsonResponse

@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\OltConnection;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
+use Illuminate\Process\Pool;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
 
@@ -145,9 +147,10 @@ class HsgqSnmpCollector
     }
 
     /**
+     * @param  callable(int, int, string): void|null  $progressReporter
      * @return array<int, array<string, mixed>>
      */
-    public function collect(OltConnection $oltConnection): array
+    public function collect(OltConnection $oltConnection, ?callable $progressReporter = null): array
     {
         $oidMap = [
             'serial_number' => $oltConnection->oid_serial,
@@ -165,10 +168,7 @@ class HsgqSnmpCollector
             throw new RuntimeException('OID SNMP belum dikonfigurasi. Isi minimal satu OID pada data OLT.');
         }
 
-        $walkResults = [];
-        foreach ($configuredOidMap as $field => $baseOid) {
-            $walkResults[$field] = $this->walkByIndex($oltConnection, (string) $baseOid);
-        }
+        $walkResults = $this->walkConfiguredOids($oltConnection, $configuredOidMap, $progressReporter);
 
         $preferredIndexes = collect([
             'serial_number',
@@ -363,8 +363,12 @@ class HsgqSnmpCollector
             escapeshellarg('.'.$normalizedOid),
         );
 
-        $result = Process::timeout(max(8, $oltConnection->snmp_timeout + 3))
-            ->run($command);
+        try {
+            $result = Process::timeout($this->resolveProcessTimeoutSeconds($oltConnection))
+                ->run($command);
+        } catch (ProcessTimedOutException) {
+            return null;
+        }
 
         if ($result->failed()) {
             $error = trim($result->errorOutput() ?: $result->output());
@@ -409,24 +413,78 @@ class HsgqSnmpCollector
     private function walkByIndex(OltConnection $oltConnection, string $baseOid): array
     {
         $normalizedBaseOid = ltrim(trim($baseOid), '.');
+        $command = $this->buildSnmpWalkCommand($oltConnection, $normalizedBaseOid);
 
-        $command = sprintf(
-            'snmpwalk -On -v2c -c %s -t %d -r %d %s %s',
-            escapeshellarg($oltConnection->snmp_community),
-            $oltConnection->snmp_timeout,
-            $oltConnection->snmp_retries,
-            escapeshellarg($oltConnection->host.':'.$oltConnection->snmp_port),
-            escapeshellarg('.'.$normalizedBaseOid),
-        );
-
-        $result = Process::timeout(max(8, $oltConnection->snmp_timeout + 3))
-            ->run($command);
+        try {
+            $result = Process::timeout($this->resolveProcessTimeoutSeconds($oltConnection))
+                ->run($command);
+        } catch (ProcessTimedOutException) {
+            throw new RuntimeException($this->snmpTimeoutMessage($oltConnection));
+        }
 
         if ($result->failed()) {
-            throw new RuntimeException('SNMP walk gagal: '.trim($result->errorOutput() ?: $result->output()));
+            throw new RuntimeException($this->normalizeSnmpFailureMessage($oltConnection, trim($result->errorOutput() ?: $result->output())));
         }
 
         return $this->parseWalkOutput($result->output(), $normalizedBaseOid);
+    }
+
+    /**
+     * @param  array<string, string>  $configuredOidMap
+     * @param  callable(int, int, string): void|null  $progressReporter
+     * @return array<string, array<string, string>>
+     */
+    private function walkConfiguredOids(
+        OltConnection $oltConnection,
+        array $configuredOidMap,
+        ?callable $progressReporter = null
+    ): array {
+        $parallelBatchSize = max(1, min(8, (int) config('olt.polling.parallel_walk_batch', 3)));
+        $walkResults = [];
+        $oidEntries = [];
+        $completed = 0;
+
+        foreach ($configuredOidMap as $field => $baseOid) {
+            $oidEntries[] = [
+                'field' => (string) $field,
+                'base_oid' => (string) $baseOid,
+            ];
+        }
+
+        $total = count($oidEntries);
+
+        foreach (array_chunk($oidEntries, $parallelBatchSize) as $chunk) {
+            try {
+                $poolResults = Process::pool(function (Pool $pool) use ($chunk, $oltConnection): void {
+                    foreach ($chunk as $entry) {
+                        $pool->as($entry['field'])
+                            ->timeout($this->resolveProcessTimeoutSeconds($oltConnection))
+                            ->command($this->buildSnmpWalkCommand($oltConnection, $entry['base_oid']));
+                    }
+                })->run();
+            } catch (ProcessTimedOutException) {
+                throw new RuntimeException($this->snmpTimeoutMessage($oltConnection));
+            }
+
+            foreach ($chunk as $entry) {
+                $field = $entry['field'];
+                $normalizedBaseOid = ltrim(trim($entry['base_oid']), '.');
+                $result = $poolResults[$field];
+
+                if ($result->failed()) {
+                    throw new RuntimeException($this->normalizeSnmpFailureMessage($oltConnection, trim($result->errorOutput() ?: $result->output())));
+                }
+
+                $walkResults[$field] = $this->parseWalkOutput($result->output(), $normalizedBaseOid);
+                $completed++;
+
+                if ($progressReporter !== null) {
+                    $progressReporter($completed, max(1, $total), $field);
+                }
+            }
+        }
+
+        return $walkResults;
     }
 
     /**
@@ -642,6 +700,47 @@ class HsgqSnmpCollector
         }
 
         return (string) (intdiv((int) $onuIndex, 256) * 256);
+    }
+
+    private function buildSnmpWalkCommand(OltConnection $oltConnection, string $baseOid): string
+    {
+        return sprintf(
+            'snmpwalk -On -v2c -c %s -t %d -r %d %s %s',
+            escapeshellarg($oltConnection->snmp_community),
+            $oltConnection->snmp_timeout,
+            $oltConnection->snmp_retries,
+            escapeshellarg($oltConnection->host.':'.$oltConnection->snmp_port),
+            escapeshellarg('.'.ltrim(trim($baseOid), '.')),
+        );
+    }
+
+    private function resolveProcessTimeoutSeconds(OltConnection $oltConnection): int
+    {
+        $snmpTimeout = max(1, (int) $oltConnection->snmp_timeout);
+        $snmpRetries = max(0, (int) $oltConnection->snmp_retries);
+
+        return max(8, ($snmpTimeout * ($snmpRetries + 1)) + 3);
+    }
+
+    private function snmpTimeoutMessage(OltConnection $oltConnection): string
+    {
+        return 'SNMP timeout ke OLT. Tidak ada respons dalam '.$this->resolveProcessTimeoutSeconds($oltConnection).' detik.';
+    }
+
+    private function normalizeSnmpFailureMessage(OltConnection $oltConnection, string $message): string
+    {
+        $normalizedMessage = strtolower($message);
+
+        if (
+            str_contains($normalizedMessage, 'timed out')
+            || str_contains($normalizedMessage, 'exceeded the timeout')
+            || str_contains($normalizedMessage, 'timeout')
+            || str_contains($normalizedMessage, 'no response')
+        ) {
+            return $this->snmpTimeoutMessage($oltConnection);
+        }
+
+        return 'SNMP walk gagal: '.$message;
     }
 
     /**

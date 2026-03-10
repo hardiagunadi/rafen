@@ -43,7 +43,9 @@
             <div class="col-lg-4">
                 <div><strong>Polling terakhir:</strong> {{ $oltConnection->last_polled_at?->format('Y-m-d H:i:s') ?? '-' }}</div>
                 <div><strong>Hasil polling:</strong>
-                    @if($oltConnection->last_poll_success === null)
+                    @if($oltConnection->isPollingInProgress())
+                        <span class="badge badge-info">Sedang Polling</span>
+                    @elseif($oltConnection->last_poll_success === null)
                         <span class="badge badge-secondary">Belum Pernah Polling</span>
                     @elseif($oltConnection->last_poll_success)
                         <span class="badge badge-success">Sukses</span>
@@ -51,6 +53,16 @@
                         <span class="badge badge-danger">Gagal</span>
                     @endif
                 </div>
+                @if($oltConnection->isPollingInProgress() && $oltConnection->pollingProgressPercent() !== null)
+                    <div class="mt-2">
+                        <small class="text-muted d-block mb-1">Progres: {{ $oltConnection->pollingProgressPercent() }}%</small>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-info" role="progressbar"
+                                style="width: {{ $oltConnection->pollingProgressPercent() }}%;"
+                                aria-valuenow="{{ $oltConnection->pollingProgressPercent() }}" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                @endif
                 <div><strong>Total ONU tersimpan:</strong> {{ number_format($totalOnuStored) }}</div>
             </div>
             <div class="col-lg-4">
@@ -60,9 +72,9 @@
                 <div><strong>OID Status:</strong> <code>{{ $oltConnection->oid_status ?: '-' }}</code></div>
             </div>
         </div>
-        @if($oltConnection->last_poll_message)
-            <div class="alert {{ $oltConnection->last_poll_success ? 'alert-success' : 'alert-danger' }} mt-3 mb-0">
-                {{ $oltConnection->last_poll_message }}
+        @if($oltConnection->pollingDisplayMessage())
+            <div class="alert {{ $oltConnection->isPollingInProgress() ? 'alert-info' : ($oltConnection->last_poll_success ? 'alert-success' : 'alert-danger') }} mt-3 mb-0">
+                {{ $oltConnection->pollingDisplayMessage() }}
             </div>
         @endif
     </div>
@@ -160,6 +172,12 @@
 @push('scripts')
 <script>
 (function () {
+    @if($oltConnection->isPollingInProgress())
+    window.setTimeout(function () {
+        window.location.reload();
+    }, 3000);
+    @endif
+
     function init() {
         var tableElement = document.getElementById('onu-optics-table');
 

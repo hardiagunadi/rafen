@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'polling' => [
+        'queue' => env('OLT_POLL_QUEUE', 'default'),
+        'lock_seconds' => (int) env('OLT_POLL_LOCK_SECONDS', 900),
+        'parallel_walk_batch' => (int) env('OLT_POLL_PARALLEL_WALK_BATCH', 3),
+    ],
+
     'hsgq_models' => [
         'HSGQ-E04I (EPON)' => [
             'oids' => [

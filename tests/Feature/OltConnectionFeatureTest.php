@@ -96,6 +96,16 @@ it('renders olt pages for tenant admin', function () {
         ->assertSee('OID Distance (m)');
 });
 
+it('parses polling progress from running poll message', function () {
+    $connection = OltConnection::factory()->make([
+        'last_poll_message' => '[RUNNING] 42% Membaca OID status (3/7)',
+    ]);
+
+    expect($connection->isPollingInProgress())->toBeTrue()
+        ->and($connection->pollingProgressPercent())->toBe(42)
+        ->and($connection->pollingDisplayMessage())->toBe('Membaca OID status (3/7)');
+});
+
 it('auto detects oid mapping based on selected olt model', function () {
     $tenant = User::factory()->create([
         'role' => 'administrator',
@@ -288,6 +298,35 @@ it('normalizes hsgq e04i optical values during polling', function () {
         ->and($rows[0]['rx_olt_dbm'])->toBe(-26.19)
         ->and($rows[0]['tx_olt_dbm'])->toBe(6.2)
         ->and($rows[0]['status'])->toBe('online');
+});
+
+it('uses process timeout derived from snmp timeout and retries', function () {
+    $connection = OltConnection::factory()->create([
+        'snmp_timeout' => 5,
+        'snmp_retries' => 1,
+        'oid_serial' => '1.3.6.1.4.1.1.1',
+        'oid_onu_name' => null,
+        'oid_rx_onu' => null,
+        'oid_tx_onu' => null,
+        'oid_rx_olt' => null,
+        'oid_tx_olt' => null,
+        'oid_distance' => null,
+        'oid_status' => null,
+    ]);
+
+    Process::fake(fn () => Process::result(
+        '.1.3.6.1.4.1.1.1.16777473 = STRING: "D0 60 8C BC BD C3"'
+    ));
+
+    $rows = app(HsgqSnmpCollector::class)->collect($connection);
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]['serial_number'])->toBe('D0 60 8C BC BD C3');
+
+    Process::assertRan(function ($process) {
+        return str_contains($process->command, '.1.3.6.1.4.1.1.1')
+            && $process->timeout === 13;
+    });
 });
 
 it('auto detects olt model from snmp metadata', function () {
@@ -549,7 +588,7 @@ it('upserts onu optical data when polling succeeds', function () {
 
     app()->instance(HsgqSnmpCollector::class, new class extends HsgqSnmpCollector
     {
-        public function collect(OltConnection $oltConnection): array
+        public function collect(OltConnection $oltConnection, ?callable $progressReporter = null): array
         {
             return [
                 [
@@ -734,7 +773,7 @@ it('stores polling failure message when collector throws exception', function ()
 
     app()->instance(HsgqSnmpCollector::class, new class extends HsgqSnmpCollector
     {
-        public function collect(OltConnection $oltConnection): array
+        public function collect(OltConnection $oltConnection, ?callable $progressReporter = null): array
         {
             throw new \RuntimeException('SNMP timeout ke OLT HSGQ.');
         }
@@ -748,5 +787,40 @@ it('stores polling failure message when collector throws exception', function ()
     $connection->refresh();
 
     expect($connection->last_poll_success)->toBeFalse()
-        ->and((string) $connection->last_poll_message)->toContain('SNMP timeout ke OLT HSGQ.');
+        ->and((string) $connection->last_poll_message)->toContain('SNMP timeout ke OLT.');
+});
+
+it('normalizes raw process timeout message when polling fails', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+        'snmp_timeout' => 5,
+        'snmp_retries' => 1,
+    ]);
+
+    app()->instance(HsgqSnmpCollector::class, new class extends HsgqSnmpCollector
+    {
+        public function collect(OltConnection $oltConnection, ?callable $progressReporter = null): array
+        {
+            throw new \RuntimeException(
+                'The process "snmpwalk -On -v2c -c \'public\' -t 5 -r 1 \'10.10.10.1:161\' \'.1.3.6.1.4.1.1.1\'" exceeded the timeout of 8 seconds.'
+            );
+        }
+    });
+
+    $this->actingAs($tenant)
+        ->post(route('olt-connections.poll', $connection))
+        ->assertRedirect(route('olt-connections.show', $connection))
+        ->assertSessionHas('error');
+
+    $connection->refresh();
+
+    expect($connection->last_poll_success)->toBeFalse()
+        ->and((string) $connection->last_poll_message)->toContain('SNMP timeout ke OLT.')
+        ->and((string) $connection->last_poll_message)->not->toContain('exceeded the timeout');
 });

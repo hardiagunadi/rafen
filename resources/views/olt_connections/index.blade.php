@@ -41,15 +41,24 @@
                             <td>{{ $connection->olt_model ?: '-' }}</td>
                             <td>{{ $connection->onu_optics_count }}</td>
                             <td>
-                                @if($connection->last_poll_success === null)
+                                @if($connection->isPollingInProgress())
+                                    <span class="badge badge-info">Sedang Polling</span>
+                                @elseif($connection->last_poll_success === null)
                                     <span class="badge badge-secondary">Belum Pernah Polling</span>
                                 @elseif($connection->last_poll_success)
                                     <span class="badge badge-success">Sukses</span>
                                 @else
                                     <span class="badge badge-danger">Gagal</span>
                                 @endif
-                                @if($connection->last_poll_message)
-                                    <div class="small text-muted mt-1">{{ $connection->last_poll_message }}</div>
+                                @if($connection->pollingDisplayMessage())
+                                    <div class="small text-muted mt-1">{{ $connection->pollingDisplayMessage() }}</div>
+                                @endif
+                                @if($connection->isPollingInProgress() && $connection->pollingProgressPercent() !== null)
+                                    <div class="progress mt-2" style="height: 6px; max-width: 180px;">
+                                        <div class="progress-bar bg-info" role="progressbar"
+                                            style="width: {{ $connection->pollingProgressPercent() }}%;"
+                                            aria-valuenow="{{ $connection->pollingProgressPercent() }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
                                 @endif
                             </td>
                             <td>{{ $connection->last_polled_at?->format('Y-m-d H:i:s') ?? '-' }}</td>

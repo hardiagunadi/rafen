@@ -13,6 +13,8 @@ class OltConnection extends Model
     /** @use HasFactory<\Database\Factories\OltConnectionFactory> */
     use HasFactory;
 
+    public const POLLING_RUNNING_PREFIX = '[RUNNING]';
+
     /**
      * @var array<int, string>
      */
@@ -74,5 +76,42 @@ class OltConnection extends Model
         }
 
         return $query->where('owner_id', $user->effectiveOwnerId());
+    }
+
+    public function isPollingInProgress(): bool
+    {
+        $message = (string) ($this->last_poll_message ?? '');
+
+        return str_starts_with($message, self::POLLING_RUNNING_PREFIX);
+    }
+
+    public function pollingProgressPercent(): ?int
+    {
+        if (! $this->isPollingInProgress()) {
+            return null;
+        }
+
+        if (preg_match('/^\[RUNNING\]\s*(\d{1,3})%/', (string) $this->last_poll_message, $matches) !== 1) {
+            return null;
+        }
+
+        return max(0, min(100, (int) $matches[1]));
+    }
+
+    public function pollingDisplayMessage(): ?string
+    {
+        $message = trim((string) ($this->last_poll_message ?? ''));
+
+        if ($message === '') {
+            return null;
+        }
+
+        if (! $this->isPollingInProgress()) {
+            return $message;
+        }
+
+        $cleanedMessage = preg_replace('/^\[RUNNING\]\s*\d{1,3}%\s*/', '', $message);
+
+        return trim((string) $cleanedMessage);
     }
 }
