@@ -8,11 +8,13 @@
         $tenantTitle = 'Radius Manager';
         $subscriptionExpired = false;
         $subscriptionDaysLeft = null;
+        $hotspotModuleEnabled = true;
         if (auth()->check()) {
             $tenantSettings = \App\Models\TenantSettings::getOrCreate(auth()->user()->effectiveOwnerId());
             if ($tenantSettings?->business_name) {
                 $tenantTitle = $tenantSettings->business_name;
             }
+            $hotspotModuleEnabled = $tenantSettings?->isHotspotModuleEnabled() ?? true;
             $authUser = auth()->user();
             if (!$authUser->isSuperAdmin() && !$authUser->canAccessApp()) {
                 $subscriptionExpired = true;
@@ -85,6 +87,14 @@
                 @yield('sidebar')
             @else
             <nav class="mt-2">
+                @php
+                    $listPelangganRoutes = $hotspotModuleEnabled
+                        ? ['hotspot-users.*', 'ppp-users.*', 'vouchers.*', 'customer-map.*', 'odps.*']
+                        : ['ppp-users.*', 'vouchers.*', 'customer-map.*', 'odps.*'];
+                    $profilePaketRoutes = $hotspotModuleEnabled
+                        ? ['bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*']
+                        : ['bandwidth-profiles.*', 'profile-groups.*', 'ppp-profiles.*'];
+                @endphp
                 <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
                     @if($subscriptionExpired)
                     {{-- Subscription expired: hanya tampilkan menu Langganan --}}
@@ -122,23 +132,25 @@
                                     <p>PPPoE Tidak Aktif</p>
                                 </a>
                             </li>
-                            <li class="nav-item">
-                                <a href="{{ route('sessions.hotspot') }}" class="nav-link {{ request()->routeIs('sessions.hotspot') || request()->routeIs('sessions.hotspot.datatable') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Hotspot Aktif</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('sessions.hotspot-inactive') }}" class="nav-link {{ request()->routeIs('sessions.hotspot-inactive*') ? 'active' : '' }}">
-                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
-                                    <p>Hotspot Tidak Aktif</p>
-                                </a>
-                            </li>
+                            @if($hotspotModuleEnabled)
+                                <li class="nav-item">
+                                    <a href="{{ route('sessions.hotspot') }}" class="nav-link {{ request()->routeIs('sessions.hotspot') || request()->routeIs('sessions.hotspot.datatable') ? 'active' : '' }}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Hotspot Aktif</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="{{ route('sessions.hotspot-inactive') }}" class="nav-link {{ request()->routeIs('sessions.hotspot-inactive*') ? 'active' : '' }}">
+                                        <i class="far fa-dot-circle nav-icon text-danger"></i>
+                                        <p>Hotspot Tidak Aktif</p>
+                                    </a>
+                                </li>
+                            @endif
                         </ul>
                     </li>
 
-                     <li class="nav-item has-treeview {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('hotspot-users.*', 'ppp-users.*', 'vouchers.*') ? 'active' : '' }}">
+                     <li class="nav-item has-treeview {{ request()->routeIs(...$listPelangganRoutes) ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs(...$listPelangganRoutes) ? 'active' : '' }}">
                             <i class="nav-icon fas fa-users"></i>
                             <p>
                                 List Pelanggan
@@ -146,12 +158,14 @@
                             </p>
                         </a>
                         <ul class="nav nav-treeview">
-                            <li class="nav-item">
-                                <a href="{{ route('hotspot-users.index') }}" class="nav-link {{ request()->routeIs('hotspot-users.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>User Hotspot</p>
-                                </a>
-                            </li>
+                            @if($hotspotModuleEnabled)
+                                <li class="nav-item">
+                                    <a href="{{ route('hotspot-users.index') }}" class="nav-link {{ request()->routeIs('hotspot-users.*') ? 'active' : '' }}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>User Hotspot</p>
+                                    </a>
+                                </li>
+                            @endif
                             <li class="nav-item">
                                 <a href="{{ route('ppp-users.index') }}" class="nav-link {{ request()->routeIs('ppp-users.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
@@ -165,27 +179,27 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('customer-map.index') }}" class="nav-link {{ request()->routeIs('customer-map.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Peta Pelanggan</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('odps.index') }}" class="nav-link {{ request()->routeIs('odps.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Data ODP</p>
                                 </a>
                             </li>
                         </ul>
                     </li>
-                   <li class="nav-item">
+                    <li class="nav-item">
                         <a href="{{ route('mikrotik-connections.index') }}" class="nav-link">
                             <i class="nav-icon fas fa-server"></i>
                             <p>Router (NAS)</p>
                         </a>
                     </li>
-                    <li class="nav-item has-treeview {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('bandwidth-profiles.*', 'profile-groups.*', 'hotspot-profiles.*', 'ppp-profiles.*') ? 'active' : '' }}">
+                    <li class="nav-item has-treeview {{ request()->routeIs(...$profilePaketRoutes) ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs(...$profilePaketRoutes) ? 'active' : '' }}">
                             <i class="nav-icon fas fa-box"></i>
                             <p>
                                 Profil Paket
@@ -205,12 +219,14 @@
                                     <p>Profil Group</p>
                                 </a>
                             </li>
-                            <li class="nav-item">
-                                <a href="{{ route('hotspot-profiles.index') }}" class="nav-link {{ request()->routeIs('hotspot-profiles.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil Hotspot</p>
-                                </a>
-                            </li>
+                            @if($hotspotModuleEnabled)
+                                <li class="nav-item">
+                                    <a href="{{ route('hotspot-profiles.index') }}" class="nav-link {{ request()->routeIs('hotspot-profiles.*') ? 'active' : '' }}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Profil Hotspot</p>
+                                    </a>
+                                </li>
+                            @endif
                             <li class="nav-item">
                                 <a href="{{ route('ppp-profiles.index') }}" class="nav-link {{ request()->routeIs('ppp-profiles.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
@@ -427,7 +443,7 @@
                             <li class="nav-item">
                                 <a href="{{ route('tenant-settings.index') }}" class="nav-link {{ request()->routeIs('tenant-settings.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>Pengaturan Bisnis</p>
+                                    <p>Pengaturan</p>
                                 </a>
                             </li>
                             <li class="nav-item">
@@ -611,7 +627,9 @@
                         <select class="form-control" id="invoice-service-type" name="service_type">
                             <option value="">- Semua -</option>
                             <option value="pppoe">PPPoE</option>
-                            <option value="hotspot">Hotspot</option>
+                            @if($hotspotModuleEnabled)
+                                <option value="hotspot">Hotspot</option>
+                            @endif
                         </select>
                     </div>
                     @if(auth()->user()->isSuperAdmin())
@@ -649,8 +667,10 @@
                         <label for="modal-service-type">Tipe Service</label>
                         <select class="form-control" id="modal-service-type" name="service_type">
                             <option value="">- Semua -</option>
-                            <option value="hotspot">HOTSPOT</option>
                             <option value="pppoe">PPPoE</option>
+                            @if($hotspotModuleEnabled)
+                                <option value="hotspot">HOTSPOT</option>
+                            @endif
                         </select>
                     </div>
                     @if(auth()->user()->isSuperAdmin())
@@ -700,7 +720,9 @@
                         <select class="form-control" id="period-service-type" name="service_type">
                             <option value="">- Semua Transaksi -</option>
                             <option value="pppoe">PPPoE</option>
-                            <option value="hotspot">HOTSPOT</option>
+                            @if($hotspotModuleEnabled)
+                                <option value="hotspot">HOTSPOT</option>
+                            @endif
                         </select>
                     </div>
                     @if(auth()->user()->isSuperAdmin())

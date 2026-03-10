@@ -1,14 +1,245 @@
 @extends('layouts.admin')
 
-@section('title', 'Pengaturan Bisnis')
+@section('title', 'Pengaturan')
 
 @section('content')
-<div class="row">
-    <div class="col-md-6">
+@php
+    $hotspotModuleEnabled = old('module_hotspot_enabled', $settings->module_hotspot_enabled ?? true);
+    $mapCacheEnabled = old('map_cache_enabled', $settings->map_cache_enabled);
+    $bankAccountCount = $bankAccounts->count();
+@endphp
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+    .tenant-settings-shell {
+        --settings-border: #d7e1ee;
+        --settings-surface: #ffffff;
+        --settings-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+        --settings-shadow-soft: 0 8px 18px rgba(15, 23, 42, 0.06);
+        --settings-text: #0f172a;
+        --settings-text-soft: #5b6b83;
+        position: relative;
+        border-radius: 24px;
+        padding: 4px;
+        margin-bottom: 1rem;
+    }
+
+    .tenant-settings-shell::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 24px;
+        z-index: 0;
+        background:
+            radial-gradient(circle at 8% 8%, rgba(14, 116, 144, 0.12), transparent 32%),
+            radial-gradient(circle at 90% 4%, rgba(37, 99, 235, 0.08), transparent 30%),
+            #f4f7fb;
+    }
+
+    .tenant-settings-shell > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .settings-hero {
+        border: 1px solid var(--settings-border);
+        border-radius: 18px;
+        box-shadow: var(--settings-shadow-soft);
+        padding: 1.1rem 1.2rem;
+        background:
+            radial-gradient(circle at top right, rgba(14, 116, 144, 0.12), transparent 45%),
+            linear-gradient(160deg, #f8fbff 0%, #f2f7ff 45%, #eef4fc 100%);
+    }
+
+    .settings-kicker {
+        margin: 0;
+        color: #0f766e;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+
+    .settings-title {
+        margin: 0.55rem 0 0;
+        color: var(--settings-text);
+        font-size: 1.55rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .settings-subtitle {
+        margin: 0.6rem 0 0;
+        color: var(--settings-text-soft);
+        max-width: 680px;
+    }
+
+    .settings-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.9rem;
+    }
+
+    .settings-badge {
+        border-radius: 999px;
+        border: 1px solid #d3deed;
+        background: rgba(255, 255, 255, 0.88);
+        color: #334155;
+        padding: 0.35rem 0.7rem;
+        font-size: 0.76rem;
+        font-weight: 600;
+    }
+
+    .settings-badge.is-active {
+        border-color: #85d2bf;
+        color: #0f766e;
+        background: #f0fbf8;
+    }
+
+    .settings-badge.is-muted {
+        border-color: #e2e8f0;
+        color: #64748b;
+        background: #f8fafc;
+    }
+
+    .settings-quick-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.95rem 0 1.1rem;
+    }
+
+    .settings-nav-link {
+        border: 1px solid #cfdbec;
+        background: #fff;
+        color: #1e3a5f;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        padding: 0.35rem 0.78rem;
+        transition: all 150ms ease;
+    }
+
+    .settings-nav-link:hover,
+    .settings-nav-link:focus {
+        color: #0f4c81;
+        border-color: #92b8df;
+        background: #f0f7ff;
+        text-decoration: none;
+    }
+
+    .settings-card {
+        border-radius: 16px;
+        border: 1px solid var(--settings-border);
+        box-shadow: var(--settings-shadow-soft);
+        overflow: hidden;
+        background: var(--settings-surface);
+        margin-bottom: 1rem;
+    }
+
+    .settings-card .card-header {
+        border-bottom: 1px solid #e4ebf5;
+        background: linear-gradient(180deg, #fbfdff 0%, #f5f9ff 100%);
+        padding: 0.82rem 1rem;
+    }
+
+    .settings-card .card-title {
+        color: #0f172a;
+        font-weight: 700;
+        font-size: 1rem;
+        margin: 0;
+    }
+
+    .settings-card .card-body {
+        padding: 1rem;
+    }
+
+    .settings-card .card-footer {
+        border-top: 1px solid #e4ebf5;
+        background: #f8fbff;
+        padding: 0.82rem 1rem;
+    }
+
+    .settings-card .form-control,
+    .settings-card .custom-file-label,
+    .settings-card .input-group-text {
+        border-radius: 8px;
+    }
+
+    .settings-card .btn-primary {
+        background-color: #1367a4;
+        border-color: #1367a4;
+    }
+
+    .settings-card .btn-primary:hover {
+        background-color: #0f5689;
+        border-color: #0f5689;
+    }
+
+    .bank-table thead th {
+        border-top: 0;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #64748b;
+        background: #f8fbff;
+    }
+
+    .bank-table td {
+        vertical-align: middle;
+    }
+
+    #map-cache-picker {
+        height: 300px;
+        border: 1px solid #d4deea;
+        border-radius: 10px;
+        box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+
+    @media (max-width: 991.98px) {
+        .settings-title {
+            font-size: 1.35rem;
+        }
+
+        .settings-hero {
+            padding: 1rem;
+        }
+    }
+</style>
+<div class="tenant-settings-shell">
+    <div class="settings-hero">
+        <p class="settings-kicker">Konfigurasi Tenant</p>
+        <h1 class="settings-title">Pengaturan Tenant</h1>
+        <p class="settings-subtitle">
+            Kelola identitas bisnis, modul layanan, pembayaran, cache peta, dan halaman isolir dalam satu dashboard terstruktur.
+        </p>
+        <div class="settings-badges">
+            <span class="settings-badge {{ $hotspotModuleEnabled ? 'is-active' : 'is-muted' }}">
+                <i class="fas fa-wifi mr-1"></i> Hotspot {{ $hotspotModuleEnabled ? 'Aktif' : 'Nonaktif' }}
+            </span>
+            <span class="settings-badge {{ $mapCacheEnabled ? 'is-active' : 'is-muted' }}">
+                <i class="fas fa-map-marked-alt mr-1"></i> Cache Peta {{ $mapCacheEnabled ? 'Aktif' : 'Nonaktif' }}
+            </span>
+            <span class="settings-badge">
+                <i class="fas fa-university mr-1"></i> {{ $bankAccountCount }} Rekening Bank
+            </span>
+        </div>
+    </div>
+
+    <div class="settings-quick-nav">
+        <a class="settings-nav-link" href="#settings-business"><i class="fas fa-briefcase mr-1"></i>Profil Bisnis</a>
+        <a class="settings-nav-link" href="#settings-modules"><i class="fas fa-puzzle-piece mr-1"></i>Modul</a>
+        <a class="settings-nav-link" href="#settings-payment"><i class="fas fa-credit-card mr-1"></i>Pembayaran</a>
+        <a class="settings-nav-link" href="#settings-map-cache"><i class="fas fa-map mr-1"></i>Cache Peta</a>
+        <a class="settings-nav-link" href="#isolir-page"><i class="fas fa-ban mr-1"></i>Halaman Isolir</a>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-6 col-lg-12">
         <!-- Business Settings -->
-        <div class="card">
+        <div class="card settings-card" id="settings-business">
             <div class="card-header">
-                <h3 class="card-title">Informasi Bisnis</h3>
+                <h3 class="card-title"><i class="fas fa-building mr-1 text-primary"></i> Informasi Bisnis</h3>
             </div>
             <form action="{{ route('tenant-settings.update-business') }}" method="POST">
                 @csrf
@@ -65,9 +296,9 @@
         </div>
 
         <!-- Logo Upload -->
-        <div class="card">
+        <div class="card settings-card" id="settings-brand">
             <div class="card-header">
-                <h3 class="card-title">Logo Bisnis</h3>
+                <h3 class="card-title"><i class="fas fa-image mr-1 text-primary"></i> Logo Bisnis</h3>
             </div>
             <div class="card-body">
                 @if($settings->business_logo)
@@ -97,9 +328,9 @@
         </div>
 
         <!-- Bank Accounts -->
-        <div class="card">
+        <div class="card settings-card" id="settings-bank">
             <div class="card-header">
-                <h3 class="card-title">Rekening Bank</h3>
+                <h3 class="card-title"><i class="fas fa-university mr-1 text-primary"></i> Rekening Bank</h3>
                 <div class="card-tools">
                     <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="#addBankModal">
                         <i class="fas fa-plus"></i> Tambah
@@ -107,7 +338,7 @@
                 </div>
             </div>
             <div class="card-body p-0">
-                <table class="table">
+                <table class="table bank-table">
                     <thead>
                         <tr>
                             <th>Bank</th>
@@ -154,11 +385,40 @@
         </div>
     </div>
 
-    <div class="col-md-6">
-        <!-- Payment Settings -->
-        <div class="card">
+        <div class="col-xl-6 col-lg-12">
+        <div class="card settings-card" id="settings-modules">
             <div class="card-header">
-                <h3 class="card-title">Pengaturan Pembayaran</h3>
+                <h3 class="card-title"><i class="fas fa-puzzle-piece mr-1"></i> Modul Tenant</h3>
+            </div>
+            <form action="{{ route('tenant-settings.update-modules') }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Nonaktifkan modul yang tidak dipakai tenant agar menu dan akses fiturnya otomatis disembunyikan untuk semua user tenant ini.
+                    </p>
+                    <div class="form-group mb-0">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="module_hotspot_enabled" name="module_hotspot_enabled" value="1" {{ old('module_hotspot_enabled', $settings->module_hotspot_enabled ?? true) ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="module_hotspot_enabled">Aktifkan modul Hotspot</label>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Jika dimatikan: menu, halaman, dan endpoint hotspot tidak bisa diakses tenant ini.
+                        </small>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Simpan Modul
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Payment Settings -->
+        <div class="card settings-card" id="settings-payment">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-credit-card mr-1 text-primary"></i> Pengaturan Pembayaran</h3>
             </div>
             <form action="{{ route('tenant-settings.update-payment') }}" method="POST">
                 @csrf
@@ -353,20 +613,83 @@
                 </div>
             </form>
         </div>
-        <!-- WhatsApp Settings (halaman tersendiri) -->
-        <div class="card" id="whatsapp">
+        <div class="card settings-card" id="settings-map-cache">
             <div class="card-header">
-                <h3 class="card-title"><i class="fab fa-whatsapp text-success mr-1"></i> Integrasi WhatsApp Gateway</h3>
+                <h3 class="card-title"><i class="fas fa-map-marked-alt mr-1"></i> Cache Peta Coverage</h3>
             </div>
-            <div class="card-body">
-                <p class="text-muted mb-3">Pengaturan WhatsApp Gateway tersedia di halaman khusus.</p>
-                <a href="{{ route('wa-gateway.index') }}" class="btn btn-success">
-                    <i class="fab fa-whatsapp mr-1"></i> Buka Pengaturan WA Gateway
-                </a>
-            </div>
+            <form action="{{ route('tenant-settings.update-map-cache') }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Mode ini menyimpan tile peta coverage tenant agar user tetap bisa membuka peta saat sinyal lemah.
+                        Sistem akan menonaktifkan cache coverage otomatis saat semua ODP sudah bertitik.
+                    </p>
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="map_cache_enabled" name="map_cache_enabled" value="1" {{ old('map_cache_enabled', $settings->map_cache_enabled) ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="map_cache_enabled">Aktifkan cache coverage tenant</label>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-5">
+                            <label>Latitude Pusat Coverage</label>
+                            <input type="text" id="map_cache_center_lat" name="map_cache_center_lat" class="form-control @error('map_cache_center_lat') is-invalid @enderror"
+                                value="{{ old('map_cache_center_lat', $settings->map_cache_center_lat) }}" placeholder="-7.1234567">
+                            @error('map_cache_center_lat')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group col-md-5">
+                            <label>Longitude Pusat Coverage</label>
+                            <input type="text" id="map_cache_center_lng" name="map_cache_center_lng" class="form-control @error('map_cache_center_lng') is-invalid @enderror"
+                                value="{{ old('map_cache_center_lng', $settings->map_cache_center_lng) }}" placeholder="109.1234567">
+                            @error('map_cache_center_lng')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-primary btn-block" id="btn-capture-map-center">
+                                <i class="fas fa-location-arrow mr-1"></i> Titik
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>Radius Coverage (km)</label>
+                            <input type="number" step="0.1" min="0.2" max="50" id="map_cache_radius_km" name="map_cache_radius_km"
+                                class="form-control @error('map_cache_radius_km') is-invalid @enderror"
+                                value="{{ old('map_cache_radius_km', $settings->map_cache_radius_km ?? 3) }}">
+                            @error('map_cache_radius_km')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>Zoom Minimum</label>
+                            <input type="number" min="10" max="18" id="map_cache_min_zoom" name="map_cache_min_zoom"
+                                class="form-control @error('map_cache_min_zoom') is-invalid @enderror"
+                                value="{{ old('map_cache_min_zoom', $settings->map_cache_min_zoom ?? 14) }}">
+                            @error('map_cache_min_zoom')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>Zoom Maksimum</label>
+                            <input type="number" min="11" max="19" id="map_cache_max_zoom" name="map_cache_max_zoom"
+                                class="form-control @error('map_cache_max_zoom') is-invalid @enderror"
+                                value="{{ old('map_cache_max_zoom', $settings->map_cache_max_zoom ?? 17) }}">
+                            @error('map_cache_max_zoom')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+
+                    <div id="map-cache-picker" class="mb-2"></div>
+                    <small id="map-cache-picker-info" class="text-muted d-block">
+                        Geser marker untuk titik pusat coverage. Ubah radius untuk melihat area cache.
+                    </small>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save mr-1"></i> Simpan Cache Coverage
+                    </button>
+                </div>
+            </form>
         </div>
         <!-- Halaman Isolir -->
-        <div class="card" id="isolir-page">
+        <div class="card settings-card" id="isolir-page">
             <div class="card-header">
                 <h3 class="card-title"><i class="fas fa-ban text-danger mr-1"></i> Halaman Info Isolir</h3>
             </div>
@@ -450,6 +773,7 @@
                 </div>
             </form>
         </div>
+        </div>
     </div>
 </div>
 
@@ -509,7 +833,159 @@
 </div>
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+function parseCoordinate(value) {
+    var parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function updateCoverageInfo(infoElement, latitude, longitude, radiusKm) {
+    if (!infoElement) return;
+
+    if (latitude === null || longitude === null) {
+        infoElement.textContent = 'Geser marker untuk titik pusat coverage. Ubah radius untuk melihat area cache.';
+        infoElement.className = 'text-muted d-block';
+        return;
+    }
+
+    infoElement.textContent = 'Coverage center: ' + latitude.toFixed(7) + ', ' + longitude.toFixed(7) + ' | Radius: ' + radiusKm.toFixed(2) + ' km';
+    infoElement.className = 'text-success d-block';
+}
+
+function initMapCachePicker() {
+    var mapContainer = document.getElementById('map-cache-picker');
+    if (!mapContainer || typeof L === 'undefined') return;
+
+    var latInput = document.getElementById('map_cache_center_lat');
+    var lngInput = document.getElementById('map_cache_center_lng');
+    var radiusInput = document.getElementById('map_cache_radius_km');
+    var captureButton = document.getElementById('btn-capture-map-center');
+    var infoElement = document.getElementById('map-cache-picker-info');
+
+    var latitude = parseCoordinate(latInput.value);
+    var longitude = parseCoordinate(lngInput.value);
+    var radiusKm = parseCoordinate(radiusInput.value);
+
+    if (radiusKm === null || radiusKm < 0.2) {
+        radiusKm = 3;
+    }
+
+    var initialPoint = (latitude !== null && longitude !== null)
+        ? [latitude, longitude]
+        : [-7.36, 109.90];
+
+    var map = L.map('map-cache-picker').setView(initialPoint, 13);
+    var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    var earthLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri'
+    });
+
+    L.control.layers({
+        Street: streetLayer,
+        Earth: earthLayer
+    }).addTo(map);
+
+    var marker = L.marker(initialPoint, { draggable: true }).addTo(map);
+    var coverageCircle = L.circle(initialPoint, {
+        radius: radiusKm * 1000,
+        color: '#007bff',
+        fillColor: '#007bff',
+        fillOpacity: 0.12,
+        weight: 2
+    }).addTo(map);
+
+    function applyPoint(lat, lng) {
+        latInput.value = lat.toFixed(7);
+        lngInput.value = lng.toFixed(7);
+        marker.setLatLng([lat, lng]);
+        coverageCircle.setLatLng([lat, lng]);
+        updateCoverageInfo(infoElement, lat, lng, parseCoordinate(radiusInput.value) || radiusKm);
+    }
+
+    function applyRadius() {
+        var nextRadius = parseCoordinate(radiusInput.value);
+        if (nextRadius === null || nextRadius < 0.2) {
+            nextRadius = 0.2;
+            radiusInput.value = '0.2';
+        }
+
+        coverageCircle.setRadius(nextRadius * 1000);
+        var currentLatitude = parseCoordinate(latInput.value);
+        var currentLongitude = parseCoordinate(lngInput.value);
+        updateCoverageInfo(infoElement, currentLatitude, currentLongitude, nextRadius);
+    }
+
+    marker.on('dragend', function () {
+        var position = marker.getLatLng();
+        applyPoint(position.lat, position.lng);
+    });
+
+    map.on('click', function (event) {
+        applyPoint(event.latlng.lat, event.latlng.lng);
+    });
+
+    latInput.addEventListener('change', function () {
+        var nextLatitude = parseCoordinate(latInput.value);
+        var nextLongitude = parseCoordinate(lngInput.value);
+
+        if (nextLatitude === null || nextLongitude === null) return;
+
+        applyPoint(nextLatitude, nextLongitude);
+        map.panTo([nextLatitude, nextLongitude]);
+    });
+
+    lngInput.addEventListener('change', function () {
+        var nextLatitude = parseCoordinate(latInput.value);
+        var nextLongitude = parseCoordinate(lngInput.value);
+
+        if (nextLatitude === null || nextLongitude === null) return;
+
+        applyPoint(nextLatitude, nextLongitude);
+        map.panTo([nextLatitude, nextLongitude]);
+    });
+
+    radiusInput.addEventListener('input', applyRadius);
+
+    if (captureButton) {
+        captureButton.addEventListener('click', function () {
+            if (!navigator.geolocation) {
+                updateCoverageInfo(infoElement, null, null, radiusKm);
+                return;
+            }
+
+            captureButton.disabled = true;
+            infoElement.textContent = 'Mengambil titik GPS pusat coverage...';
+            infoElement.className = 'text-info d-block';
+
+            navigator.geolocation.getCurrentPosition(function (position) {
+                applyPoint(position.coords.latitude, position.coords.longitude);
+                map.setView([position.coords.latitude, position.coords.longitude], Math.max(map.getZoom(), 15));
+                captureButton.disabled = false;
+            }, function () {
+                infoElement.textContent = 'Gagal mengambil lokasi GPS.';
+                infoElement.className = 'text-danger d-block';
+                captureButton.disabled = false;
+            }, {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 0
+            });
+        });
+    }
+
+    if (latitude !== null && longitude !== null) {
+        applyPoint(latitude, longitude);
+    } else {
+        updateCoverageInfo(infoElement, null, null, radiusKm);
+    }
+    applyRadius();
+}
+
 function copyText(elementId) {
     var el = document.getElementById(elementId);
     el.select();
@@ -627,7 +1103,10 @@ function showGatewayForm(gateway) {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     var activeGateway = document.getElementById('active_gateway');
-    if (activeGateway) showGatewayForm(activeGateway.value);
+    if (activeGateway) {
+        showGatewayForm(activeGateway.value);
+    }
+    initMapCachePicker();
 });
 
 var gatewayTestUrls = {

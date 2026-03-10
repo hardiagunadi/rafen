@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StorePppUserRequest;
 use App\Http\Requests\UpdatePppUserRequest;
 use App\Models\Invoice;
+use App\Models\Odp;
 use App\Models\PppProfile;
 use App\Models\PppUser;
 use App\Models\ProfileGroup;
@@ -26,19 +27,21 @@ use Illuminate\View\View;
 class PppUserController extends Controller
 {
     use LogsActivity;
+
     public function generateCustomerId(Request $request): JsonResponse
     {
         $ownerId = $request->input('owner_id') ? (int) $request->input('owner_id') : $request->user()->effectiveOwnerId();
+
         return response()->json(['customer_id' => PppUser::generateCustomerId($ownerId)]);
     }
 
     public function datatable(Request $request): JsonResponse
     {
         $currentUser = $request->user();
-        $draw   = (int) $request->input('draw', 1);
-        $start  = (int) $request->input('start', 0);
+        $draw = (int) $request->input('draw', 1);
+        $start = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
-        $search       = $request->input('search.value', '');
+        $search = $request->input('search.value', '');
         $filterIsolir = $request->input('filter_isolir', '');
         $filterTagihan = $request->input('filter_tagihan', '');
         $filterOnProcess = $request->input('filter_on_process', '');
@@ -84,7 +87,7 @@ class PppUserController extends Controller
             $invoice = $user->invoices->first();
             $session = $activeSessions->get($user->username);
             $canRenew = $invoice && $invoice->created_at->equalTo($invoice->updated_at);
-            $canPay   = (bool) $invoice;
+            $canPay = (bool) $invoice;
 
             $statusBadge = '';
             if ($user->status_registrasi) {
@@ -94,8 +97,8 @@ class PppUserController extends Controller
 
             $ip = $user->tipe_ip === 'static' ? ($user->ip_static ?? '-') : 'Automatic';
 
-            $updated  = $user->updated_at?->format('Y-m-d H:i') ?? '-';
-            $due      = $user->jatuh_tempo
+            $updated = $user->updated_at?->format('Y-m-d H:i') ?? '-';
+            $due = $user->jatuh_tempo
                 ? '<a href="#" class="text-primary font-weight-bold">'.$user->jatuh_tempo->format('Y-m-d H:i').'</a>'
                 : '<span class="text-muted">-</span>';
 
@@ -122,9 +125,9 @@ class PppUserController extends Controller
                 '</div>';
 
             return [
-                'checkbox'    => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
+                'checkbox' => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
                 'customer_id' => '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('ppp-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>',
-                'nama'        => (function () use ($user, $session) {
+                'nama' => (function () use ($user, $session) {
                     if ($session) {
                         $tooltipText = 'CONNECTED | '.$session->caller_id.' | Online: '.$session->uptime;
                     } else {
@@ -132,25 +135,26 @@ class PppUserController extends Controller
                     }
                     $tooltipText .= ' — Klik untuk edit';
                     $iconColor = $session ? 'text-success' : 'text-secondary';
+
                     return '<a href="'.route('ppp-users.edit', $user).'" class="font-weight-bold text-uppercase text-dark">'.$user->customer_name.'</a>'
                         .' <i class="fas fa-info-circle '.$iconColor.'" data-toggle="tooltip" data-placement="top" title="'.e($tooltipText).'"></i>';
                 })(),
-                'tipe'        => $tipe,
-                'paket'       => $user->profile?->name ?? '-',
-                'ip'          => $ip,
-                'diperpanjang'=> $updated,
+                'tipe' => $tipe,
+                'paket' => $user->profile?->name ?? '-',
+                'ip' => $ip,
+                'diperpanjang' => $updated,
                 'jatuh_tempo' => $due,
-                'owner'       => $user->owner?->email ?? $user->owner?->name ?? '-',
+                'owner' => $user->owner?->email ?? $user->owner?->name ?? '-',
                 'renew_print' => '<div class="btn-group btn-group-sm">'.$renewBtn.$bayarBtn.'</div>',
-                'aksi'        => '<div class="text-right">'.$aksi.'</div>',
+                'aksi' => '<div class="text-right">'.$aksi.'</div>',
             ];
         });
 
         return response()->json([
-            'draw'            => $draw,
-            'recordsTotal'    => $total,
+            'draw' => $draw,
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $data,
+            'data' => $data,
         ]);
     }
 
@@ -203,9 +207,10 @@ class PppUserController extends Controller
         $currentUser = auth()->user();
 
         return view('ppp_users.create', [
-            'owners'   => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
-            'groups'   => ProfileGroup::query()->orderBy('name')->get(),
+            'owners' => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups' => ProfileGroup::query()->orderBy('name')->get(),
             'profiles' => PppProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'odps' => Odp::query()->accessibleBy($currentUser)->orderBy('code')->get(),
         ]);
     }
 
@@ -265,10 +270,11 @@ class PppUserController extends Controller
         }
 
         return view('ppp_users.edit', [
-            'pppUser'  => $pppUser,
-            'owners'   => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
-            'groups'   => ProfileGroup::query()->orderBy('name')->get(),
+            'pppUser' => $pppUser,
+            'owners' => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups' => ProfileGroup::query()->orderBy('name')->get(),
             'profiles' => PppProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'odps' => Odp::query()->accessibleBy($currentUser)->orderBy('code')->get(),
         ]);
     }
 
@@ -370,8 +376,8 @@ class PppUserController extends Controller
             abort(403);
         }
 
-        $draw   = (int) $request->input('draw', 1);
-        $start  = (int) $request->input('start', 0);
+        $draw = (int) $request->input('draw', 1);
+        $start = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
         $search = $request->input('search.value', '');
 
@@ -406,22 +412,22 @@ class PppUserController extends Controller
                 .'</div>';
 
             return [
-                'id'             => $invoice->id,
+                'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number.' '.$statusBadge,
-                'paket_langganan'=> $invoice->paket_langganan ?? '-',
-                'total'          => 'Rp '.number_format((float) $invoice->total, 0, ',', '.'),
-                'created_at'     => $invoice->created_at?->format('M d, Y') ?? '-',
-                'due_date'       => $invoice->due_date?->format('M d, Y') ?? '-',
-                'owner'          => $invoice->owner?->name ?? '-',
-                'aksi'           => $aksi,
+                'paket_langganan' => $invoice->paket_langganan ?? '-',
+                'total' => 'Rp '.number_format((float) $invoice->total, 0, ',', '.'),
+                'created_at' => $invoice->created_at?->format('M d, Y') ?? '-',
+                'due_date' => $invoice->due_date?->format('M d, Y') ?? '-',
+                'owner' => $invoice->owner?->name ?? '-',
+                'aksi' => $aksi,
             ];
         });
 
         return response()->json([
-            'draw'            => $draw,
-            'recordsTotal'    => $total,
+            'draw' => $draw,
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $data,
+            'data' => $data,
         ]);
     }
 
@@ -433,8 +439,8 @@ class PppUserController extends Controller
             abort(403);
         }
 
-        $draw   = (int) $request->input('draw', 1);
-        $start  = (int) $request->input('start', 0);
+        $draw = (int) $request->input('draw', 1);
+        $start = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
         $search = $request->input('search.value', '');
 
@@ -463,9 +469,16 @@ class PppUserController extends Controller
             $downloadBytes = (int) ($row->acctoutputoctets ?? 0);
 
             $formatBytes = function (int $bytes): string {
-                if ($bytes >= 1073741824) return round($bytes / 1073741824, 2).' GB';
-                if ($bytes >= 1048576) return round($bytes / 1048576, 2).' MB';
-                if ($bytes >= 1024) return round($bytes / 1024, 2).' KB';
+                if ($bytes >= 1073741824) {
+                    return round($bytes / 1073741824, 2).' GB';
+                }
+                if ($bytes >= 1048576) {
+                    return round($bytes / 1048576, 2).' MB';
+                }
+                if ($bytes >= 1024) {
+                    return round($bytes / 1024, 2).' KB';
+                }
+
                 return $bytes.' B';
             };
 
@@ -474,21 +487,21 @@ class PppUserController extends Controller
 
             return [
                 'radacctid' => $row->radacctid,
-                'uptime'    => $uptime,
-                'start'     => $row->acctstarttime ? \Carbon\Carbon::parse($row->acctstarttime)->format('M/d/Y H:i') : '-',
-                'stop'      => $row->acctstoptime  ? \Carbon\Carbon::parse($row->acctstoptime)->format('M/d/Y H:i')  : '-',
-                'nas'       => $row->calledstationid ?: $row->nasipaddress,
-                'upload'    => '<i class="fas fa-upload text-success mr-1"></i>'.$formatBytes($uploadBytes),
-                'download'  => '<i class="fas fa-download text-info mr-1"></i>'.$formatBytes($downloadBytes),
+                'uptime' => $uptime,
+                'start' => $row->acctstarttime ? \Carbon\Carbon::parse($row->acctstarttime)->format('M/d/Y H:i') : '-',
+                'stop' => $row->acctstoptime ? \Carbon\Carbon::parse($row->acctstoptime)->format('M/d/Y H:i') : '-',
+                'nas' => $row->calledstationid ?: $row->nasipaddress,
+                'upload' => '<i class="fas fa-upload text-success mr-1"></i>'.$formatBytes($uploadBytes),
+                'download' => '<i class="fas fa-download text-info mr-1"></i>'.$formatBytes($downloadBytes),
                 'terminate' => '<em>'.($row->acctterminatecause ?: '-').'</em>',
             ];
         });
 
         return response()->json([
-            'draw'            => $draw,
-            'recordsTotal'    => $total,
+            'draw' => $draw,
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $data,
+            'data' => $data,
         ]);
     }
 
@@ -566,6 +579,8 @@ class PppUserController extends Controller
      */
     private function prepareData(array $data, ?PppUser $existing = null): array
     {
+        $data['odp_id'] = isset($data['odp_id']) && $data['odp_id'] !== '' ? (int) $data['odp_id'] : null;
+
         // Auto-generate customer_id jika kosong
         if (empty($data['customer_id'])) {
             $ownerId = isset($data['owner_id']) ? (int) $data['owner_id'] : ($existing?->owner_id ? (int) $existing->owner_id : null);
@@ -586,9 +601,42 @@ class PppUserController extends Controller
             $data['password_clientarea'] = $data['password_clientarea'] ?? $data['username'] ?? null;
         }
 
+        $ownerId = $data['owner_id'] ?? $existing?->owner_id;
+        if (! empty($data['odp_id'])) {
+            $selectedOdp = Odp::query()
+                ->whereKey($data['odp_id'])
+                ->when($ownerId, fn ($query) => $query->where('owner_id', (int) $ownerId))
+                ->first();
+
+            if (! $selectedOdp) {
+                throw ValidationException::withMessages([
+                    'odp_id' => 'ODP tidak valid untuk owner yang dipilih.',
+                ]);
+            }
+
+            if (empty($data['odp_pop'])) {
+                $data['odp_pop'] = $selectedOdp->code;
+            }
+        }
+
+        $data['latitude'] = $this->normalizeCoordinate($data['latitude'] ?? null, -90, 90);
+        $data['longitude'] = $this->normalizeCoordinate($data['longitude'] ?? null, -180, 180);
+
+        if ($data['latitude'] === null || $data['longitude'] === null) {
+            $data['location_accuracy_m'] = null;
+            $data['location_capture_method'] = null;
+            $data['location_captured_at'] = null;
+        } else {
+            $accuracy = $data['location_accuracy_m'] ?? null;
+            $data['location_accuracy_m'] = is_numeric($accuracy) ? round((float) $accuracy, 2) : null;
+            $method = $data['location_capture_method'] ?? null;
+            $data['location_capture_method'] = in_array($method, ['gps', 'map_picker', 'manual'], true) ? $method : 'manual';
+            $capturedAt = $data['location_captured_at'] ?? null;
+            $data['location_captured_at'] = $capturedAt ? Carbon::parse((string) $capturedAt) : now();
+        }
+
         $data['durasi_promo_bulan'] = $data['durasi_promo_bulan'] ?? 0;
         $data['biaya_instalasi'] = $data['biaya_instalasi'] ?? 0;
-        $ownerId = $data['owner_id'] ?? $existing?->owner_id;
         $data['jatuh_tempo'] = $this->resolveDueDate($data['jatuh_tempo'] ?? null, $existing, $ownerId ? (int) $ownerId : null);
         $data = $this->assignSqlPoolIp($data, $existing);
 
@@ -716,6 +764,24 @@ class PppUserController extends Controller
         return $phone;
     }
 
+    private function normalizeCoordinate(mixed $value, float $min, float $max): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $floatValue = (float) $value;
+        if ($floatValue < $min || $floatValue > $max) {
+            return null;
+        }
+
+        return number_format($floatValue, 7, '.', '');
+    }
+
     private function resolveDueDate(?string $input, ?PppUser $existing = null, ?int $ownerId = null): ?Carbon
     {
         if ($input) {
@@ -765,32 +831,32 @@ class PppUserController extends Controller
 
         $promoMonths = (int) ($user->durasi_promo_bulan ?? 0);
         $promoActive = $user->promo_aktif && $promoMonths > 0 && $user->created_at && $user->created_at->diffInMonths(now()) < $promoMonths;
-        $hargaAsli  = $promoActive ? $profile->harga_promo : $profile->harga_modal;
-        $basePrice  = $hargaAsli;
+        $hargaAsli = $promoActive ? $profile->harga_promo : $profile->harga_modal;
+        $basePrice = $hargaAsli;
         $prorataApplied = false;
 
         // Prorata otomatis: hanya berlaku untuk invoice pertama saat pendaftaran baru
         if ($applyProrata && $user->prorata_otomatis && $user->jatuh_tempo) {
             $dueDateForProrata = Carbon::parse($user->jatuh_tempo)->startOfDay();
-            $today             = now()->startOfDay();
-            $sisaHari          = $today->diffInDays($dueDateForProrata, false); // negatif jika sudah lewat
+            $today = now()->startOfDay();
+            $sisaHari = $today->diffInDays($dueDateForProrata, false); // negatif jika sudah lewat
 
             // Hitung total hari satu periode (mundur masa_aktif bulan dari jatuh_tempo)
-            $masaAktif    = max(1, (int) $profile->masa_aktif);
+            $masaAktif = max(1, (int) $profile->masa_aktif);
             $periodeStart = $dueDateForProrata->copy()->subMonthsNoOverflow($masaAktif)->addDay();
-            $totalHari    = $periodeStart->diffInDays($dueDateForProrata) + 1;
+            $totalHari = $periodeStart->diffInDays($dueDateForProrata) + 1;
 
             // Prorata hanya berlaku jika sisa hari >= 3 dan lebih kecil dari total periode
             if ($sisaHari >= 3 && $totalHari > 0 && $sisaHari < $totalHari) {
-                $basePrice      = round($hargaAsli * ($sisaHari / $totalHari), 2);
+                $basePrice = round($hargaAsli * ($sisaHari / $totalHari), 2);
                 $prorataApplied = true;
             }
         }
 
         // Tagihkan PPN hanya jika flag aktif di user
         $ppnPercent = $user->tagihkan_ppn ? (float) $profile->ppn : 0.0;
-        $ppnAmount  = round($basePrice * ($ppnPercent / 100), 2);
-        $total      = $basePrice + $ppnAmount;
+        $ppnAmount = round($basePrice * ($ppnPercent / 100), 2);
+        $total = $basePrice + $ppnAmount;
 
         $prefix = TenantSettings::getOrCreate($user->owner_id)->invoice_prefix ?? 'INV';
         $invoiceNumber = Invoice::generateNumber($user->owner_id, $prefix);

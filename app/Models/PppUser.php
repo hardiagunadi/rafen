@@ -32,6 +32,7 @@ class PppUser extends Model
         'aksi_jatuh_tempo',
         'tipe_ip',
         'profile_group_id',
+        'odp_id',
         'ip_static',
         'odp_pop',
         'customer_id',
@@ -42,6 +43,9 @@ class PppUser extends Model
         'alamat',
         'latitude',
         'longitude',
+        'location_accuracy_m',
+        'location_capture_method',
+        'location_captured_at',
         'metode_login',
         'username',
         'ppp_password',
@@ -60,6 +64,8 @@ class PppUser extends Model
             'promo_aktif' => 'boolean',
             'jatuh_tempo' => 'date',
             'biaya_instalasi' => 'decimal:2',
+            'location_accuracy_m' => 'decimal:2',
+            'location_captured_at' => 'datetime',
         ];
     }
 
@@ -78,6 +84,11 @@ class PppUser extends Model
         return $this->belongsTo(ProfileGroup::class);
     }
 
+    public function odp(): BelongsTo
+    {
+        return $this->belongsTo(Odp::class);
+    }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
@@ -91,6 +102,7 @@ class PppUser extends Model
         if ($user->isSuperAdmin()) {
             return $query;
         }
+
         return $query->where('owner_id', $user->effectiveOwnerId());
     }
 
@@ -105,6 +117,7 @@ class PppUser extends Model
             ->selectRaw('MAX(CAST(customer_id AS UNSIGNED)) as max_num')
             ->value('max_num');
         $next = ($max ?? 0) + 1;
+
         return str_pad((string) $next, 12, '0', STR_PAD_LEFT);
     }
 

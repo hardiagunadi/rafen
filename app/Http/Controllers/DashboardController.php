@@ -19,6 +19,7 @@ class DashboardController extends Controller
     public function index(): View
     {
         $user = auth()->user();
+        $hotspotModuleEnabled = $user->isHotspotModuleEnabled();
         $systemInfo = $this->systemMetrics();
         $now = now();
         $monthStart = $now->copy()->startOfMonth();
@@ -31,9 +32,13 @@ class DashboardController extends Controller
         $pppAccounts = RadiusAccount::query()
             ->accessibleBy($user)
             ->where('service', 'pppoe')->where('is_active', true)->count();
-        $hotspotAccounts = RadiusAccount::query()
-            ->accessibleBy($user)
-            ->where('service', 'hotspot')->where('is_active', true)->count();
+        $hotspotAccounts = $hotspotModuleEnabled
+            ? RadiusAccount::query()
+                ->accessibleBy($user)
+                ->where('service', 'hotspot')
+                ->where('is_active', true)
+                ->count()
+            : 0;
 
         $invoicesMonth = Invoice::query()
             ->accessibleBy($user)
@@ -43,14 +48,14 @@ class DashboardController extends Controller
         $invoiceCountMonth = $invoicesMonth->where('status', 'unpaid')->count();
 
         $stats = [
-            'income_today'      => $incomeToday,
-            'invoice_count'     => $invoiceCountMonth,
-            'ppp_online'     => $pppAccounts,
+            'income_today' => $incomeToday,
+            'invoice_count' => $invoiceCountMonth,
+            'ppp_online' => $pppAccounts,
             'hotspot_online' => $hotspotAccounts,
-            'router_total'   => $routers->count(),
-            'router_online'     => $routers->where('is_online', true)->count(),
-            'router_offline'    => $routers->where('is_online', false)->count(),
-            'ppp_users'         => PppUser::query()->accessibleBy($user)->count(),
+            'router_total' => $routers->count(),
+            'router_online' => $routers->where('is_online', true)->count(),
+            'router_offline' => $routers->where('is_online', false)->count(),
+            'ppp_users' => PppUser::query()->accessibleBy($user)->count(),
         ];
 
         $serviceInfo = Collection::make([
@@ -88,12 +93,13 @@ class DashboardController extends Controller
         // Daftar owner hanya untuk super admin (untuk filter switcher)
         $owners = $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect();
 
-        return view('dashboard', compact('stats', 'serviceInfo', 'owners', 'systemInfo'));
+        return view('dashboard', compact('stats', 'serviceInfo', 'owners', 'systemInfo', 'hotspotModuleEnabled'));
     }
 
     public function apiDashboard(Request $request): View
     {
         $user = auth()->user();
+        $hotspotModuleEnabled = $user->isHotspotModuleEnabled();
         $connections = MikrotikConnection::query()
             ->accessibleBy($user)
             ->where('is_active', true)
@@ -102,7 +108,7 @@ class DashboardController extends Controller
         $selectedConnection = $this->resolveConnection($request->integer('connection_id'), $connections);
         $resource = $this->apiDashboardPayload($selectedConnection);
 
-        return view('api-dashboard', compact('connections', 'selectedConnection', 'resource'));
+        return view('api-dashboard', compact('connections', 'selectedConnection', 'resource', 'hotspotModuleEnabled'));
     }
 
     public function apiDashboardData(Request $request): JsonResponse
@@ -372,21 +378,25 @@ class DashboardController extends Controller
         $menu = $request->string('menu')->toString();
 
         $menuMap = [
-            'interface'          => '/interface/print',
-            'ppp_active'         => '/ppp/active/print',
-            'ppp_setting'        => '/ppp/secret/print',
-            'ppp_interface'      => '/interface/pppoe-client/print',
-            'pppoe_server'       => '/interface/pppoe-server/server/print',
-            'hotspot_active'     => '/ip/hotspot/active/print',
-            'hotspot_setting'    => '/ip/hotspot/print',
+            'interface' => '/interface/print',
+            'ppp_active' => '/ppp/active/print',
+            'ppp_setting' => '/ppp/secret/print',
+            'ppp_interface' => '/interface/pppoe-client/print',
+            'pppoe_server' => '/interface/pppoe-server/server/print',
+            'hotspot_active' => '/ip/hotspot/active/print',
+            'hotspot_setting' => '/ip/hotspot/print',
             'hotspot_ip_binding' => '/ip/hotspot/ip-binding/print',
-            'hotspot_server'     => '/ip/hotspot/server/print',
-            'hotspot_profiles'   => '/ip/hotspot/profile/print',
-            'hotspot_cookies'    => '/ip/hotspot/cookie/print',
+            'hotspot_server' => '/ip/hotspot/server/print',
+            'hotspot_profiles' => '/ip/hotspot/profile/print',
+            'hotspot_cookies' => '/ip/hotspot/cookie/print',
         ];
 
         if (! isset($menuMap[$menu])) {
             return response()->json(['error' => 'Menu tidak valid.'], 422);
+        }
+
+        if (str_starts_with($menu, 'hotspot_') && ! $user->isHotspotModuleEnabled()) {
+            return response()->json(['error' => 'Modul hotspot dinonaktifkan untuk tenant ini.'], 404);
         }
 
         try {
@@ -408,10 +418,10 @@ class DashboardController extends Controller
             return response()->json(['error' => 'Router tidak ditemukan.'], 404);
         }
 
-        $name     = trim($request->string('name')->toString());
+        $name = trim($request->string('name')->toString());
         $password = trim($request->string('password')->toString());
-        $profile  = trim($request->string('profile')->toString());
-        $service  = trim($request->string('service', 'pppoe')->toString());
+        $profile = trim($request->string('profile')->toString());
+        $service = trim($request->string('service', 'pppoe')->toString());
 
         if ($name === '') {
             return response()->json(['error' => 'Name wajib diisi.'], 422);
@@ -419,7 +429,7 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['name' => $name, 'password' => $password, 'service' => $service];
+            $attrs = ['name' => $name, 'password' => $password, 'service' => $service];
             if ($profile !== '') {
                 $attrs['profile'] = $profile;
             }
@@ -442,7 +452,7 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['.id' => $id];
+            $attrs = ['.id' => $id];
             if ($request->filled('password')) {
                 $attrs['password'] = $request->string('password')->toString();
             }
@@ -517,7 +527,7 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['name' => $name];
+            $attrs = ['name' => $name];
             if ($request->filled('password')) {
                 $attrs['password'] = $request->string('password')->toString();
             }
@@ -546,7 +556,7 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['.id' => $id];
+            $attrs = ['.id' => $id];
             if ($request->filled('password')) {
                 $attrs['password'] = $request->string('password')->toString();
             }
@@ -602,11 +612,19 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['mac-address' => $macAddress, 'type' => 'bypassed'];
-            if ($request->filled('address'))  $attrs['address']  = $request->string('address')->toString();
-            if ($request->filled('server'))   $attrs['server']   = $request->string('server')->toString();
-            if ($request->filled('comment'))  $attrs['comment']  = $request->string('comment')->toString();
-            if ($request->filled('type'))     $attrs['type']     = $request->string('type')->toString();
+            $attrs = ['mac-address' => $macAddress, 'type' => 'bypassed'];
+            if ($request->filled('address')) {
+                $attrs['address'] = $request->string('address')->toString();
+            }
+            if ($request->filled('server')) {
+                $attrs['server'] = $request->string('server')->toString();
+            }
+            if ($request->filled('comment')) {
+                $attrs['comment'] = $request->string('comment')->toString();
+            }
+            if ($request->filled('type')) {
+                $attrs['type'] = $request->string('type')->toString();
+            }
             $client->command('/ip/hotspot/ip-binding/add', $attrs);
             $client->disconnect();
 
@@ -626,12 +644,22 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['.id' => $id];
-            if ($request->filled('mac-address')) $attrs['mac-address'] = $request->string('mac-address')->toString();
-            if ($request->filled('address'))     $attrs['address']     = $request->string('address')->toString();
-            if ($request->filled('server'))      $attrs['server']      = $request->string('server')->toString();
-            if ($request->filled('comment'))     $attrs['comment']     = $request->string('comment')->toString();
-            if ($request->filled('type'))        $attrs['type']        = $request->string('type')->toString();
+            $attrs = ['.id' => $id];
+            if ($request->filled('mac-address')) {
+                $attrs['mac-address'] = $request->string('mac-address')->toString();
+            }
+            if ($request->filled('address')) {
+                $attrs['address'] = $request->string('address')->toString();
+            }
+            if ($request->filled('server')) {
+                $attrs['server'] = $request->string('server')->toString();
+            }
+            if ($request->filled('comment')) {
+                $attrs['comment'] = $request->string('comment')->toString();
+            }
+            if ($request->filled('type')) {
+                $attrs['type'] = $request->string('type')->toString();
+            }
             $client->command('/ip/hotspot/ip-binding/set', $attrs);
             $client->disconnect();
 
@@ -695,11 +723,19 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['name' => $name, 'interface' => $interface];
-            if ($request->filled('service-name'))        $attrs['service-name']        = $request->string('service-name')->toString();
-            if ($request->filled('max-sessions'))        $attrs['max-sessions']        = $request->string('max-sessions')->toString();
-            if ($request->filled('keepalive-timeout'))   $attrs['keepalive-timeout']   = $request->string('keepalive-timeout')->toString();
-            if ($request->filled('default-profile'))     $attrs['default-profile']     = $request->string('default-profile')->toString();
+            $attrs = ['name' => $name, 'interface' => $interface];
+            if ($request->filled('service-name')) {
+                $attrs['service-name'] = $request->string('service-name')->toString();
+            }
+            if ($request->filled('max-sessions')) {
+                $attrs['max-sessions'] = $request->string('max-sessions')->toString();
+            }
+            if ($request->filled('keepalive-timeout')) {
+                $attrs['keepalive-timeout'] = $request->string('keepalive-timeout')->toString();
+            }
+            if ($request->filled('default-profile')) {
+                $attrs['default-profile'] = $request->string('default-profile')->toString();
+            }
             $client->command('/interface/pppoe-server/server/add', $attrs);
             $client->disconnect();
 
@@ -719,12 +755,22 @@ class DashboardController extends Controller
 
         try {
             $client = new \App\Services\MikrotikApiClient($connection);
-            $attrs  = ['.id' => $id];
-            if ($request->filled('interface'))           $attrs['interface']           = $request->string('interface')->toString();
-            if ($request->filled('service-name'))        $attrs['service-name']        = $request->string('service-name')->toString();
-            if ($request->filled('max-sessions'))        $attrs['max-sessions']        = $request->string('max-sessions')->toString();
-            if ($request->filled('keepalive-timeout'))   $attrs['keepalive-timeout']   = $request->string('keepalive-timeout')->toString();
-            if ($request->filled('default-profile'))     $attrs['default-profile']     = $request->string('default-profile')->toString();
+            $attrs = ['.id' => $id];
+            if ($request->filled('interface')) {
+                $attrs['interface'] = $request->string('interface')->toString();
+            }
+            if ($request->filled('service-name')) {
+                $attrs['service-name'] = $request->string('service-name')->toString();
+            }
+            if ($request->filled('max-sessions')) {
+                $attrs['max-sessions'] = $request->string('max-sessions')->toString();
+            }
+            if ($request->filled('keepalive-timeout')) {
+                $attrs['keepalive-timeout'] = $request->string('keepalive-timeout')->toString();
+            }
+            if ($request->filled('default-profile')) {
+                $attrs['default-profile'] = $request->string('default-profile')->toString();
+            }
             $client->command('/interface/pppoe-server/server/set', $attrs);
             $client->disconnect();
 
@@ -771,7 +817,7 @@ class DashboardController extends Controller
             $client = new \App\Services\MikrotikApiClient($connection);
             $result = $client->command('/interface/monitor-traffic', [
                 'interface' => $interface,
-                'once'      => '',
+                'once' => '',
             ]);
             $client->disconnect();
 

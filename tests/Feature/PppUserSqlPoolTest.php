@@ -9,7 +9,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 it('assigns the next available SQL pool IP when creating a PPP user', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->create([
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
     $group = ProfileGroup::factory()->create([
         'ip_pool_mode' => 'sql',
         'range_start' => '10.0.0.2',
@@ -76,7 +79,10 @@ it('assigns the next available SQL pool IP when creating a PPP user', function (
 });
 
 it('rejects PPP user creation when SQL pool is exhausted', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->create([
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
     $group = ProfileGroup::factory()->create([
         'ip_pool_mode' => 'sql',
         'range_start' => '10.0.1.2',

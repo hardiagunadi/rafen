@@ -14,13 +14,18 @@ return new class extends Migration
             $table->foreign('owner_id')->references('id')->on('users')->nullOnDelete();
         });
 
-        // Backfill: assign owner_id from mikrotik_connections where FK exists
-        DB::statement('
-            UPDATE profile_groups pg
-            JOIN mikrotik_connections mc ON mc.id = pg.mikrotik_connection_id
-            SET pg.owner_id = mc.owner_id
-            WHERE pg.mikrotik_connection_id IS NOT NULL
-        ');
+        // Backfill: assign owner_id from mikrotik_connections where FK exists.
+        $rows = DB::table('profile_groups as pg')
+            ->join('mikrotik_connections as mc', 'mc.id', '=', 'pg.mikrotik_connection_id')
+            ->whereNotNull('pg.mikrotik_connection_id')
+            ->select('pg.id', 'mc.owner_id')
+            ->get();
+
+        foreach ($rows as $row) {
+            DB::table('profile_groups')
+                ->where('id', $row->id)
+                ->update(['owner_id' => $row->owner_id]);
+        }
 
         // Backfill: for rows with NULL mikrotik_connection_id but owner name matches a user,
         // assign the first admin user (single-tenant bootstrap)

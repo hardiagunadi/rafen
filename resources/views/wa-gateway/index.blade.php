@@ -194,7 +194,7 @@
                         <code>{due_date}</code> Jatuh tempo &nbsp;
                         <code>{invoice_no}</code> No. invoice &nbsp;
                         <code>{paid_at}</code> Waktu bayar &nbsp;
-                        <code>{cs_number}</code> Nomor CS (dari Pengaturan Bisnis) &nbsp;
+                        <code>{cs_number}</code> Nomor CS (dari Pengaturan) &nbsp;
                         <code>{bank_account}</code> Info rekening bank &nbsp;
                         <code>{username}</code> Username PPP
                     </div>
@@ -284,7 +284,7 @@
                 </a>
                 <a href="{{ route('tenant-settings.index') }}" class="d-flex align-items-center p-3 text-dark text-decoration-none">
                     <i class="fas fa-cog fa-fw mr-2 text-secondary"></i>
-                    <span>Pengaturan Bisnis</span>
+                    <span>Pengaturan</span>
                     <i class="fas fa-chevron-right ml-auto text-muted small"></i>
                 </a>
             </div>

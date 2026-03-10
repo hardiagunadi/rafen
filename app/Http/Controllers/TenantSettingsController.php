@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\UpdateTenantMapCacheRequest;
+use App\Http\Requests\UpdateTenantModuleSettingsRequest;
 use App\Models\BankAccount;
-use App\Models\TenantSettings;
 use App\Services\DuitkuService;
 use App\Services\MidtransService;
 use App\Services\TripayService;
@@ -23,7 +24,9 @@ class TenantSettingsController extends Controller
 
     public function updateBusiness(Request $request)
     {
-        if ($request->user()->isSubUser()) abort(403);
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
 
         $validated = $request->validate([
             'business_name' => 'nullable|string|max:255',
@@ -47,7 +50,9 @@ class TenantSettingsController extends Controller
 
     public function updatePayment(Request $request)
     {
-        if ($request->user()->isSubUser()) abort(403);
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
 
         $validated = $request->validate([
             'enable_qris_payment' => 'boolean',
@@ -90,12 +95,59 @@ class TenantSettingsController extends Controller
         return back()->with('success', 'Pengaturan pembayaran berhasil diperbarui.');
     }
 
+    public function updateModules(UpdateTenantModuleSettingsRequest $request)
+    {
+        $settings = $request->user()->getSettings();
+        $settings->update($request->validated());
+
+        return back()->with('success', 'Pengaturan modul tenant berhasil diperbarui.');
+    }
+
+    public function updateMapCache(UpdateTenantMapCacheRequest $request)
+    {
+        $settings = $request->user()->getSettings();
+        $validated = $request->validated();
+
+        $mapCacheEnabled = filter_var($request->input('map_cache_enabled', false), FILTER_VALIDATE_BOOLEAN);
+        $centerLatitude = $validated['map_cache_center_lat'] ?? null;
+        $centerLongitude = $validated['map_cache_center_lng'] ?? null;
+        $coverageRadiusKm = $validated['map_cache_radius_km'] ?? null;
+        $minZoom = $validated['map_cache_min_zoom'] ?? null;
+        $maxZoom = $validated['map_cache_max_zoom'] ?? null;
+
+        $newConfig = [
+            'map_cache_enabled' => $mapCacheEnabled,
+            'map_cache_center_lat' => $centerLatitude !== null ? round((float) $centerLatitude, 7) : null,
+            'map_cache_center_lng' => $centerLongitude !== null ? round((float) $centerLongitude, 7) : null,
+            'map_cache_radius_km' => $coverageRadiusKm !== null ? round((float) $coverageRadiusKm, 2) : (float) ($settings->map_cache_radius_km ?? 3),
+            'map_cache_min_zoom' => $minZoom ?? (int) ($settings->map_cache_min_zoom ?? 14),
+            'map_cache_max_zoom' => $maxZoom ?? (int) ($settings->map_cache_max_zoom ?? 17),
+        ];
+
+        $previousConfig = [
+            'map_cache_enabled' => (bool) $settings->map_cache_enabled,
+            'map_cache_center_lat' => $settings->map_cache_center_lat !== null ? round((float) $settings->map_cache_center_lat, 7) : null,
+            'map_cache_center_lng' => $settings->map_cache_center_lng !== null ? round((float) $settings->map_cache_center_lng, 7) : null,
+            'map_cache_radius_km' => $settings->map_cache_radius_km !== null ? round((float) $settings->map_cache_radius_km, 2) : 3.0,
+            'map_cache_min_zoom' => (int) ($settings->map_cache_min_zoom ?? 14),
+            'map_cache_max_zoom' => (int) ($settings->map_cache_max_zoom ?? 17),
+        ];
+
+        if ($previousConfig !== $newConfig) {
+            $newConfig['map_cache_version'] = max(1, (int) ($settings->map_cache_version ?? 1)) + 1;
+        }
+
+        $settings->update($newConfig);
+
+        return back()->with('success', 'Pengaturan cache peta coverage berhasil diperbarui.');
+    }
+
     public function testTripay(Request $request)
     {
         $user = $request->user();
         $settings = $user->getSettings();
 
-        if (!$settings->hasTripayConfigured()) {
+        if (! $settings->hasTripayConfigured()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Kredensial Tripay belum dikonfigurasi.',
@@ -124,7 +176,7 @@ class TenantSettingsController extends Controller
         $user = $request->user();
         $settings = $user->getSettings();
 
-        if (!$settings->hasMidtransConfigured()) {
+        if (! $settings->hasMidtransConfigured()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Kredensial Midtrans belum dikonfigurasi.',
@@ -146,7 +198,7 @@ class TenantSettingsController extends Controller
         $user = $request->user();
         $settings = $user->getSettings();
 
-        if (!$settings->hasDuitkuConfigured()) {
+        if (! $settings->hasDuitkuConfigured()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Kredensial Duitku belum dikonfigurasi.',
@@ -158,7 +210,7 @@ class TenantSettingsController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Koneksi Duitku berhasil! ' . count($channels) . ' channel tersedia.',
+            'message' => 'Koneksi Duitku berhasil! '.count($channels).' channel tersedia.',
             'channels' => $channels,
         ]);
     }
@@ -168,7 +220,7 @@ class TenantSettingsController extends Controller
         $user = $request->user();
         $settings = $user->getSettings();
 
-        if (!$settings->hasTripayConfigured()) {
+        if (! $settings->hasTripayConfigured()) {
             return response()->json([
                 'success' => false,
                 'channels' => [],
@@ -181,8 +233,8 @@ class TenantSettingsController extends Controller
         // Group channels
         $groupedChannels = [];
         foreach (TripayService::getChannelGroups() as $key => $group) {
-            $groupChannels = array_filter($channels, fn($ch) => in_array($ch['code'], $group['codes']));
-            if (!empty($groupChannels)) {
+            $groupChannels = array_filter($channels, fn ($ch) => in_array($ch['code'], $group['codes']));
+            if (! empty($groupChannels)) {
                 $groupedChannels[$key] = [
                     'name' => $group['name'],
                     'description' => $group['description'],
@@ -279,7 +331,7 @@ class TenantSettingsController extends Controller
     {
         $user = $request->user();
 
-        $tenants       = null;
+        $tenants = null;
         $selectedTenant = null;
 
         if ($user->isSuperAdmin()) {
@@ -307,30 +359,32 @@ class TenantSettingsController extends Controller
     {
         $user = $request->user();
 
-        if ($user->isSubUser()) abort(403);
+        if ($user->isSubUser()) {
+            abort(403);
+        }
 
         $validated = $request->validate([
-            'wa_gateway_url'              => 'nullable|url|max:255',
-            'wa_gateway_token'            => 'nullable|string|max:500',
-            'wa_gateway_key'              => 'nullable|string|max:500',
-            'wa_webhook_secret'           => 'nullable|string|max:255',
-            'wa_notify_registration'      => 'boolean',
-            'wa_notify_invoice'           => 'boolean',
-            'wa_notify_payment'           => 'boolean',
-            'wa_broadcast_enabled'        => 'boolean',
-            'wa_antispam_enabled'         => 'boolean',
-            'wa_antispam_delay_ms'        => 'integer|min:500|max:10000',
-            'wa_antispam_max_per_minute'  => 'integer|min:1|max:20',
-            'wa_msg_randomize'            => 'boolean',
-            'wa_template_registration'    => 'nullable|string|max:2000',
-            'wa_template_invoice'         => 'nullable|string|max:2000',
-            'wa_template_payment'         => 'nullable|string|max:2000',
-            'wa_notify_on_process'        => 'boolean',
-            'wa_template_on_process'      => 'nullable|string|max:2000',
-            'tenant_id'                   => 'nullable|integer',
+            'wa_gateway_url' => 'nullable|url|max:255',
+            'wa_gateway_token' => 'nullable|string|max:500',
+            'wa_gateway_key' => 'nullable|string|max:500',
+            'wa_webhook_secret' => 'nullable|string|max:255',
+            'wa_notify_registration' => 'boolean',
+            'wa_notify_invoice' => 'boolean',
+            'wa_notify_payment' => 'boolean',
+            'wa_broadcast_enabled' => 'boolean',
+            'wa_antispam_enabled' => 'boolean',
+            'wa_antispam_delay_ms' => 'integer|min:500|max:10000',
+            'wa_antispam_max_per_minute' => 'integer|min:1|max:20',
+            'wa_msg_randomize' => 'boolean',
+            'wa_template_registration' => 'nullable|string|max:2000',
+            'wa_template_invoice' => 'nullable|string|max:2000',
+            'wa_template_payment' => 'nullable|string|max:2000',
+            'wa_notify_on_process' => 'boolean',
+            'wa_template_on_process' => 'nullable|string|max:2000',
+            'tenant_id' => 'nullable|integer',
         ]);
 
-        if ($user->isSuperAdmin() && !empty($validated['tenant_id'])) {
+        if ($user->isSuperAdmin() && ! empty($validated['tenant_id'])) {
             $tenant = \App\Models\User::where('id', $validated['tenant_id'])
                 ->where('is_super_admin', false)
                 ->whereNull('parent_id')
@@ -349,16 +403,16 @@ class TenantSettingsController extends Controller
     public function testWa(Request $request)
     {
         $request->validate([
-            'phone'            => 'nullable|string|max:20',
-            'wa_gateway_url'   => 'nullable|url|max:255',
+            'phone' => 'nullable|string|max:20',
+            'wa_gateway_url' => 'nullable|url|max:255',
             'wa_gateway_token' => 'nullable|string|max:500',
-            'wa_gateway_key'   => 'nullable|string|max:500',
+            'wa_gateway_key' => 'nullable|string|max:500',
         ]);
 
         // Use values from request if provided (form not yet saved), else fall back to DB
-        $url   = $request->input('wa_gateway_url');
+        $url = $request->input('wa_gateway_url');
         $token = $request->input('wa_gateway_token');
-        $key   = $request->input('wa_gateway_key');
+        $key = $request->input('wa_gateway_key');
 
         if (! empty($url) && (! empty($token) || ! empty($key))) {
             $service = new WaGatewayService(rtrim($url, '/'), $token ?? '', $key ?? '');
@@ -390,10 +444,10 @@ class TenantSettingsController extends Controller
         \Log::info('WA testConnection result', $result);
 
         return response()->json([
-            'success'          => $result['status'],
-            'message'          => $result['message'],
-            'http_status'      => $result['http_status'] ?? null,
-            'network_error'    => $result['network_error'] ?? false,
+            'success' => $result['status'],
+            'message' => $result['message'],
+            'http_status' => $result['http_status'] ?? null,
+            'network_error' => $result['network_error'] ?? false,
             'gateway_response' => $result['data'] ?? null,
         ]);
     }
@@ -404,7 +458,7 @@ class TenantSettingsController extends Controller
             'type' => 'required|in:registration,invoice,payment',
         ]);
 
-        $user     = $request->user();
+        $user = $request->user();
         $settings = $user->getSettings();
 
         if (! $settings->hasWaConfigured()) {
@@ -413,13 +467,13 @@ class TenantSettingsController extends Controller
 
         $csNumber = $settings->business_phone ?? '';
         if (empty(trim($csNumber))) {
-            return response()->json(['success' => false, 'message' => 'Nomor HP bisnis (CS) belum diisi di Pengaturan Bisnis.']);
+            return response()->json(['success' => false, 'message' => 'Nomor HP bisnis (CS) belum diisi di Pengaturan.']);
         }
 
         $template = $settings->getTemplate($request->type);
 
         $bankAccounts = $user->bankAccounts()->active()->get();
-        $bankLines    = $bankAccounts->map(fn($b) => $b->bank_name . ' ' . $b->account_number . ' a/n ' . $b->account_name)->join("\n");
+        $bankLines = $bankAccounts->map(fn ($b) => $b->bank_name.' '.$b->account_number.' a/n '.$b->account_name)->join("\n");
         if (empty(trim($bankLines))) {
             $bankLines = '(Belum ada rekening bank aktif)';
         }
@@ -435,19 +489,22 @@ class TenantSettingsController extends Controller
             return response()->json(['success' => false, 'message' => 'WA Gateway tidak dapat diinisialisasi.']);
         }
 
-        $phone = '62' . ltrim(preg_replace('/[^0-9]/', '', $csNumber), '0');
+        $phone = '62'.ltrim(preg_replace('/[^0-9]/', '', $csNumber), '0');
 
         try {
-            $service->sendMessage($phone, '[TEST TEMPLATE] ' . "\n\n" . $message);
-            return response()->json(['success' => true, 'message' => 'Pesan test berhasil dikirim ke ' . $csNumber]);
+            $service->sendMessage($phone, '[TEST TEMPLATE] '."\n\n".$message);
+
+            return response()->json(['success' => true, 'message' => 'Pesan test berhasil dikirim ke '.$csNumber]);
         } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal kirim: ' . $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal kirim: '.$e->getMessage()]);
         }
     }
 
     public function uploadLogo(Request $request)
     {
-        if ($request->user()->isSubUser()) abort(403);
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
 
         $request->validate([
             'business_logo' => 'required|image|max:2048',
@@ -470,13 +527,15 @@ class TenantSettingsController extends Controller
 
     public function updateIsolir(Request $request)
     {
-        if ($request->user()->isSubUser()) abort(403);
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
 
         $validated = $request->validate([
-            'isolir_page_title'        => 'nullable|string|max:255',
-            'isolir_page_body'         => 'nullable|string|max:2000',
-            'isolir_page_contact'      => 'nullable|string|max:255',
-            'isolir_page_bg_color'     => ['nullable', 'string', 'max:20', 'regex:/^#[0-9a-fA-F]{3,6}$/'],
+            'isolir_page_title' => 'nullable|string|max:255',
+            'isolir_page_body' => 'nullable|string|max:2000',
+            'isolir_page_contact' => 'nullable|string|max:255',
+            'isolir_page_bg_color' => ['nullable', 'string', 'max:20', 'regex:/^#[0-9a-fA-F]{3,6}$/'],
             'isolir_page_accent_color' => ['nullable', 'string', 'max:20', 'regex:/^#[0-9a-fA-F]{3,6}$/'],
         ]);
 

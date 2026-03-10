@@ -3,6 +3,9 @@
 @section('title', 'Pendapatan Harian')
 
 @section('content')
+    @php
+        $hotspotModuleEnabled = auth()->user()?->isHotspotModuleEnabled() ?? true;
+    @endphp
     <div class="card">
         <div class="card-header">
             <h4 class="mb-0">Pendapatan Harian</h4>
@@ -30,7 +33,9 @@
                     <select class="form-control" id="service-type" name="service_type">
                         <option value="" @selected(($filters['service_type'] ?? '') === '')>- Semua Transaksi -</option>
                         <option value="pppoe" @selected(($filters['service_type'] ?? '') === 'pppoe')>PPPoE</option>
-                        <option value="hotspot" @selected(($filters['service_type'] ?? '') === 'hotspot')>Hotspot</option>
+                        @if($hotspotModuleEnabled)
+                            <option value="hotspot" @selected(($filters['service_type'] ?? '') === 'hotspot')>Hotspot</option>
+                        @endif
                         <option value="voucher" @selected(($filters['service_type'] ?? '') === 'voucher')>Voucher</option>
                     </select>
                 </div>

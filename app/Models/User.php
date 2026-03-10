@@ -124,6 +124,11 @@ class User extends Authenticatable
         return $this->hasMany(PppUser::class, 'owner_id');
     }
 
+    public function odps(): HasMany
+    {
+        return $this->hasMany(Odp::class, 'owner_id');
+    }
+
     public function pppProfiles(): HasMany
     {
         return $this->hasMany(PppProfile::class, 'owner_id');
@@ -138,6 +143,10 @@ class User extends Authenticatable
 
     public function isSuperAdmin(): bool
     {
+        if ($this->role === 'teknisi') {
+            return false;
+        }
+
         return $this->is_super_admin === true;
     }
 
@@ -198,7 +207,7 @@ class User extends Authenticatable
             return $this->trial_days_remaining;
         }
 
-        if (!$this->subscription_expires_at) {
+        if (! $this->subscription_expires_at) {
             return 0;
         }
 
@@ -220,7 +229,7 @@ class User extends Authenticatable
         }
     }
 
-    public function activateSubscription(SubscriptionPlan $plan, int $durationDays = null): void
+    public function activateSubscription(SubscriptionPlan $plan, ?int $durationDays = null): void
     {
         $duration = $durationDays ?? $plan->duration_days;
 
@@ -248,6 +257,11 @@ class User extends Authenticatable
     public function getSettings(): TenantSettings
     {
         return TenantSettings::getOrCreate($this->effectiveOwnerId());
+    }
+
+    public function isHotspotModuleEnabled(): bool
+    {
+        return $this->getSettings()->isHotspotModuleEnabled();
     }
 
     // Scopes

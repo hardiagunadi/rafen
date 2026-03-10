@@ -2,6 +2,10 @@
 
 @section('title', 'API Dashboard')
 
+@php
+    $hotspotModuleEnabled = $hotspotModuleEnabled ?? (auth()->user()?->isHotspotModuleEnabled() ?? true);
+@endphp
+
 {{-- Override sidebar AdminLTE dengan menu MikroTik --}}
 @section('sidebar')
 <nav class="mt-2">
@@ -60,45 +64,47 @@
             </ul>
         </li>
 
-        {{-- Hotspot Group --}}
-        <li class="nav-item has-treeview" id="hotspot-group-li">
-            <a href="#" class="nav-link">
-                <i class="nav-icon fas fa-wifi"></i>
-                <p>Hotspot <i class="right fas fa-angle-left"></i></p>
-            </a>
-            <ul class="nav nav-treeview">
-                <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_active">
-                        <i class="far fa-circle nav-icon"></i><p>Active</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_setting">
-                        <i class="far fa-circle nav-icon"></i><p>Setting</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_ip_binding">
-                        <i class="far fa-circle nav-icon"></i><p>IP Binding</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_server">
-                        <i class="far fa-circle nav-icon"></i><p>Server</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_profiles">
-                        <i class="far fa-circle nav-icon"></i><p>Profiles</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_cookies">
-                        <i class="far fa-circle nav-icon"></i><p>Cookies</p>
-                    </a>
-                </li>
-            </ul>
-        </li>
+        @if($hotspotModuleEnabled)
+            {{-- Hotspot Group --}}
+            <li class="nav-item has-treeview" id="hotspot-group-li">
+                <a href="#" class="nav-link">
+                    <i class="nav-icon fas fa-wifi"></i>
+                    <p>Hotspot <i class="right fas fa-angle-left"></i></p>
+                </a>
+                <ul class="nav nav-treeview">
+                    <li class="nav-item">
+                        <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_active">
+                            <i class="far fa-circle nav-icon"></i><p>Active</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_setting">
+                            <i class="far fa-circle nav-icon"></i><p>Setting</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_ip_binding">
+                            <i class="far fa-circle nav-icon"></i><p>IP Binding</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_server">
+                            <i class="far fa-circle nav-icon"></i><p>Server</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_profiles">
+                            <i class="far fa-circle nav-icon"></i><p>Profiles</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link mikrotik-menu-item" data-menu="hotspot_cookies">
+                            <i class="far fa-circle nav-icon"></i><p>Cookies</p>
+                        </a>
+                    </li>
+                </ul>
+            </li>
+        @endif
 
         <li class="nav-header">NAVIGASI</li>
         <li class="nav-item">

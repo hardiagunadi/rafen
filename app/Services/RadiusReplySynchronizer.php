@@ -3,10 +3,11 @@
 namespace App\Services;
 
 use App\Models\BandwidthProfile;
-use App\Models\ProfileGroup;
 use App\Models\PppProfile;
 use App\Models\PppUser;
+use App\Models\ProfileGroup;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class RadiusReplySynchronizer
 {
@@ -19,6 +20,10 @@ class RadiusReplySynchronizer
      */
     public function sync(): int
     {
+        if (! $this->isRadiusTablesReady()) {
+            return 0;
+        }
+
         $this->reservedIps = [];
 
         // Load all relevant data upfront
@@ -50,17 +55,17 @@ class RadiusReplySynchronizer
         }
 
         // Build radreply rows for enabled users
-        $radreplyRows    = [];
-        $deleteIpFor     = []; // usernames where Framed-IP should be cleared
-        $deletePoolFor   = []; // usernames where Framed-Pool should be cleared
-        $deleteGroupFor  = []; // usernames where Mikrotik-Group should be cleared
-        $deleteQueueFor  = []; // usernames where Mikrotik-Queue-Parent-Name should be cleared
-        $deleteRateFor   = []; // usernames where Mikrotik-Rate-Limit should be cleared
+        $radreplyRows = [];
+        $deleteIpFor = []; // usernames where Framed-IP should be cleared
+        $deletePoolFor = []; // usernames where Framed-Pool should be cleared
+        $deleteGroupFor = []; // usernames where Mikrotik-Group should be cleared
+        $deleteQueueFor = []; // usernames where Mikrotik-Queue-Parent-Name should be cleared
+        $deleteRateFor = []; // usernames where Mikrotik-Rate-Limit should be cleared
 
         foreach ($enabledUsers as $user) {
-            $group     = $this->resolveProfileGroup($user);
+            $group = $this->resolveProfileGroup($user);
             $bandwidth = $this->resolveBandwidthProfile($user);
-            $username  = $user->username;
+            $username = $user->username;
 
             // Mikrotik-Group
             if ($group && $group->name) {
@@ -180,6 +185,10 @@ class RadiusReplySynchronizer
      */
     public function syncSingleUser(PppUser $user): void
     {
+        if (! $this->isRadiusTablesReady()) {
+            return;
+        }
+
         $user->refresh();
 
         if (! $user->username) {
@@ -190,6 +199,7 @@ class RadiusReplySynchronizer
             // Belum aktif — hapus dari RADIUS agar tidak bisa login
             DB::table('radcheck')->where('username', $user->username)->delete();
             DB::table('radreply')->where('username', $user->username)->delete();
+
             return;
         }
 
@@ -202,6 +212,7 @@ class RadiusReplySynchronizer
                     ['op' => ':=', 'value' => $user->ppp_password]
                 );
             }
+
             return;
         }
 
@@ -209,6 +220,7 @@ class RadiusReplySynchronizer
             // User disable atau belum lengkap — hapus dari RADIUS sepenuhnya
             DB::table('radcheck')->where('username', $user->username)->delete();
             DB::table('radreply')->where('username', $user->username)->delete();
+
             return;
         }
 
@@ -219,6 +231,11 @@ class RadiusReplySynchronizer
             ->delete();
 
         $this->syncUser($user);
+    }
+
+    private function isRadiusTablesReady(): bool
+    {
+        return Schema::hasTable('radcheck') && Schema::hasTable('radreply');
     }
 
     /**
@@ -262,6 +279,7 @@ class RadiusReplySynchronizer
             $ip = $this->assignNextIp($group, $user);
             if ($ip) {
                 $user->update(['ip_static' => $ip]);
+
                 return [
                     ['username' => $user->username, 'attribute' => 'Framed-IP-Address', 'op' => ':=', 'value' => $ip],
                     ['username' => $user->username, 'attribute' => 'Framed-IP-Netmask', 'op' => ':=', 'value' => '255.255.255.255'],
@@ -397,6 +415,7 @@ class RadiusReplySynchronizer
         if ($user->profile && $user->profile->bandwidth_profile_id) {
             return BandwidthProfile::find($user->profile->bandwidth_profile_id);
         }
+
         return null;
     }
 

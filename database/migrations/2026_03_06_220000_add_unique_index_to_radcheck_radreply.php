@@ -9,40 +9,54 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Remove duplicate rows before adding unique index
-        DB::statement('
-            DELETE r1 FROM radcheck r1
-            INNER JOIN radcheck r2
-            WHERE r1.id > r2.id
-              AND r1.username = r2.username
-              AND r1.attribute = r2.attribute
-        ');
+        if (Schema::hasTable('radcheck')) {
+            // Remove duplicate rows before adding unique index.
+            DB::table('radcheck')
+                ->whereNotIn('id', function ($query) {
+                    $query->fromSub(
+                        DB::table('radcheck')
+                            ->selectRaw('MIN(id) as min_id')
+                            ->groupBy('username', 'attribute'),
+                        'uniq_rows'
+                    )->select('min_id');
+                })
+                ->delete();
 
-        DB::statement('
-            DELETE r1 FROM radreply r1
-            INNER JOIN radreply r2
-            WHERE r1.id > r2.id
-              AND r1.username = r2.username
-              AND r1.attribute = r2.attribute
-        ');
+            Schema::table('radcheck', function (Blueprint $table) {
+                $table->unique(['username', 'attribute'], 'radcheck_username_attribute_unique');
+            });
+        }
 
-        Schema::table('radcheck', function (Blueprint $table) {
-            $table->unique(['username', 'attribute'], 'radcheck_username_attribute_unique');
-        });
+        if (Schema::hasTable('radreply')) {
+            DB::table('radreply')
+                ->whereNotIn('id', function ($query) {
+                    $query->fromSub(
+                        DB::table('radreply')
+                            ->selectRaw('MIN(id) as min_id')
+                            ->groupBy('username', 'attribute'),
+                        'uniq_rows'
+                    )->select('min_id');
+                })
+                ->delete();
 
-        Schema::table('radreply', function (Blueprint $table) {
-            $table->unique(['username', 'attribute'], 'radreply_username_attribute_unique');
-        });
+            Schema::table('radreply', function (Blueprint $table) {
+                $table->unique(['username', 'attribute'], 'radreply_username_attribute_unique');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('radcheck', function (Blueprint $table) {
-            $table->dropUnique('radcheck_username_attribute_unique');
-        });
+        if (Schema::hasTable('radcheck')) {
+            Schema::table('radcheck', function (Blueprint $table) {
+                $table->dropUnique('radcheck_username_attribute_unique');
+            });
+        }
 
-        Schema::table('radreply', function (Blueprint $table) {
-            $table->dropUnique('radreply_username_attribute_unique');
-        });
+        if (Schema::hasTable('radreply')) {
+            Schema::table('radreply', function (Blueprint $table) {
+                $table->dropUnique('radreply_username_attribute_unique');
+            });
+        }
     }
 };

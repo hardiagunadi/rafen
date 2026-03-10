@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'tenant' => \App\Http\Middleware\TenantMiddleware::class,
+            'tenant.module' => \App\Http\Middleware\EnsureTenantModuleEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

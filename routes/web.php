@@ -4,29 +4,31 @@ use App\Http\Controllers\ActiveSessionController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BandwidthProfileController;
+use App\Http\Controllers\CustomerMapController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FreeRadiusSettingsController;
+use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HotspotProfileController;
 use App\Http\Controllers\HotspotUserController;
 use App\Http\Controllers\IncomeReportController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\IsolirPageController;
 use App\Http\Controllers\MikrotikConnectionController;
-use App\Http\Controllers\VoucherController;
-use App\Http\Controllers\WgSettingsController;
+use App\Http\Controllers\OdpController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileGroupController;
 use App\Http\Controllers\RadiusAccountController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SubscriptionPlanController;
 use App\Http\Controllers\SuperAdminController;
-use App\Http\Controllers\TenantSettingsController;
-use App\Http\Controllers\HelpController;
-use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\SystemToolController;
-use App\Http\Controllers\WaBlastController;
-use App\Http\Controllers\IsolirPageController;
-use App\Http\Controllers\WaWebhookController;
 use App\Http\Controllers\TeknisiSetoranController;
+use App\Http\Controllers\TenantSettingsController;
+use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\VoucherController;
+use App\Http\Controllers\WaBlastController;
+use App\Http\Controllers\WaWebhookController;
+use App\Http\Controllers\WgSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('login', [LoginController::class, 'show'])->name('login');
@@ -49,15 +51,17 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::put('api-dashboard/ppp-secret/{id}', [DashboardController::class, 'pppSecretUpdate'])->name('dashboard.api.ppp-secret.update');
     Route::delete('api-dashboard/ppp-secret/{id}', [DashboardController::class, 'pppSecretDestroy'])->name('dashboard.api.ppp-secret.destroy');
     Route::post('api-dashboard/ppp-active/{id}/disconnect', [DashboardController::class, 'pppActiveDisconnect'])->name('dashboard.api.ppp-active.disconnect');
-    // Hotspot User CRUD via MikroTik API
-    Route::post('api-dashboard/hotspot-user', [DashboardController::class, 'hotspotUserStore'])->name('dashboard.api.hotspot-user.store');
-    Route::put('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserUpdate'])->name('dashboard.api.hotspot-user.update');
-    Route::delete('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserDestroy'])->name('dashboard.api.hotspot-user.destroy');
-    Route::post('api-dashboard/hotspot-active/{id}/disconnect', [DashboardController::class, 'hotspotActiveDisconnect'])->name('dashboard.api.hotspot-active.disconnect');
-    // Hotspot IP Binding CRUD via MikroTik API
-    Route::post('api-dashboard/hotspot-ip-binding', [DashboardController::class, 'hotspotIpBindingStore'])->name('dashboard.api.hotspot-ip-binding.store');
-    Route::put('api-dashboard/hotspot-ip-binding/{id}', [DashboardController::class, 'hotspotIpBindingUpdate'])->name('dashboard.api.hotspot-ip-binding.update');
-    Route::delete('api-dashboard/hotspot-ip-binding/{id}', [DashboardController::class, 'hotspotIpBindingDestroy'])->name('dashboard.api.hotspot-ip-binding.destroy');
+    Route::middleware('tenant.module:hotspot')->group(function () {
+        // Hotspot User CRUD via MikroTik API
+        Route::post('api-dashboard/hotspot-user', [DashboardController::class, 'hotspotUserStore'])->name('dashboard.api.hotspot-user.store');
+        Route::put('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserUpdate'])->name('dashboard.api.hotspot-user.update');
+        Route::delete('api-dashboard/hotspot-user/{id}', [DashboardController::class, 'hotspotUserDestroy'])->name('dashboard.api.hotspot-user.destroy');
+        Route::post('api-dashboard/hotspot-active/{id}/disconnect', [DashboardController::class, 'hotspotActiveDisconnect'])->name('dashboard.api.hotspot-active.disconnect');
+        // Hotspot IP Binding CRUD via MikroTik API
+        Route::post('api-dashboard/hotspot-ip-binding', [DashboardController::class, 'hotspotIpBindingStore'])->name('dashboard.api.hotspot-ip-binding.store');
+        Route::put('api-dashboard/hotspot-ip-binding/{id}', [DashboardController::class, 'hotspotIpBindingUpdate'])->name('dashboard.api.hotspot-ip-binding.update');
+        Route::delete('api-dashboard/hotspot-ip-binding/{id}', [DashboardController::class, 'hotspotIpBindingDestroy'])->name('dashboard.api.hotspot-ip-binding.destroy');
+    });
     // PPPoE Server CRUD via MikroTik API
     Route::post('api-dashboard/pppoe-server', [DashboardController::class, 'pppoeServerStore'])->name('dashboard.api.pppoe-server.store');
     Route::put('api-dashboard/pppoe-server/{id}', [DashboardController::class, 'pppoeServerUpdate'])->name('dashboard.api.pppoe-server.update');
@@ -95,9 +99,11 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('profile-groups/datatable', [ProfileGroupController::class, 'datatable'])->name('profile-groups.datatable');
     Route::get('profile-groups/mikrotik-queues', [ProfileGroupController::class, 'mikrotikQueues'])->name('profile-groups.mikrotik-queues');
     Route::resource('profile-groups', ProfileGroupController::class);
-    Route::get('hotspot-profiles/datatable', [HotspotProfileController::class, 'datatable'])->name('hotspot-profiles.datatable');
-    Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');
-    Route::resource('hotspot-profiles', HotspotProfileController::class);
+    Route::middleware('tenant.module:hotspot')->group(function () {
+        Route::get('hotspot-profiles/datatable', [HotspotProfileController::class, 'datatable'])->name('hotspot-profiles.datatable');
+        Route::delete('hotspot-profiles/bulk-destroy', [HotspotProfileController::class, 'bulkDestroy'])->name('hotspot-profiles.bulk-destroy');
+        Route::resource('hotspot-profiles', HotspotProfileController::class);
+    });
     Route::get('invoices/datatable', [InvoiceController::class, 'datatable'])->name('invoices.datatable');
     Route::get('invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
     Route::get('invoices/{invoice}/nota', [InvoiceController::class, 'nota'])->name('invoices.nota');
@@ -105,7 +111,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->name('invoices.pay');
-    Route::get('invoices/{invoice}/pay', fn($invoice) => redirect()->route('invoices.show', $invoice));
+    Route::get('invoices/{invoice}/pay', fn ($invoice) => redirect()->route('invoices.show', $invoice));
     Route::post('invoices/{invoice}/renew', [InvoiceController::class, 'renew'])->name('invoices.renew');
     Route::post('invoices/{invoice}/send-wa', [InvoiceController::class, 'sendWa'])->name('invoices.send-wa');
     Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
@@ -143,12 +149,20 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::post('ppp-users/{pppUser}/add-invoice', [\App\Http\Controllers\PppUserController::class, 'addInvoice'])->name('ppp-users.add-invoice');
     Route::post('ppp-users/{pppUser}/disconnect', [\App\Http\Controllers\PppUserController::class, 'disconnect'])->name('ppp-users.disconnect');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
-    Route::get('hotspot-users/datatable', [HotspotUserController::class, 'datatable'])->name('hotspot-users.datatable');
-    Route::get('hotspot-users/generate-customer-id', [HotspotUserController::class, 'generateCustomerId'])->name('hotspot-users.generate-customer-id');
-    Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');
-    Route::post('hotspot-users/{hotspotUser}/renew', [HotspotUserController::class, 'renew'])->name('hotspot-users.renew');
-    Route::post('hotspot-users/{hotspotUser}/toggle-status', [HotspotUserController::class, 'toggleStatus'])->name('hotspot-users.toggle-status');
-    Route::resource('hotspot-users', HotspotUserController::class);
+    Route::get('odps/datatable', [OdpController::class, 'datatable'])->name('odps.datatable');
+    Route::get('odps/generate-code', [OdpController::class, 'generateCode'])->name('odps.generate-code');
+    Route::resource('odps', OdpController::class);
+    Route::get('customer-map', [CustomerMapController::class, 'index'])->name('customer-map.index');
+    Route::get('customer-map/cache-config', [CustomerMapController::class, 'cacheConfig'])->name('customer-map.cache-config');
+    Route::get('customer-map/cache-tiles', [CustomerMapController::class, 'cacheTiles'])->name('customer-map.cache-tiles');
+    Route::middleware('tenant.module:hotspot')->group(function () {
+        Route::get('hotspot-users/datatable', [HotspotUserController::class, 'datatable'])->name('hotspot-users.datatable');
+        Route::get('hotspot-users/generate-customer-id', [HotspotUserController::class, 'generateCustomerId'])->name('hotspot-users.generate-customer-id');
+        Route::delete('hotspot-users/bulk-destroy', [HotspotUserController::class, 'bulkDestroy'])->name('hotspot-users.bulk-destroy');
+        Route::post('hotspot-users/{hotspotUser}/renew', [HotspotUserController::class, 'renew'])->name('hotspot-users.renew');
+        Route::post('hotspot-users/{hotspotUser}/toggle-status', [HotspotUserController::class, 'toggleStatus'])->name('hotspot-users.toggle-status');
+        Route::resource('hotspot-users', HotspotUserController::class);
+    });
     Route::get('vouchers/datatable', [VoucherController::class, 'datatable'])->name('vouchers.datatable');
     Route::delete('vouchers/bulk-destroy', [VoucherController::class, 'bulkDestroy'])->name('vouchers.bulk-destroy');
     Route::get('vouchers/{batch}/print', [VoucherController::class, 'printBatch'])->name('vouchers.print');
@@ -160,10 +174,12 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('sessions/pppoe/datatable', [ActiveSessionController::class, 'pppoeDatatable'])->name('sessions.pppoe.datatable');
     Route::get('sessions/pppoe-inactive', [ActiveSessionController::class, 'pppoeInactive'])->name('sessions.pppoe-inactive');
     Route::get('sessions/pppoe-inactive/datatable', [ActiveSessionController::class, 'pppoeInactiveDatatable'])->name('sessions.pppoe-inactive.datatable');
-    Route::get('sessions/hotspot', [ActiveSessionController::class, 'hotspot'])->name('sessions.hotspot');
-    Route::get('sessions/hotspot/datatable', [ActiveSessionController::class, 'hotspotDatatable'])->name('sessions.hotspot.datatable');
-    Route::get('sessions/hotspot-inactive', [ActiveSessionController::class, 'hotspotInactive'])->name('sessions.hotspot-inactive');
-    Route::get('sessions/hotspot-inactive/datatable', [ActiveSessionController::class, 'hotspotInactiveDatatable'])->name('sessions.hotspot-inactive.datatable');
+    Route::middleware('tenant.module:hotspot')->group(function () {
+        Route::get('sessions/hotspot', [ActiveSessionController::class, 'hotspot'])->name('sessions.hotspot');
+        Route::get('sessions/hotspot/datatable', [ActiveSessionController::class, 'hotspotDatatable'])->name('sessions.hotspot.datatable');
+        Route::get('sessions/hotspot-inactive', [ActiveSessionController::class, 'hotspotInactive'])->name('sessions.hotspot-inactive');
+        Route::get('sessions/hotspot-inactive/datatable', [ActiveSessionController::class, 'hotspotInactiveDatatable'])->name('sessions.hotspot-inactive.datatable');
+    });
     Route::post('sessions/refresh-router/{connection}', [ActiveSessionController::class, 'refreshRouter'])->name('sessions.refresh-router');
     Route::post('sessions/refresh-all', [ActiveSessionController::class, 'refreshAll'])->name('sessions.refresh-all');
 
@@ -202,6 +218,8 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('/', [TenantSettingsController::class, 'index'])->name('index');
         Route::put('/business', [TenantSettingsController::class, 'updateBusiness'])->name('update-business');
         Route::put('/payment', [TenantSettingsController::class, 'updatePayment'])->name('update-payment');
+        Route::put('/modules', [TenantSettingsController::class, 'updateModules'])->name('update-modules');
+        Route::put('/map-cache', [TenantSettingsController::class, 'updateMapCache'])->name('update-map-cache');
         Route::post('/test-tripay', [TenantSettingsController::class, 'testTripay'])->name('test-tripay');
         Route::post('/test-midtrans', [TenantSettingsController::class, 'testMidtrans'])->name('test-midtrans');
         Route::post('/test-duitku', [TenantSettingsController::class, 'testDuitku'])->name('test-duitku');

@@ -71,6 +71,14 @@ class TenantSettings extends Model
         'xendit_secret_key',
         'xendit_webhook_token',
         'xendit_sandbox',
+        'map_cache_enabled',
+        'map_cache_center_lat',
+        'map_cache_center_lng',
+        'map_cache_radius_km',
+        'map_cache_min_zoom',
+        'map_cache_max_zoom',
+        'map_cache_version',
+        'module_hotspot_enabled',
     ];
 
     protected function casts(): array
@@ -98,6 +106,14 @@ class TenantSettings extends Model
             'duitku_sandbox' => 'boolean',
             'ipaymu_sandbox' => 'boolean',
             'xendit_sandbox' => 'boolean',
+            'map_cache_enabled' => 'boolean',
+            'map_cache_center_lat' => 'float',
+            'map_cache_center_lng' => 'float',
+            'map_cache_radius_km' => 'float',
+            'map_cache_min_zoom' => 'integer',
+            'map_cache_max_zoom' => 'integer',
+            'map_cache_version' => 'integer',
+            'module_hotspot_enabled' => 'boolean',
         ];
     }
 
@@ -114,6 +130,7 @@ class TenantSettings extends Model
     public function getIsolirPageContact(): string
     {
         $parts = array_filter([$this->business_phone, $this->business_email]);
+
         return $this->isolir_page_contact ?: implode(' | ', $parts);
     }
 
@@ -133,9 +150,9 @@ class TenantSettings extends Model
 
     public function hasTripayConfigured(): bool
     {
-        return !empty($this->tripay_api_key)
-            && !empty($this->tripay_private_key)
-            && !empty($this->tripay_merchant_code);
+        return ! empty($this->tripay_api_key)
+            && ! empty($this->tripay_private_key)
+            && ! empty($this->tripay_merchant_code);
     }
 
     public function hasWaConfigured(): bool
@@ -151,10 +168,10 @@ class TenantSettings extends Model
     {
         return match ($type) {
             'registration' => "*#Konfirmasi Registrasi Pelanggan*\n\n*Kepada Yth Bapak/Ibu {name}*,\nTerima kasih telah menjadi pelanggan kami. Kami sangat berterima kasih dan berharap kami dapat memberikan layanan terbaik kepada Anda\nBerikut informasi data registrasi anda :\n\n*Nama Lengkap : {name}*\n*Id Pelanggan : {customer_id}*\n*Paket Layanan : {profile}*\n*Tipe Pengguna : {service}*\n*Harga Paket : {total}*\n\nUntuk menghindari terisolirnya layanan anda, harap selalu bayarkan tagihan sebelum tanggal jatuh tempo\n\nUntuk informasi lainnya silahkan hubungi nomor *_Whatsapp {cs_number}_* untuk bantuan Customer Service\n\n*_Salam Hormat_*.",
-            'invoice'      => "*##Invoice anda sudah diterbitkan*\n\nKepada Yth Bapak/Ibu *{name}*,\nBerikut ini merupakan pengingat tagihan anda dengan nomor invoice : {invoice_no}\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJatuh Tempo : *{due_date}*\nJumlah : *{total}*\n\nBayar tagihan langsung melalui link berikut:\n*{payment_link}*\n\nAtau transfer ke rekening berikut:\n{bank_account}\n\nMohon sertakan ID PELANGGAN pada konfirmasi pembayaran anda\n\nUntuk informasi lainnya silahkan hubungi nomor *_Whatsapp {cs_number}_* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
-            'payment'      => "*### Terima kasih atas pembayaran anda*\n\nKepada Yth Bapak/Ibu *{name}*,\nTerima kasih telah melunasi pembayaran invoice {invoice_no}\nBerikut informasi perpanjangan paket anda :\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJumlah Dibayarkan: *{total}*\n\n_Silahkan hubungi kami jika layanan anda masih terputus setelah membaca pesan ini_\n\nUntuk informasi lainnya silahkan hubungi nomor *Whatsapp {cs_number}* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
-            'on_process'   => "*#Pendaftaran Sedang Diproses*\n\nHalo *{name}*,\n\nTerima kasih telah mendaftar sebagai pelanggan kami. Pendaftaran Anda sedang dalam proses verifikasi.\n\nDetail layanan:\n- ID Pelanggan: *{customer_id}*\n- Paket: *{profile}*\n- Tipe: *{service}*\n- Tagihan: *Rp {total}*\n\nSilakan lakukan pembayaran ke rekening berikut agar layanan Anda segera diaktifkan:\n\n{bank_account}\n\nMohon sertakan *ID Pelanggan* pada keterangan transfer.\n\nInfo & bantuan: *{cs_number}*\n\n_*Salam Hormat*_.",
-            default        => '',
+            'invoice' => "*##Invoice anda sudah diterbitkan*\n\nKepada Yth Bapak/Ibu *{name}*,\nBerikut ini merupakan pengingat tagihan anda dengan nomor invoice : {invoice_no}\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJatuh Tempo : *{due_date}*\nJumlah : *{total}*\n\nBayar tagihan langsung melalui link berikut:\n*{payment_link}*\n\nAtau transfer ke rekening berikut:\n{bank_account}\n\nMohon sertakan ID PELANGGAN pada konfirmasi pembayaran anda\n\nUntuk informasi lainnya silahkan hubungi nomor *_Whatsapp {cs_number}_* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
+            'payment' => "*### Terima kasih atas pembayaran anda*\n\nKepada Yth Bapak/Ibu *{name}*,\nTerima kasih telah melunasi pembayaran invoice {invoice_no}\nBerikut informasi perpanjangan paket anda :\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJumlah Dibayarkan: *{total}*\n\n_Silahkan hubungi kami jika layanan anda masih terputus setelah membaca pesan ini_\n\nUntuk informasi lainnya silahkan hubungi nomor *Whatsapp {cs_number}* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
+            'on_process' => "*#Pendaftaran Sedang Diproses*\n\nHalo *{name}*,\n\nTerima kasih telah mendaftar sebagai pelanggan kami. Pendaftaran Anda sedang dalam proses verifikasi.\n\nDetail layanan:\n- ID Pelanggan: *{customer_id}*\n- Paket: *{profile}*\n- Tipe: *{service}*\n- Tagihan: *Rp {total}*\n\nSilakan lakukan pembayaran ke rekening berikut agar layanan Anda segera diaktifkan:\n\n{bank_account}\n\nMohon sertakan *ID Pelanggan* pada keterangan transfer.\n\nInfo & bantuan: *{cs_number}*\n\n_*Salam Hormat*_.",
+            default => '',
         };
     }
 
@@ -165,10 +182,10 @@ class TenantSettings extends Model
     {
         $custom = match ($type) {
             'registration' => $this->wa_template_registration,
-            'invoice'      => $this->wa_template_invoice,
-            'payment'      => $this->wa_template_payment,
-            'on_process'   => $this->wa_template_on_process,
-            default        => null,
+            'invoice' => $this->wa_template_invoice,
+            'payment' => $this->wa_template_payment,
+            'on_process' => $this->wa_template_on_process,
+            default => null,
         };
 
         return ! empty($custom) ? $custom : $this->getDefaultTemplate($type);
@@ -176,32 +193,32 @@ class TenantSettings extends Model
 
     public function hasMidtransConfigured(): bool
     {
-        return !empty($this->midtrans_server_key) && !empty($this->midtrans_client_key);
+        return ! empty($this->midtrans_server_key) && ! empty($this->midtrans_client_key);
     }
 
     public function hasDuitkuConfigured(): bool
     {
-        return !empty($this->duitku_merchant_code) && !empty($this->duitku_api_key);
+        return ! empty($this->duitku_merchant_code) && ! empty($this->duitku_api_key);
     }
 
     public function hasIPaymuConfigured(): bool
     {
-        return !empty($this->ipaymu_va) && !empty($this->ipaymu_api_key);
+        return ! empty($this->ipaymu_va) && ! empty($this->ipaymu_api_key);
     }
 
     public function hasXenditConfigured(): bool
     {
-        return !empty($this->xendit_secret_key);
+        return ! empty($this->xendit_secret_key);
     }
 
     public function hasActiveGateway(): bool
     {
         return match ($this->active_gateway ?? 'tripay') {
             'midtrans' => $this->hasMidtransConfigured(),
-            'duitku'   => $this->hasDuitkuConfigured(),
-            'ipaymu'   => $this->hasIPaymuConfigured(),
-            'xendit'   => $this->hasXenditConfigured(),
-            default    => $this->hasTripayConfigured(),
+            'duitku' => $this->hasDuitkuConfigured(),
+            'ipaymu' => $this->hasIPaymuConfigured(),
+            'xendit' => $this->hasXenditConfigured(),
+            default => $this->hasTripayConfigured(),
         };
     }
 
@@ -227,6 +244,11 @@ class TenantSettings extends Model
         return $this->enabled_payment_channels ?? [];
     }
 
+    public function isHotspotModuleEnabled(): bool
+    {
+        return (bool) ($this->module_hotspot_enabled ?? true);
+    }
+
     public static function getOrCreate(int $userId): self
     {
         return static::firstOrCreate(
@@ -237,6 +259,7 @@ class TenantSettings extends Model
                 'payment_expiry_hours' => 24,
                 'auto_isolate_unpaid' => true,
                 'grace_period_days' => 3,
+                'module_hotspot_enabled' => true,
             ]
         );
     }

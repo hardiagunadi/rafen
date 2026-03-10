@@ -3,6 +3,14 @@
 @section('title', 'Tambah User PPP')
 
 @section('content')
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        #ppp-location-map {
+            height: 320px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+    </style>
     <div class="card">
         <div class="card-header">
             <h4 class="mb-0">Tambah Pelanggan</h4>
@@ -168,12 +176,24 @@
 
                     <div class="tab-pane fade" id="info" role="tabpanel" aria-labelledby="info-tab">
                         <div class="form-row">
-                            <div class="form-group col-md-6">
+                            <div class="form-group col-md-4">
+                                <label>ODP Master <span class="text-muted">(Opsional)</span></label>
+                                <select name="odp_id" class="form-control @error('odp_id') is-invalid @enderror">
+                                    <option value="">- pilih ODP -</option>
+                                    @foreach($odps as $odp)
+                                        <option value="{{ $odp->id }}" @selected(old('odp_id') == $odp->id)>
+                                            {{ $odp->code }} - {{ $odp->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('odp_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="form-group col-md-4">
                                 <label>ODP | POP <span class="text-muted">(Opsional)</span></label>
                                 <input type="text" name="odp_pop" value="{{ old('odp_pop') }}" class="form-control @error('odp_pop') is-invalid @enderror">
                                 @error('odp_pop')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
-                            <div class="form-group col-md-6">
+                            <div class="form-group col-md-4">
                                 <label>ID Pelanggan <span class="badge badge-info" style="font-size:10px">Auto</span></label>
                                 <div class="input-group">
                                     <input type="text" name="customer_id" id="customer_id" value="{{ old('customer_id') }}" class="form-control @error('customer_id') is-invalid @enderror" placeholder="Memuat..." readonly>
@@ -222,15 +242,39 @@
                         <div class="form-row">
                             <div class="form-group col-md-6">
                                 <label>Latitude <span class="text-muted">(Opsional)</span></label>
-                                <input type="text" name="latitude" value="{{ old('latitude') }}" class="form-control @error('latitude') is-invalid @enderror">
+                                <input type="text" name="latitude" id="latitude" value="{{ old('latitude') }}" class="form-control @error('latitude') is-invalid @enderror">
                                 @error('latitude')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="form-group col-md-6">
                                 <label>Longitude <span class="text-muted">(Opsional)</span></label>
-                                <input type="text" name="longitude" value="{{ old('longitude') }}" class="form-control @error('longitude') is-invalid @enderror">
+                                <input type="text" name="longitude" id="longitude" value="{{ old('longitude') }}" class="form-control @error('longitude') is-invalid @enderror">
                                 @error('longitude')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                         </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-capture-gps">
+                                    <i class="fas fa-location-arrow mr-1"></i>Ambil Titik GPS (3 Sampel)
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm ml-2" id="btn-toggle-map-preview">
+                                    <i class="fas fa-map-marked-alt mr-1"></i>Lihat Maps
+                                </button>
+                            </div>
+                            <div class="form-group col-md-6 text-md-right">
+                                <small class="text-muted d-block" id="location-meta-info">
+                                    Akurasi: {{ old('location_accuracy_m') ? old('location_accuracy_m').' m' : '-' }}
+                                </small>
+                            </div>
+                        </div>
+                        <div id="ppp-location-map-wrapper" class="d-none">
+                            <div id="ppp-location-map" class="mb-3"></div>
+                            <small class="text-muted d-block mb-3" id="location-map-info">
+                                Gunakan layer Earth untuk cek visual satelit. Marker bisa digeser untuk koreksi titik presisi.
+                            </small>
+                        </div>
+                        <input type="hidden" name="location_accuracy_m" id="location_accuracy_m" value="{{ old('location_accuracy_m') }}">
+                        <input type="hidden" name="location_capture_method" id="location_capture_method" value="{{ old('location_capture_method') }}">
+                        <input type="hidden" name="location_captured_at" id="location_captured_at" value="{{ old('location_captured_at') }}">
                         <div class="form-row">
                             <div class="form-group col-md-6">
                                 <label>Metode Login</label>
@@ -288,6 +332,274 @@
         const metodeLoginSelect = document.getElementById('metode-login-select');
         const pppPasswordInput = document.querySelector('input[name="ppp_password"]');
         const pppPasswordRow = document.getElementById('ppp-password-row');
+        const latitudeInput = document.getElementById('latitude');
+        const longitudeInput = document.getElementById('longitude');
+        const locationAccuracyInput = document.getElementById('location_accuracy_m');
+        const locationMethodInput = document.getElementById('location_capture_method');
+        const locationCapturedAtInput = document.getElementById('location_captured_at');
+        const locationMetaInfo = document.getElementById('location-meta-info');
+        const captureGpsButton = document.getElementById('btn-capture-gps');
+        const toggleMapButton = document.getElementById('btn-toggle-map-preview');
+        const locationMapWrapper = document.getElementById('ppp-location-map-wrapper');
+        const locationMapInfo = document.getElementById('location-map-info');
+        const infoTabButton = document.getElementById('info-tab');
+        const earthFocusZoom = 17;
+        let isMapVisible = false;
+        let locationMap = null;
+        let locationMarker = null;
+
+        function median(values) {
+            const sorted = values.slice().sort((a, b) => a - b);
+            const middle = Math.floor(sorted.length / 2);
+            return sorted.length % 2 === 0
+                ? (sorted[middle - 1] + sorted[middle]) / 2
+                : sorted[middle];
+        }
+
+        function parseCoordinate(value) {
+            const parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function setMapInfo(message, className) {
+            if (! locationMapInfo) {
+                return;
+            }
+
+            locationMapInfo.textContent = message;
+            locationMapInfo.className = className;
+        }
+
+        function initLocationMap() {
+            if (locationMap || typeof L === 'undefined') {
+                return;
+            }
+
+            const mapContainer = document.getElementById('ppp-location-map');
+            if (! mapContainer) {
+                return;
+            }
+
+            const initialLat = parseCoordinate(latitudeInput?.value);
+            const initialLng = parseCoordinate(longitudeInput?.value);
+            const initialPoint = (initialLat !== null && initialLng !== null) ? [initialLat, initialLng] : [-7.36, 109.90];
+            const initialZoom = (initialLat !== null && initialLng !== null) ? earthFocusZoom : 12;
+
+            locationMap = L.map('ppp-location-map').setView(initialPoint, initialZoom);
+
+            const earthLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                maxNativeZoom: earthFocusZoom,
+                attribution: 'Tiles &copy; Esri'
+            }).addTo(locationMap);
+
+            const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            });
+
+            L.control.layers({
+                Earth: earthLayer,
+                Street: streetLayer
+            }).addTo(locationMap);
+
+            locationMarker = L.marker(initialPoint, { draggable: true }).addTo(locationMap);
+
+            locationMarker.on('dragend', function () {
+                const position = locationMarker.getLatLng();
+                setMapPoint(position.lat, position.lng, false);
+            });
+
+            locationMap.on('click', function (event) {
+                setMapPoint(event.latlng.lat, event.latlng.lng, false);
+            });
+        }
+
+        function setMapVisibility(visible) {
+            isMapVisible = visible;
+
+            if (locationMapWrapper) {
+                locationMapWrapper.classList.toggle('d-none', ! visible);
+            }
+
+            if (toggleMapButton) {
+                toggleMapButton.innerHTML = visible
+                    ? '<i class="fas fa-eye-slash mr-1"></i>Sembunyikan Maps'
+                    : '<i class="fas fa-map-marked-alt mr-1"></i>Lihat Maps';
+            }
+
+            if (! visible) {
+                return;
+            }
+
+            ensureLocationMapReady();
+            syncMapFromInputs();
+        }
+
+        function ensureLocationMapReady() {
+            initLocationMap();
+
+            if (locationMap) {
+                setTimeout(function () {
+                    locationMap.invalidateSize();
+                }, 0);
+            }
+        }
+
+        function getFocusZoom() {
+            if (! locationMap) {
+                return earthFocusZoom;
+            }
+
+            const maxZoom = locationMap.getMaxZoom();
+
+            if (typeof maxZoom === 'number' && Number.isFinite(maxZoom)) {
+                return Math.min(maxZoom, earthFocusZoom);
+            }
+
+            return earthFocusZoom;
+        }
+
+        function setMapPoint(lat, lng, shouldFocusMap) {
+            if (latitudeInput) {
+                latitudeInput.value = lat.toFixed(7);
+            }
+            if (longitudeInput) {
+                longitudeInput.value = lng.toFixed(7);
+            }
+            if (locationMarker) {
+                locationMarker.setLatLng([lat, lng]);
+            }
+            if (shouldFocusMap && locationMap) {
+                locationMap.setView([lat, lng], getFocusZoom());
+            }
+
+            setMapInfo('Titik disetel: ' + lat.toFixed(7) + ', ' + lng.toFixed(7), 'text-success d-block mb-3');
+        }
+
+        function setLocationMeta(accuracy, method) {
+            if (locationAccuracyInput) {
+                locationAccuracyInput.value = accuracy.toFixed(2);
+            }
+            if (locationMethodInput) {
+                locationMethodInput.value = method;
+            }
+            if (locationCapturedAtInput) {
+                locationCapturedAtInput.value = new Date().toISOString();
+            }
+            if (locationMetaInfo) {
+                locationMetaInfo.textContent = 'Akurasi: ' + accuracy.toFixed(1) + ' m (' + method + ')';
+                locationMetaInfo.classList.remove('text-muted');
+                locationMetaInfo.classList.add('text-success');
+            }
+        }
+
+        function captureGpsSamples() {
+            if (!navigator.geolocation) {
+                alert('Browser tidak mendukung geolocation.');
+                return;
+            }
+
+            captureGpsButton.disabled = true;
+            captureGpsButton.innerHTML = '<i class=\"fas fa-spinner fa-spin mr-1\"></i>Mengambil titik...';
+            const samples = [];
+
+            function takeSample() {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    samples.push({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    });
+
+                    if (samples.length < 3) {
+                        setTimeout(takeSample, 1200);
+                        return;
+                    }
+
+                    const latitudes = samples.map(s => s.latitude);
+                    const longitudes = samples.map(s => s.longitude);
+                    const accuracies = samples.map(s => s.accuracy);
+                    const latitudeMedian = median(latitudes);
+                    const longitudeMedian = median(longitudes);
+
+                    setMapVisibility(true);
+                    ensureLocationMapReady();
+                    setMapPoint(latitudeMedian, longitudeMedian, true);
+                    setLocationMeta(median(accuracies), 'gps');
+
+                    captureGpsButton.disabled = false;
+                    captureGpsButton.innerHTML = '<i class=\"fas fa-location-arrow mr-1\"></i>Ambil Titik GPS (3 Sampel)';
+                }, function (error) {
+                    let message = 'Gagal mengambil lokasi.';
+                    if (error.code === 1) message = 'Izin lokasi ditolak.';
+                    if (error.code === 2) message = 'Lokasi tidak tersedia.';
+                    if (error.code === 3) message = 'Permintaan lokasi timeout.';
+                    alert(message);
+                    captureGpsButton.disabled = false;
+                    captureGpsButton.innerHTML = '<i class=\"fas fa-location-arrow mr-1\"></i>Ambil Titik GPS (3 Sampel)';
+                }, {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 0,
+                });
+            }
+
+            takeSample();
+        }
+
+        if (captureGpsButton) {
+            captureGpsButton.addEventListener('click', captureGpsSamples);
+        }
+
+        if (toggleMapButton) {
+            toggleMapButton.addEventListener('click', function () {
+                setMapVisibility(! isMapVisible);
+            });
+        }
+
+        function syncMapFromInputs() {
+            if (! isMapVisible) {
+                return;
+            }
+
+            const latitude = parseCoordinate(latitudeInput?.value);
+            const longitude = parseCoordinate(longitudeInput?.value);
+
+            if (latitude === null || longitude === null) {
+                return;
+            }
+
+            ensureLocationMapReady();
+            setMapPoint(latitude, longitude, true);
+        }
+
+        if (latitudeInput) {
+            latitudeInput.addEventListener('change', syncMapFromInputs);
+        }
+
+        if (longitudeInput) {
+            longitudeInput.addEventListener('change', syncMapFromInputs);
+        }
+
+        if (window.jQuery && infoTabButton) {
+            $('#info-tab').on('shown.bs.tab', function () {
+                if (! isMapVisible) {
+                    return;
+                }
+
+                ensureLocationMapReady();
+                syncMapFromInputs();
+            });
+        }
+
+        if (document.getElementById('info')?.classList.contains('show') && isMapVisible) {
+            ensureLocationMapReady();
+            syncMapFromInputs();
+        }
+
+        setMapVisibility(false);
+
         function togglePasswordRequirement() {
             const isUsernamePassword = metodeLoginSelect.value === 'username_password';
             if (pppPasswordInput && pppPasswordRow) {
@@ -341,6 +653,7 @@
 @endsection
 
 @push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 $(function() {
     var $field = $('#customer_id');

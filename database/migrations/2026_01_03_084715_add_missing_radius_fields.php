@@ -115,23 +115,71 @@ return new class extends Migration
 
     private function foreignKeyExists(string $table, string $foreignKeyName): bool
     {
+        $driver = DB::connection()->getDriverName();
         $database = DB::getDatabaseName();
-        $result = DB::selectOne(
-            'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? LIMIT 1',
-            [$database, DB::getTablePrefix().$table, $foreignKeyName]
-        );
+        $tableName = DB::getTablePrefix().$table;
 
-        return $result !== null;
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            $result = DB::selectOne(
+                'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? LIMIT 1',
+                [$database, $tableName, $foreignKeyName]
+            );
+
+            return $result !== null;
+        }
+
+        if ($driver === 'pgsql') {
+            $result = DB::selectOne(
+                'SELECT conname FROM pg_constraint WHERE conname = ? LIMIT 1',
+                [$foreignKeyName]
+            );
+
+            return $result !== null;
+        }
+
+        if ($driver === 'sqlite') {
+            // SQLite does not persist named constraints like MySQL/PostgreSQL.
+            return false;
+        }
+
+        return false;
     }
 
     private function indexExists(string $table, string $indexName): bool
     {
+        $driver = DB::connection()->getDriverName();
         $database = DB::getDatabaseName();
-        $result = DB::selectOne(
-            'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
-            [$database, DB::getTablePrefix().$table, $indexName]
-        );
+        $tableName = DB::getTablePrefix().$table;
 
-        return $result !== null;
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            $result = DB::selectOne(
+                'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
+                [$database, $tableName, $indexName]
+            );
+
+            return $result !== null;
+        }
+
+        if ($driver === 'sqlite') {
+            $indexes = DB::select("PRAGMA index_list('{$tableName}')");
+            foreach ($indexes as $index) {
+                if (($index->name ?? null) === $indexName) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($driver === 'pgsql') {
+            $result = DB::selectOne(
+                'SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = ? AND indexname = ? LIMIT 1',
+                [$tableName, $indexName]
+            );
+
+            return $result !== null;
+        }
+
+        return false;
     }
 };
