@@ -168,6 +168,7 @@ class PollOltConnectionJob implements ShouldBeUnique, ShouldQueue
             'tx_onu_raw' => 'OID Tx ONU',
             'rx_olt_raw' => 'OID Rx OLT',
             'tx_olt_raw' => 'OID Tx OLT',
+            'tx_olt_raw_fallback' => 'OID Tx OLT cadangan',
             'status' => 'OID status',
             default => str_replace('_', ' ', $field),
         };

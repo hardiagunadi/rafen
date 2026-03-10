@@ -19,6 +19,8 @@ use Throwable;
 
 class OltConnectionController extends Controller
 {
+    private const RX_ONU_SAFE_LIMIT_DBM = -27.0;
+
     public function __construct(private HsgqSnmpCollector $collector) {}
 
     public function index(): View
@@ -68,17 +70,19 @@ class OltConnectionController extends Controller
 
         $summaryRows = $oltConnection->onuOptics()
             ->whereNotNull('pon_interface')
-            ->get(['pon_interface', 'status'])
+            ->get(['pon_interface', 'status', 'tx_olt_dbm'])
             ->groupBy('pon_interface')
             ->map(function ($items, string $portId): array {
                 $total = $items->count();
                 $online = $items->filter(fn (OltOnuOptic $item): bool => $this->isOnlineStatus($item->status))->count();
+                $txOltDbm = $items->first(fn (OltOnuOptic $item): bool => $item->tx_olt_dbm !== null)?->tx_olt_dbm;
 
                 return [
                     'port_id' => $portId,
                     'total' => $total,
                     'online' => $online,
                     'offline' => max(0, $total - $online),
+                    'tx_olt_dbm' => $txOltDbm !== null ? (float) $txOltDbm : null,
                 ];
             })
             ->sortBy(function (array $row): int {
@@ -140,8 +144,10 @@ class OltConnectionController extends Controller
                 'onu_name' => $onuOptic->onu_name ?? '-',
                 'distance_m' => $onuOptic->distance_m !== null ? number_format((int) $onuOptic->distance_m).' m' : '-',
                 'rx_onu_dbm' => $onuOptic->rx_onu_dbm !== null ? number_format((float) $onuOptic->rx_onu_dbm, 2).' dBm' : '-',
+                'rx_onu_alert' => $onuOptic->rx_onu_dbm !== null
+                    ? (float) $onuOptic->rx_onu_dbm < self::RX_ONU_SAFE_LIMIT_DBM
+                    : false,
                 'tx_onu_dbm' => $onuOptic->tx_onu_dbm !== null ? number_format((float) $onuOptic->tx_onu_dbm, 2).' dBm' : '-',
-                'tx_olt_dbm' => $onuOptic->tx_olt_dbm !== null ? number_format((float) $onuOptic->tx_olt_dbm, 2).' dBm' : '-',
                 'status' => $this->formatStatusLabel($onuOptic->status),
                 'status_badge' => $this->formatStatusBadge($onuOptic->status),
                 'last_seen_at' => $onuOptic->last_seen_at?->format('Y-m-d H:i:s') ?? '-',
@@ -228,9 +234,8 @@ class OltConnectionController extends Controller
             5 => ['distance_m'],
             6 => ['rx_onu_dbm'],
             7 => ['tx_onu_dbm'],
-            8 => ['tx_olt_dbm'],
-            9 => ['status'],
-            10 => ['last_seen_at'],
+            8 => ['status'],
+            9 => ['last_seen_at'],
         ];
 
         $orders = $request->input('order', []);

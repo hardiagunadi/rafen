@@ -14,6 +14,10 @@ class HsgqSnmpCollector
 
     private const OID_SYS_OBJECT_ID = '1.3.6.1.2.1.1.2.0';
 
+    private const OID_HSGQ_TX_OLT_MILLIWATT = '1.3.6.1.4.1.50224.3.2.4.1.8';
+
+    private const OID_HSGQ_TX_OLT_DBM = '1.3.6.1.4.1.50224.3.2.4.1.11';
+
     /**
      * @return array<int, string>
      */
@@ -152,6 +156,8 @@ class HsgqSnmpCollector
      */
     public function collect(OltConnection $oltConnection, ?callable $progressReporter = null): array
     {
+        $txOltOids = $this->resolveTxOltOids($oltConnection);
+
         $oidMap = [
             'serial_number' => $oltConnection->oid_serial,
             'onu_name' => $oltConnection->oid_onu_name,
@@ -159,7 +165,8 @@ class HsgqSnmpCollector
             'rx_onu_raw' => $oltConnection->oid_rx_onu,
             'tx_onu_raw' => $oltConnection->oid_tx_onu,
             'rx_olt_raw' => $oltConnection->oid_rx_olt,
-            'tx_olt_raw' => $oltConnection->oid_tx_olt,
+            'tx_olt_raw' => $txOltOids['preferred'],
+            'tx_olt_raw_fallback' => $txOltOids['fallback'],
             'status' => $oltConnection->oid_status,
         ];
 
@@ -197,11 +204,19 @@ class HsgqSnmpCollector
         $rows = [];
         foreach ($allIndexes as $onuIndex) {
             $ponAndOnu = $this->inferPonAndOnu($onuIndex);
+            $txOltResolution = $this->resolveTxOltRawValue(
+                $walkResults['tx_olt_raw'] ?? [],
+                $walkResults['tx_olt_raw_fallback'] ?? [],
+                $onuIndex,
+                $txOltOids['preferred'],
+                $txOltOids['fallback'],
+            );
+
             $rawPayload = [
                 'rx_onu' => $this->resolveWalkValue($walkResults['rx_onu_raw'] ?? [], $onuIndex),
                 'tx_onu' => $this->resolveWalkValue($walkResults['tx_onu_raw'] ?? [], $onuIndex),
                 'rx_olt' => $this->resolveWalkValue($walkResults['rx_olt_raw'] ?? [], $onuIndex, true),
-                'tx_olt' => $this->resolveWalkValue($walkResults['tx_olt_raw'] ?? [], $onuIndex, true),
+                'tx_olt' => $txOltResolution['value'],
                 'distance' => $this->resolveWalkValue($walkResults['distance_raw'] ?? [], $onuIndex),
                 'status' => $this->resolveWalkValue($walkResults['status'] ?? [], $onuIndex),
             ];
@@ -213,10 +228,10 @@ class HsgqSnmpCollector
                 'serial_number' => $walkResults['serial_number'][$onuIndex] ?? null,
                 'onu_name' => $walkResults['onu_name'][$onuIndex] ?? null,
                 'distance_m' => $this->parseDistanceValue($rawPayload['distance']),
-                'rx_onu_dbm' => $this->parseOpticalValue($rawPayload['rx_onu'], 'rx_onu'),
-                'tx_onu_dbm' => $this->parseOpticalValue($rawPayload['tx_onu'], 'tx_onu'),
-                'rx_olt_dbm' => $this->parseOpticalValue($rawPayload['rx_olt'], 'rx_olt'),
-                'tx_olt_dbm' => $this->parseOpticalValue($rawPayload['tx_olt'], 'tx_olt'),
+                'rx_onu_dbm' => $this->parseOpticalValue($rawPayload['rx_onu'], 'rx_onu', $oltConnection),
+                'tx_onu_dbm' => $this->parseOpticalValue($rawPayload['tx_onu'], 'tx_onu', $oltConnection),
+                'rx_olt_dbm' => $this->parseOpticalValue($rawPayload['rx_olt'], 'rx_olt', $oltConnection),
+                'tx_olt_dbm' => $this->parseOpticalValue($rawPayload['tx_olt'], 'tx_olt', $oltConnection, $txOltResolution['oid']),
                 'status' => $this->normalizeOnuStatus($rawPayload['status']),
                 'raw_payload' => $rawPayload,
             ];
@@ -454,6 +469,8 @@ class HsgqSnmpCollector
         $total = count($oidEntries);
 
         foreach (array_chunk($oidEntries, $parallelBatchSize) as $chunk) {
+            $poolTimedOut = false;
+
             try {
                 $poolResults = Process::pool(function (Pool $pool) use ($chunk, $oltConnection): void {
                     foreach ($chunk as $entry) {
@@ -463,25 +480,45 @@ class HsgqSnmpCollector
                     }
                 })->run();
             } catch (ProcessTimedOutException) {
-                throw new RuntimeException($this->snmpTimeoutMessage($oltConnection));
+                $poolTimedOut = true;
+                $poolResults = [];
             }
 
             foreach ($chunk as $entry) {
                 $field = $entry['field'];
                 $normalizedBaseOid = ltrim(trim($entry['base_oid']), '.');
-                $result = $poolResults[$field];
+                $values = null;
 
-                if ($result->failed()) {
-                    throw new RuntimeException($this->normalizeSnmpFailureMessage($oltConnection, trim($result->errorOutput() ?: $result->output())));
+                if (! $poolTimedOut) {
+                    $result = $poolResults[$field];
+
+                    if ($result->failed()) {
+                        $errorMessage = trim($result->errorOutput() ?: $result->output());
+                        $normalizedError = $this->normalizeSnmpFailureMessage($oltConnection, $errorMessage);
+
+                        if (! $this->isTimeoutErrorMessage($normalizedError)) {
+                            throw new RuntimeException($normalizedError);
+                        }
+                    } else {
+                        $values = $this->parseWalkOutput($result->output(), $normalizedBaseOid);
+                    }
                 }
 
-                $walkResults[$field] = $this->parseWalkOutput($result->output(), $normalizedBaseOid);
+                if ($values === null) {
+                    $values = $this->walkByIndexWithTimeoutFallback($oltConnection, $normalizedBaseOid) ?? [];
+                }
+
+                $walkResults[$field] = $values;
                 $completed++;
 
                 if ($progressReporter !== null) {
                     $progressReporter($completed, max(1, $total), $field);
                 }
             }
+        }
+
+        if (collect($walkResults)->every(fn (array $valuesByIndex): bool => $valuesByIndex === [])) {
+            throw new RuntimeException($this->snmpTimeoutMessage($oltConnection));
         }
 
         return $walkResults;
@@ -581,8 +618,12 @@ class HsgqSnmpCollector
         ];
     }
 
-    private function parseOpticalValue(?string $value, ?string $field = null): ?float
-    {
+    private function parseOpticalValue(
+        ?string $value,
+        ?string $field = null,
+        ?OltConnection $oltConnection = null,
+        ?string $sourceOid = null
+    ): ?float {
         if ($value === null || trim($value) === '') {
             return null;
         }
@@ -597,18 +638,137 @@ class HsgqSnmpCollector
             return null;
         }
 
-        return round($this->normalizeOpticalScale($numericValue, $field), 2);
+        return round($this->normalizeOpticalScale($numericValue, $field, $oltConnection, $sourceOid), 2);
     }
 
-    private function normalizeOpticalScale(float $numericValue, ?string $field): float
-    {
+    private function normalizeOpticalScale(
+        float $numericValue,
+        ?string $field,
+        ?OltConnection $oltConnection = null,
+        ?string $sourceOid = null
+    ): float {
         return match ($field) {
-            'tx_olt' => abs($numericValue) >= 1000 ? $numericValue / 1000 : $numericValue,
+            'tx_olt' => $this->normalizeTxOltScale($numericValue, $oltConnection, $sourceOid),
             'rx_onu', 'tx_onu', 'rx_olt' => abs($numericValue) >= 100 ? $numericValue / 100 : $numericValue,
             default => abs($numericValue) >= 1000
                 ? $numericValue / 1000
                 : (abs($numericValue) >= 100 ? $numericValue / 100 : $numericValue),
         };
+    }
+
+    private function normalizeTxOltScale(float $numericValue, ?OltConnection $oltConnection, ?string $sourceOid = null): float
+    {
+        if ($this->isTxOltMilliwattEncoded($oltConnection, $sourceOid)) {
+            $milliwattValue = abs($numericValue) >= 1000 ? $numericValue / 1000 : $numericValue;
+
+            if ($milliwattValue > 0) {
+                return 10 * log10($milliwattValue);
+            }
+        }
+
+        if ($this->isTxOltDbmHundredthEncoded($oltConnection, $sourceOid)) {
+            return abs($numericValue) >= 100 ? $numericValue / 100 : $numericValue;
+        }
+
+        return abs($numericValue) >= 100 ? $numericValue / 100 : $numericValue;
+    }
+
+    private function isTxOltMilliwattEncoded(?OltConnection $oltConnection, ?string $sourceOid = null): bool
+    {
+        $normalizedOid = $this->resolveTxOltSourceOid($oltConnection, $sourceOid);
+
+        if ($normalizedOid === null) {
+            return false;
+        }
+
+        return str_starts_with($normalizedOid, self::OID_HSGQ_TX_OLT_MILLIWATT);
+    }
+
+    private function isTxOltDbmHundredthEncoded(?OltConnection $oltConnection, ?string $sourceOid = null): bool
+    {
+        $normalizedOid = $this->resolveTxOltSourceOid($oltConnection, $sourceOid);
+
+        if ($normalizedOid === null) {
+            return false;
+        }
+
+        return str_starts_with($normalizedOid, self::OID_HSGQ_TX_OLT_DBM);
+    }
+
+    /**
+     * @return array{preferred: string|null, fallback: string|null}
+     */
+    private function resolveTxOltOids(OltConnection $oltConnection): array
+    {
+        $configuredOid = $this->normalizeOid($oltConnection->oid_tx_olt);
+
+        if ($configuredOid === null) {
+            return [
+                'preferred' => null,
+                'fallback' => null,
+            ];
+        }
+
+        if (str_starts_with($configuredOid, self::OID_HSGQ_TX_OLT_MILLIWATT)) {
+            return [
+                'preferred' => self::OID_HSGQ_TX_OLT_DBM,
+                'fallback' => $configuredOid,
+            ];
+        }
+
+        return [
+            'preferred' => $configuredOid,
+            'fallback' => null,
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $preferredValuesByIndex
+     * @param  array<string, string>  $fallbackValuesByIndex
+     * @return array{value: string|null, oid: string|null}
+     */
+    private function resolveTxOltRawValue(
+        array $preferredValuesByIndex,
+        array $fallbackValuesByIndex,
+        string $onuIndex,
+        ?string $preferredOid,
+        ?string $fallbackOid
+    ): array {
+        $preferredValue = $this->resolveWalkValue($preferredValuesByIndex, $onuIndex, true);
+        if ($preferredValue !== null) {
+            return [
+                'value' => $preferredValue,
+                'oid' => $preferredOid,
+            ];
+        }
+
+        $fallbackValue = $this->resolveWalkValue($fallbackValuesByIndex, $onuIndex, true);
+
+        return [
+            'value' => $fallbackValue,
+            'oid' => $fallbackValue !== null ? $fallbackOid : $preferredOid,
+        ];
+    }
+
+    private function resolveTxOltSourceOid(?OltConnection $oltConnection, ?string $sourceOid): ?string
+    {
+        $normalizedSourceOid = $this->normalizeOid($sourceOid);
+        if ($normalizedSourceOid !== null) {
+            return $normalizedSourceOid;
+        }
+
+        return $oltConnection ? $this->normalizeOid($oltConnection->oid_tx_olt) : null;
+    }
+
+    private function normalizeOid(?string $oid): ?string
+    {
+        if ($oid === null) {
+            return null;
+        }
+
+        $normalizedOid = ltrim(trim($oid), '.');
+
+        return $normalizedOid !== '' ? $normalizedOid : null;
     }
 
     private function parseDistanceValue(?string $value): ?int
@@ -741,6 +901,29 @@ class HsgqSnmpCollector
         }
 
         return 'SNMP walk gagal: '.$message;
+    }
+
+    private function walkByIndexWithTimeoutFallback(OltConnection $oltConnection, string $baseOid): ?array
+    {
+        try {
+            return $this->walkByIndex($oltConnection, $baseOid);
+        } catch (RuntimeException $exception) {
+            if ($this->isTimeoutErrorMessage($exception->getMessage())) {
+                return null;
+            }
+
+            throw $exception;
+        }
+    }
+
+    private function isTimeoutErrorMessage(string $message): bool
+    {
+        $normalized = strtolower($message);
+
+        return str_contains($normalized, 'timeout')
+            || str_contains($normalized, 'timed out')
+            || str_contains($normalized, 'exceeded the timeout')
+            || str_contains($normalized, 'no response');
     }
 
     /**

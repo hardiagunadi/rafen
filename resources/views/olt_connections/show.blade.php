@@ -138,6 +138,7 @@
                             <div class="small text-muted mt-2">Total {{ number_format($summaryRow['total']) }}</div>
                             <div class="small text-success">Online {{ number_format($summaryRow['online']) }}</div>
                             <div class="small text-danger">Offline {{ number_format($summaryRow['offline']) }}</div>
+                            <div class="small text-info">Tx OLT {{ $summaryRow['tx_olt_dbm'] !== null ? number_format((float) $summaryRow['tx_olt_dbm'], 2).' dBm' : '-' }}</div>
                         </div>
                     </div>
                 @endforeach
@@ -157,7 +158,6 @@
                         <th>Distance</th>
                         <th>Rx ONU</th>
                         <th>Tx ONU</th>
-                        <th>Tx OLT</th>
                         <th>Status</th>
                         <th>Last Seen</th>
                     </tr>
@@ -280,9 +280,18 @@
                 }},
                 { data: 'onu_name' },
                 { data: 'distance_m' },
-                { data: 'rx_onu_dbm' },
+                { data: 'rx_onu_dbm', render: function (data, type, row) {
+                    if (data === '-') {
+                        return '-';
+                    }
+
+                    if (row.rx_onu_alert) {
+                        return '<span class="text-danger font-weight-bold">' + data + '</span>';
+                    }
+
+                    return data;
+                }},
                 { data: 'tx_onu_dbm' },
-                { data: 'tx_olt_dbm' },
                 { data: 'status_badge', searchable: false },
                 { data: 'last_seen_at' }
             ],

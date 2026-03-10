@@ -193,8 +193,8 @@ it('auto detects oid mapping for hsgq e04i epon profile from configured oids', f
             str_contains($command, '.1.3.6.1.4.1.50224.3.2.4.1.12') => Process::result(
                 '.1.3.6.1.4.1.50224.3.2.4.1.12.16777472 = INTEGER: -2619'
             ),
-            str_contains($command, '.1.3.6.1.4.1.50224.3.2.4.1.8') => Process::result(
-                '.1.3.6.1.4.1.50224.3.2.4.1.8.16777472 = INTEGER: 6201'
+            str_contains($command, '.1.3.6.1.4.1.50224.3.2.4.1.11') => Process::result(
+                '.1.3.6.1.4.1.50224.3.2.4.1.11.16777472 = INTEGER: 1032'
             ),
             str_contains($command, '.1.3.6.1.4.1.50224.3.3.2.1.15') => Process::result(
                 '.1.3.6.1.4.1.50224.3.3.2.1.15.16777473 = INTEGER: 3798'
@@ -226,7 +226,7 @@ it('auto detects oid mapping for hsgq e04i epon profile from configured oids', f
         ->assertJsonPath('data.oids.oid_rx_onu', '1.3.6.1.4.1.50224.3.3.3.1.4')
         ->assertJsonPath('data.oids.oid_tx_onu', '1.3.6.1.4.1.50224.3.3.3.1.5')
         ->assertJsonPath('data.oids.oid_rx_olt', '1.3.6.1.4.1.50224.3.2.4.1.12')
-        ->assertJsonPath('data.oids.oid_tx_olt', '1.3.6.1.4.1.50224.3.2.4.1.8')
+        ->assertJsonPath('data.oids.oid_tx_olt', '1.3.6.1.4.1.50224.3.2.4.1.11')
         ->assertJsonPath('data.oids.oid_distance', '1.3.6.1.4.1.50224.3.3.2.1.15')
         ->assertJsonPath('data.oids.oid_status', '1.3.6.1.4.1.50224.3.3.2.1.8');
 });
@@ -271,6 +271,9 @@ it('normalizes hsgq e04i optical values during polling', function () {
             str_contains($command, '.1.3.6.1.4.1.50224.3.2.4.1.12') => Process::result(
                 '.1.3.6.1.4.1.50224.3.2.4.1.12.16777472 = INTEGER: -2619'
             ),
+            str_contains($command, '.1.3.6.1.4.1.50224.3.2.4.1.11') => Process::result(
+                '.1.3.6.1.4.1.50224.3.2.4.1.11.16777472 = INTEGER: 1032'
+            ),
             str_contains($command, '.1.3.6.1.4.1.50224.3.2.4.1.8') => Process::result(
                 '.1.3.6.1.4.1.50224.3.2.4.1.8.16777472 = INTEGER: 6201'
             ),
@@ -296,7 +299,7 @@ it('normalizes hsgq e04i optical values during polling', function () {
         ->and($rows[0]['rx_onu_dbm'])->toBe(-20.17)
         ->and($rows[0]['tx_onu_dbm'])->toBe(2.65)
         ->and($rows[0]['rx_olt_dbm'])->toBe(-26.19)
-        ->and($rows[0]['tx_olt_dbm'])->toBe(6.2)
+        ->and($rows[0]['tx_olt_dbm'])->toBe(10.32)
         ->and($rows[0]['status'])->toBe('online');
 });
 
@@ -327,6 +330,46 @@ it('uses process timeout derived from snmp timeout and retries', function () {
         return str_contains($process->command, '.1.3.6.1.4.1.1.1')
             && $process->timeout === 13;
     });
+});
+
+it('continues collecting rows when one oid times out', function () {
+    $connection = OltConnection::factory()->create([
+        'host' => '10.10.10.1',
+        'snmp_port' => 161,
+        'snmp_community' => 'public',
+        'snmp_timeout' => 5,
+        'snmp_retries' => 1,
+        'oid_serial' => '1.3.6.1.4.1.1.1',
+        'oid_onu_name' => null,
+        'oid_rx_onu' => null,
+        'oid_tx_onu' => '1.3.6.1.4.1.1.4',
+        'oid_rx_olt' => null,
+        'oid_tx_olt' => null,
+        'oid_distance' => null,
+        'oid_status' => null,
+    ]);
+
+    Process::fake(function ($process) {
+        $command = $process->command;
+
+        return match (true) {
+            str_contains($command, '.1.3.6.1.4.1.1.1') => Process::result(
+                '.1.3.6.1.4.1.1.1.16777473 = STRING: "D0 60 8C BC BD C3"'
+            ),
+            str_contains($command, '.1.3.6.1.4.1.1.4') => Process::result(
+                '',
+                'Timeout: No Response from 10.10.10.1:161',
+                1
+            ),
+            default => Process::result('', 'Unexpected SNMP command in test.', 1),
+        };
+    });
+
+    $rows = app(HsgqSnmpCollector::class)->collect($connection);
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]['serial_number'])->toBe('D0 60 8C BC BD C3')
+        ->and($rows[0]['tx_onu_dbm'])->toBeNull();
 });
 
 it('auto detects olt model from snmp metadata', function () {
@@ -661,7 +704,34 @@ it('renders the onu optics datatable on show page', function () {
         ->assertSee('onu-optics-table', false)
         ->assertDontSee('<th>Index</th>', false)
         ->assertDontSee('<th>Rx OLT</th>', false)
+        ->assertDontSee('<th>Tx OLT</th>', false)
         ->assertSee(route('olt-connections.datatable', $connection), false);
+});
+
+it('shows tx olt value per pon card on detail page', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON1',
+        'onu_number' => '1',
+        'status' => 'online',
+        'tx_olt_dbm' => 3.1,
+    ]);
+
+    $this->actingAs($tenant)
+        ->get(route('olt-connections.show', $connection))
+        ->assertSuccessful()
+        ->assertSee('Tx OLT 3.10 dBm');
 });
 
 it('filters onu optics by selected port id on datatable endpoint', function () {
@@ -758,6 +828,50 @@ it('filters onu optics by selected status and search on datatable endpoint', fun
         ->assertJsonPath('data.0.onu_id', '1/1')
         ->assertJsonPath('data.0.status', 'ONLINE')
         ->assertJsonPath('data.0.onu_name', 'ONU ONLINE ONLY');
+});
+
+it('marks rx onu below safe threshold as alert on datatable endpoint', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON1',
+        'onu_number' => '1',
+        'rx_onu_dbm' => -26.10,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON1',
+        'onu_number' => '2',
+        'rx_onu_dbm' => -27.50,
+    ]);
+
+    $response = $this->actingAs($tenant)
+        ->getJson(route('olt-connections.datatable', [
+            'oltConnection' => $connection,
+            'draw' => 1,
+            'start' => 0,
+            'length' => 10,
+        ]));
+
+    $response->assertSuccessful()
+        ->assertJsonPath('recordsTotal', 2)
+        ->assertJsonPath('recordsFiltered', 2)
+        ->assertJsonPath('data.0.rx_onu_dbm', '-26.10 dBm')
+        ->assertJsonPath('data.0.rx_onu_alert', false)
+        ->assertJsonPath('data.1.rx_onu_dbm', '-27.50 dBm')
+        ->assertJsonPath('data.1.rx_onu_alert', true);
 });
 
 it('stores polling failure message when collector throws exception', function () {

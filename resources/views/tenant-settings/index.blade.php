@@ -1019,6 +1019,12 @@ function testWaGateway() {
         return;
     }
 
+    if (!token) {
+        resultDiv.innerHTML = '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle mr-1"></i> Token perangkat WA belum diisi. Tanpa token, nomor pengirim akan kosong.</div>';
+        btn.disabled = false;
+        return;
+    }
+
     var startTime = Date.now();
 
     fetch('{{ route("tenant-settings.test-wa") }}', {
@@ -1053,8 +1059,8 @@ function testWaGateway() {
         } else {
             var hint = '';
             if (data.http_status === 401) {
-                hint = '<li>Token atau Key yang diisi tidak dikenali oleh gateway.</li>' +
-                       '<li>Coba isi hanya <strong>Token</strong>, atau hanya <strong>Key</strong> — tergantung jenis gateway.</li>' +
+                hint = '<li>Token perangkat tidak dikenali oleh gateway.</li>' +
+                       '<li>Pastikan token berasal dari device yang aktif di dashboard gateway.</li>' +
                        '<li>Jika gateway memerlukan format <code>Bearer &lt;token&gt;</code>, tambahkan <code>Bearer </code> di depan nilai Token.</li>';
             } else if (data.http_status === 403) {
                 hint = '<li>Gateway menolak akses. Pastikan token memiliki izin yang cukup.</li>';
@@ -1062,7 +1068,7 @@ function testWaGateway() {
                 hint = '<li>Pastikan URL gateway benar dan dapat diakses dari server ini.</li>' +
                        '<li>Cek apakah gateway sedang berjalan.</li>';
             } else {
-                hint = '<li>Periksa kembali URL Gateway dan Token/Key.</li>' +
+                hint = '<li>Periksa kembali URL Gateway, Token perangkat, dan Key (jika digunakan).</li>' +
                        '<li>Pastikan gateway sedang aktif.</li>';
             }
 

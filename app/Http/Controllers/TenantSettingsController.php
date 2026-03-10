@@ -365,7 +365,7 @@ class TenantSettingsController extends Controller
 
         $validated = $request->validate([
             'wa_gateway_url' => 'nullable|url|max:255',
-            'wa_gateway_token' => 'nullable|string|max:500',
+            'wa_gateway_token' => 'nullable|string|max:500|required_with:wa_gateway_url',
             'wa_gateway_key' => 'nullable|string|max:500',
             'wa_webhook_secret' => 'nullable|string|max:255',
             'wa_notify_registration' => 'boolean',
@@ -410,12 +410,26 @@ class TenantSettingsController extends Controller
         ]);
 
         // Use values from request if provided (form not yet saved), else fall back to DB
-        $url = $request->input('wa_gateway_url');
-        $token = $request->input('wa_gateway_token');
-        $key = $request->input('wa_gateway_key');
+        $url = trim((string) $request->input('wa_gateway_url', ''));
+        $token = trim((string) $request->input('wa_gateway_token', ''));
+        $key = trim((string) $request->input('wa_gateway_key', ''));
 
-        if (! empty($url) && (! empty($token) || ! empty($key))) {
-            $service = new WaGatewayService(rtrim($url, '/'), $token ?? '', $key ?? '');
+        if ($url !== '' || $token !== '' || $key !== '') {
+            if ($url === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'URL Gateway wajib diisi.',
+                ]);
+            }
+
+            if ($token === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Token perangkat WA wajib diisi agar nomor pengirim tidak kosong.',
+                ]);
+            }
+
+            $service = new WaGatewayService(rtrim($url, '/'), $token, $key);
         } else {
             $user = $request->user();
 
@@ -432,7 +446,7 @@ class TenantSettingsController extends Controller
             if (! $settings || ! $settings->hasWaConfigured()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'URL Gateway dan Token WhatsApp belum dikonfigurasi.',
+                    'message' => 'URL Gateway dan Token perangkat WA belum dikonfigurasi.',
                 ]);
             }
 

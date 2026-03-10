@@ -75,11 +75,11 @@
                             placeholder="Masukkan token perangkat" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label>Key <span class="text-muted small">(header: KEY — master key, opsional)</span></label>
+                        <label>Key <span class="text-muted small">(header: key — master key, opsional)</span></label>
                         <input type="password" name="wa_gateway_key" class="form-control"
                             value="{{ old('wa_gateway_key', $settings->wa_gateway_key) }}"
                             placeholder="Masukkan master key (jika ada)" autocomplete="off">
-                        <small class="text-muted">Isi Token <strong>atau</strong> Key, atau keduanya sesuai konfigurasi gateway Anda.</small>
+                        <small class="text-muted">Token perangkat wajib diisi. Key hanya opsional jika gateway Anda mengaktifkan master key.</small>
                     </div>
 
                     <button type="button" class="btn btn-info btn-sm mb-2" id="btn-test-wa" onclick="testWaGateway()">
@@ -96,7 +96,15 @@
                     {{-- Webhook --}}
                     <h6 class="text-muted text-uppercase mb-3" style="font-size:0.75rem;letter-spacing:.08em">Webhook</h6>
                     <div class="alert alert-light border">
-                        <p class="mb-2 small"><strong>Konfigurasi di WA Gateway:</strong> set <code>webhookBaseUrl</code> pada <code>session-config.json</code> gateway Anda:</p>
+                        <p class="mb-2 small"><strong>Konfigurasi di WA Gateway:</strong> set <code>webhookBaseUrl</code> ke nilai berikut:</p>
+                        <div class="input-group input-group-sm mb-1">
+                            <div class="input-group-prepend"><span class="input-group-text">Base URL</span></div>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_base" value="{{ url('/webhook/wa') }}" readonly>
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_base')"><i class="fas fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <p class="mb-2 small">Endpoint event yang dipanggil gateway:</p>
                         <div class="input-group input-group-sm mb-1">
                             <div class="input-group-prepend"><span class="input-group-text">Session</span></div>
                             <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_session" value="{{ url('/webhook/wa/session') }}" readonly>
@@ -111,7 +119,8 @@
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_message')"><i class="fas fa-copy"></i></button>
                             </div>
                         </div>
-                        <p class="text-muted small mt-2 mb-0">Log pesan masuk tersedia di menu <strong>Log → Log WA Blast</strong>.</p>
+                        <p class="text-muted small mt-2 mb-0">Kompatibel juga dengan endpoint standar docs: <code>{{ url('/webhook/session') }}</code> dan <code>{{ url('/webhook/message') }}</code>.</p>
+                        <p class="text-muted small mt-1 mb-0">Log pesan masuk tersedia di menu <strong>Log → Log WA Blast</strong>.</p>
                     </div>
 
                     <hr>
@@ -358,6 +367,12 @@ function testWaGateway() {
         return;
     }
 
+    if (!token) {
+        resultDiv.innerHTML = '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle mr-1"></i> Token perangkat WA belum diisi. Tanpa token, nomor pengirim akan kosong.</div>';
+        btn.disabled = false;
+        return;
+    }
+
     var startTime = Date.now();
 
     fetch('{{ route("tenant-settings.test-wa") }}', {
@@ -385,15 +400,15 @@ function testWaGateway() {
         } else {
             var hint = '';
             if (data.http_status === 401) {
-                hint = '<li>Token atau Key tidak dikenali gateway.</li>' +
-                       '<li>Coba isi hanya <strong>Token</strong> atau hanya <strong>Key</strong>.</li>' +
+                hint = '<li>Token perangkat tidak dikenali gateway.</li>' +
+                       '<li>Pastikan token berasal dari device yang aktif di dashboard gateway.</li>' +
                        '<li>Jika perlu format <code>Bearer &lt;token&gt;</code>, tambahkan <code>Bearer </code> di depan nilai Token.</li>';
             } else if (data.http_status === 403) {
                 hint = '<li>Gateway menolak akses. Pastikan token memiliki izin yang cukup.</li>';
             } else if (data.network_error) {
                 hint = '<li>Pastikan URL benar dan gateway sedang berjalan.</li>';
             } else {
-                hint = '<li>Periksa kembali URL Gateway dan Token/Key.</li>';
+                hint = '<li>Periksa kembali URL Gateway, Token perangkat, dan Key (jika digunakan).</li>';
             }
             resultDiv.innerHTML =
                 '<div class="alert alert-danger mb-0">' +

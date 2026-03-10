@@ -17,6 +17,7 @@ class WaGatewayService
 
     /** Counter for rate limiting */
     private int $sentThisMinute = 0;
+
     private float $minuteStart = 0;
 
     /**
@@ -45,34 +46,35 @@ class WaGatewayService
 
     public static function forTenant(TenantSettings $settings): ?self
     {
-        if (empty($settings->wa_gateway_url)) {
+        $gatewayUrl = trim((string) ($settings->wa_gateway_url ?? ''));
+        if ($gatewayUrl === '') {
             return null;
         }
 
-        $token = $settings->wa_gateway_token ?? '';
-        $key   = $settings->wa_gateway_key ?? '';
+        $token = trim((string) ($settings->wa_gateway_token ?? ''));
+        $key = trim((string) ($settings->wa_gateway_key ?? ''));
 
-        if (empty($token) && empty($key)) {
+        if ($token === '') {
             return null;
         }
 
         $instance = new self(
-            rtrim($settings->wa_gateway_url, '/'),
+            rtrim($gatewayUrl, '/'),
             $token,
             $key
         );
 
         if ($settings->wa_antispam_enabled) {
-            $instance->delayMs      = max(0, (int) ($settings->wa_antispam_delay_ms ?? 1000));
+            $instance->delayMs = max(0, (int) ($settings->wa_antispam_delay_ms ?? 1000));
             $instance->maxPerMinute = max(0, (int) ($settings->wa_antispam_max_per_minute ?? 20));
         }
 
         $instance->randomize = (bool) ($settings->wa_msg_randomize ?? true);
-        $instance->ownerId   = $settings->user_id ?? null;
+        $instance->ownerId = $settings->user_id ?? null;
 
         // Auto-set sent_by dari user yang sedang login (jika ada)
         if ($authUser = auth()->user()) {
-            $instance->sentById   = $authUser->id;
+            $instance->sentById = $authUser->id;
             $instance->sentByName = $authUser->name;
         }
 
@@ -80,7 +82,7 @@ class WaGatewayService
     }
 
     /**
-     * Build request headers — send Authorization (token) and/or KEY header.
+     * Build request headers — Authorization token is required, key is optional.
      */
     private function buildHeaders(): array
     {
@@ -91,7 +93,7 @@ class WaGatewayService
         }
 
         if (! empty($this->key)) {
-            $headers['KEY'] = $this->key;
+            $headers['key'] = $this->key;
         }
 
         return $headers;
@@ -108,13 +110,13 @@ class WaGatewayService
 
             if ($elapsed >= 60) {
                 $this->sentThisMinute = 0;
-                $this->minuteStart    = microtime(true);
+                $this->minuteStart = microtime(true);
             } elseif ($this->sentThisMinute >= $this->maxPerMinute) {
                 $waitSeconds = (int) ceil(60 - $elapsed);
                 Log::info("WA Anti-Spam: rate limit reached ({$this->maxPerMinute}/min), waiting {$waitSeconds}s");
                 sleep($waitSeconds);
                 $this->sentThisMinute = 0;
-                $this->minuteStart    = microtime(true);
+                $this->minuteStart = microtime(true);
             }
         }
 
@@ -135,15 +137,15 @@ class WaGatewayService
     private function appendRandomRef(string $message): string
     {
         $zwChars = ["\u{200B}", "\u{200C}", "\u{200D}"];
-        $value   = random_int(0, 59048); // 3^10 - 1
+        $value = random_int(0, 59048); // 3^10 - 1
 
         $suffix = '';
         for ($i = 0; $i < 10; $i++) {
             $suffix .= $zwChars[$value % 3];
-            $value  = (int) ($value / 3);
+            $value = (int) ($value / 3);
         }
 
-        return $message . $suffix;
+        return $message.$suffix;
     }
 
     /**
@@ -155,7 +157,7 @@ class WaGatewayService
         $phone = ltrim($phone, '+');
 
         if (str_starts_with($phone, '0')) {
-            $phone = '62' . substr($phone, 1);
+            $phone = '62'.substr($phone, 1);
         }
 
         return $phone;
@@ -178,6 +180,15 @@ class WaGatewayService
         if (empty(trim($phone))) {
             Log::info('WA skip: nomor HP kosong', $context);
             $this->writeLog('skip', '', '', $context, 'Nomor HP kosong');
+
+            return false;
+        }
+
+        if (trim($this->token) === '') {
+            $reason = 'Token perangkat WA belum diisi.';
+            Log::warning('WA skip: token perangkat kosong', $context);
+            $this->writeLog('failed', $phone, '', $context, $reason);
+
             return false;
         }
 
@@ -186,11 +197,12 @@ class WaGatewayService
         if (! $this->isValidPhone($normalized)) {
             $reason = 'Format nomor tidak valid sebagai nomor WA (harus 62xxxxxxxx, 10-15 digit)';
             Log::info('WA skip: format nomor tidak valid sebagai nomor WA', array_merge($context, [
-                'phone_raw'        => $phone,
+                'phone_raw' => $phone,
                 'phone_normalized' => $normalized,
-                'reason'           => $reason,
+                'reason' => $reason,
             ]));
             $this->writeLog('skip', $phone, $normalized, $context, $reason);
+
             return false;
         }
 
@@ -202,15 +214,21 @@ class WaGatewayService
             $message = $this->appendRandomRef($message);
         }
 
+        $contextRefId = trim((string) ($context['ref_id'] ?? ''));
+        $refId = $contextRefId !== ''
+            ? $contextRefId
+            : ('rafen-'.date('YmdHis').'-'.bin2hex(random_bytes(4)));
+
         try {
             $response = Http::timeout(15)
                 ->withHeaders($this->buildHeaders())
-                ->post($this->url . '/api/v2/send-message', [
+                ->post($this->url.'/api/v2/send-message', [
                     'data' => [
                         [
-                            'phone'   => $phone,
+                            'phone' => $phone,
                             'message' => $message,
                             'isGroup' => false,
+                            'ref_id' => $refId,
                         ],
                     ],
                 ]);
@@ -218,30 +236,50 @@ class WaGatewayService
             $this->sentThisMinute++;
 
             if ($response->successful()) {
-                $body      = $response->json();
-                $msgData   = $body['data']['messages'][0] ?? [];
-                $refId     = $msgData['ref_id'] ?? null;
+                $body = $response->json();
+                $msgData = $body['data']['messages'][0] ?? [];
+                $msgRefId = $msgData['ref_id'] ?? $refId;
                 $msgStatus = $msgData['status'] ?? null;
+                $statusValue = strtolower((string) $msgStatus);
+                $isGatewayStatusOk = (bool) ($body['status'] ?? false);
+                $isMessageFailed = in_array($statusValue, ['failed', 'error', 'undelivered'], true);
 
-                Log::info('WA sent', array_merge($context, [
-                    'phone'      => $phone,
-                    'ref_id'     => $refId,
+                if ($isGatewayStatusOk && ! $isMessageFailed) {
+                    Log::info('WA sent', array_merge($context, [
+                        'phone' => $phone,
+                        'ref_id' => $msgRefId,
+                        'msg_status' => $msgStatus,
+                        'note' => 'Gateway hanya konfirmasi pesan diterima server (fire-and-forget). Delivery ke perangkat tidak dapat dikonfirmasi — nomor mungkin tidak terdaftar WA jika pelanggan tidak menerima.',
+                    ]));
+
+                    $this->writeLog('sent', $phone, $phone, $context, null, $msgRefId);
+
+                    return true;
+                }
+
+                $failureReason = (string) ($body['message'] ?? 'Gateway menolak pengiriman.');
+                if ($isMessageFailed && $statusValue !== '') {
+                    $failureReason = 'Status gateway: '.$statusValue;
+                }
+
+                Log::warning('WA Gateway: send-message rejected', array_merge($context, [
+                    'phone' => $phone,
+                    'ref_id' => $msgRefId,
                     'msg_status' => $msgStatus,
-                    'note'       => 'Gateway hanya konfirmasi pesan diterima server (fire-and-forget). Delivery ke perangkat tidak dapat dikonfirmasi — nomor mungkin tidak terdaftar WA jika pelanggan tidak menerima.',
+                    'response' => $body,
                 ]));
+                $this->writeLog('failed', $phone, $phone, $context, $failureReason, $msgRefId);
 
-                $this->writeLog('sent', $phone, $phone, $context, null, $refId);
-
-                return $body['status'] ?? false;
+                return false;
             }
 
-            $errReason = 'HTTP error dari gateway: ' . $response->status();
+            $errReason = 'HTTP error dari gateway: '.$response->status();
             Log::warning('WA Gateway: send-message HTTP error', [
                 'status' => $response->status(),
-                'body'   => $response->body(),
-                'phone'  => $phone,
+                'body' => $response->body(),
+                'phone' => $phone,
             ]);
-            $this->writeLog('failed', $phone, $phone, $context, $errReason);
+            $this->writeLog('failed', $phone, $phone, $context, $errReason, $refId);
 
             return false;
         } catch (\Throwable $e) {
@@ -249,7 +287,7 @@ class WaGatewayService
                 'error' => $e->getMessage(),
                 'phone' => $phone,
             ]);
-            $this->writeLog('failed', $phone, $phone, $context, 'Exception: ' . $e->getMessage());
+            $this->writeLog('failed', $phone, $phone, $context, 'Exception: '.$e->getMessage(), $refId);
 
             return false;
         }
@@ -262,21 +300,21 @@ class WaGatewayService
     {
         try {
             WaBlastLog::create([
-                'owner_id'         => $this->ownerId,
-                'sent_by_id'       => $this->sentById,
-                'sent_by_name'     => $this->sentByName,
-                'event'            => $context['event'] ?? 'unknown',
-                'phone'            => $phone ?: null,
+                'owner_id' => $this->ownerId,
+                'sent_by_id' => $this->sentById,
+                'sent_by_name' => $this->sentByName,
+                'event' => $context['event'] ?? 'unknown',
+                'phone' => $phone ?: null,
                 'phone_normalized' => $phoneNormalized ?: null,
-                'status'           => $status,
-                'reason'           => $reason,
-                'invoice_number'   => $context['invoice_number'] ?? null,
-                'invoice_id'       => $context['invoice_id'] ?? null,
-                'user_id'          => $context['user_id'] ?? null,
-                'username'         => $context['username'] ?? null,
-                'customer_name'    => $context['name'] ?? null,
-                'ref_id'           => $refId,
-                'created_at'       => now(),
+                'status' => $status,
+                'reason' => $reason,
+                'invoice_number' => $context['invoice_number'] ?? null,
+                'invoice_id' => $context['invoice_id'] ?? null,
+                'user_id' => $context['user_id'] ?? null,
+                'username' => $context['username'] ?? null,
+                'customer_name' => $context['name'] ?? null,
+                'ref_id' => $refId,
+                'created_at' => now(),
             ]);
         } catch (\Throwable $e) {
             Log::warning('WA: gagal menulis wa_blast_logs', ['error' => $e->getMessage()]);
@@ -292,17 +330,18 @@ class WaGatewayService
     public function sendBulk(array $recipients): array
     {
         $success = 0;
-        $failed  = 0;
+        $failed = 0;
         $results = [];
 
         foreach ($recipients as $recipient) {
-            $phone   = $recipient['phone'] ?? '';
+            $phone = $recipient['phone'] ?? '';
             $message = $recipient['message'] ?? '';
             $context = ['event' => 'blast', 'name' => $recipient['name'] ?? null];
 
             if (empty($message)) {
                 $failed++;
                 $results[] = ['phone' => $phone, 'status' => false, 'reason' => 'Pesan kosong'];
+
                 continue;
             }
 
@@ -323,7 +362,7 @@ class WaGatewayService
 
         return [
             'success' => $success,
-            'failed'  => $failed,
+            'failed' => $failed,
             'results' => $results,
         ];
     }
@@ -347,37 +386,46 @@ class WaGatewayService
             try {
                 $response = Http::timeout(10)
                     ->withHeaders($this->buildHeaders())
-                    ->get($this->url . $path);
+                    ->get($this->url.$path);
 
                 if ($response->successful()) {
                     return [
-                        'status'      => true,
-                        'message'     => 'Koneksi berhasil (endpoint: ' . $path . ')',
+                        'status' => true,
+                        'message' => 'Koneksi berhasil (endpoint: '.$path.')',
                         'http_status' => $response->status(),
-                        'data'        => $response->json(),
+                        'data' => $response->json(),
                     ];
                 }
 
                 // 401/403 = gateway reachable but token wrong
                 if (in_array($response->status(), [401, 403])) {
                     return [
-                        'status'      => false,
-                        'message'     => 'Gateway dapat dijangkau tetapi token/key ditolak (HTTP ' . $response->status() . '). Periksa Token atau Key Anda.',
+                        'status' => false,
+                        'message' => 'Gateway dapat dijangkau tetapi token/key ditolak (HTTP '.$response->status().'). Periksa Token atau Key Anda.',
                         'http_status' => $response->status(),
-                        'data'        => $response->body(),
+                        'data' => $response->body(),
                     ];
                 }
 
-                $lastError = 'HTTP ' . $response->status() . ' pada ' . $path;
+                if ($response->status() === 404 && str_contains(strtolower($response->body()), 'token not found')) {
+                    return [
+                        'status' => false,
+                        'message' => 'Gateway dapat dijangkau tetapi token perangkat tidak ditemukan. Periksa Token WhatsApp Anda.',
+                        'http_status' => $response->status(),
+                        'data' => $response->body(),
+                    ];
+                }
+
+                $lastError = 'HTTP '.$response->status().' pada '.$path;
             } catch (\Throwable $e) {
                 $lastError = $e->getMessage();
                 if (str_contains($e->getMessage(), 'Could not resolve') ||
                     str_contains($e->getMessage(), 'Connection refused') ||
                     str_contains($e->getMessage(), 'timed out')) {
                     return [
-                        'status'        => false,
-                        'message'       => 'Tidak dapat terhubung ke gateway: ' . $e->getMessage(),
-                        'http_status'   => 0,
+                        'status' => false,
+                        'message' => 'Tidak dapat terhubung ke gateway: '.$e->getMessage(),
+                        'http_status' => 0,
                         'network_error' => true,
                     ];
                 }
@@ -385,8 +433,8 @@ class WaGatewayService
         }
 
         return [
-            'status'      => false,
-            'message'     => 'Gateway tidak merespons pada endpoint yang diketahui. ' . $lastError,
+            'status' => false,
+            'message' => 'Gateway tidak merespons pada endpoint yang diketahui. '.$lastError,
             'http_status' => 0,
         ];
     }

@@ -157,8 +157,8 @@ class TenantSettings extends Model
 
     public function hasWaConfigured(): bool
     {
-        return ! empty($this->wa_gateway_url)
-            && (! empty($this->wa_gateway_token) || ! empty($this->wa_gateway_key));
+        return trim((string) ($this->wa_gateway_url ?? '')) !== ''
+            && trim((string) ($this->wa_gateway_token ?? '')) !== '';
     }
 
     /**
