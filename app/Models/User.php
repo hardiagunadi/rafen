@@ -119,6 +119,11 @@ class User extends Authenticatable
         return $this->hasMany(MikrotikConnection::class, 'owner_id');
     }
 
+    public function oltConnections(): HasMany
+    {
+        return $this->hasMany(OltConnection::class, 'owner_id');
+    }
+
     public function pppUsers(): HasMany
     {
         return $this->hasMany(PppUser::class, 'owner_id');

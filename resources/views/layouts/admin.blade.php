@@ -30,6 +30,277 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs4@1.13.8/css/dataTables.bootstrap4.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-responsive-bs4@2.5.0/css/responsive.bootstrap4.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        :root {
+            --app-bg: #f4f7fb;
+            --app-border: #d7e1ee;
+            --app-surface: #ffffff;
+            --app-shadow: 0 10px 22px rgba(15, 23, 42, 0.07);
+            --app-shadow-soft: 0 6px 14px rgba(15, 23, 42, 0.05);
+            --app-text: #0f172a;
+            --app-text-soft: #5b6b83;
+        }
+
+        body.sidebar-mini .content-wrapper {
+            background:
+                radial-gradient(circle at 8% -8%, rgba(14, 116, 144, 0.1), transparent 30%),
+                radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.07), transparent 24%),
+                var(--app-bg);
+        }
+
+        .content-wrapper > .content {
+            padding-top: 0.8rem;
+            padding-bottom: 1rem;
+        }
+
+        .content-wrapper > .content > .container-fluid {
+            padding-left: 0.95rem;
+            padding-right: 0.95rem;
+        }
+
+        .content-wrapper .card {
+            border: 1px solid var(--app-border);
+            border-radius: 16px;
+            box-shadow: var(--app-shadow-soft);
+            background: var(--app-surface);
+            overflow: hidden;
+        }
+
+        .content-wrapper .card-header {
+            border-bottom: 1px solid #e4ebf5;
+            background: linear-gradient(180deg, #fbfdff 0%, #f5f9ff 100%);
+            padding: 0.82rem 1rem;
+        }
+
+        .content-wrapper .card-title {
+            color: var(--app-text);
+            font-weight: 700;
+        }
+
+        .content-wrapper .card-body {
+            padding: 1rem;
+        }
+
+        .content-wrapper .card-footer {
+            border-top: 1px solid #e4ebf5;
+            background: #f8fbff;
+            padding: 0.82rem 1rem;
+        }
+
+        .content-wrapper .form-control,
+        .content-wrapper .custom-select,
+        .content-wrapper .custom-file-label,
+        .content-wrapper .input-group-text {
+            border-radius: 8px;
+            border-color: #d4deea;
+        }
+
+        .content-wrapper .form-control:focus,
+        .content-wrapper .custom-select:focus {
+            border-color: #8fb5df;
+            box-shadow: 0 0 0 0.2rem rgba(19, 103, 164, 0.15);
+        }
+
+        .content-wrapper .table thead th {
+            border-top: 0;
+            border-bottom: 1px solid #dfe8f4;
+            background: #f8fbff;
+            color: #64748b;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .content-wrapper .table td {
+            vertical-align: middle;
+        }
+
+        .content-wrapper .btn-primary {
+            background-color: #1367a4;
+            border-color: #1367a4;
+        }
+
+        .content-wrapper .btn-primary:hover,
+        .content-wrapper .btn-primary:focus {
+            background-color: #0f5689;
+            border-color: #0f5689;
+        }
+
+        .content-wrapper .small-box,
+        .content-wrapper .info-box {
+            border-radius: 14px;
+            box-shadow: var(--app-shadow);
+            overflow: hidden;
+        }
+
+        .main-sidebar.sidebar-modern {
+            position: relative;
+            border-right: 1px solid rgba(148, 163, 184, 0.24);
+            background: linear-gradient(180deg, #081527 0%, #0d2035 48%, #102a44 100%);
+        }
+
+        .main-sidebar.sidebar-modern::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 18% 6%, rgba(56, 189, 248, 0.24), transparent 28%),
+                radial-gradient(circle at 85% 0%, rgba(14, 165, 233, 0.18), transparent 26%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 35%);
+        }
+
+        .sidebar-modern .brand-link,
+        .sidebar-modern .sidebar {
+            position: relative;
+            z-index: 1;
+        }
+
+        .sidebar-modern .brand-link {
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            background: linear-gradient(110deg, rgba(15, 118, 168, 0.35), rgba(14, 165, 233, 0.14));
+            padding-top: 0.95rem;
+            padding-bottom: 0.95rem;
+        }
+
+        .sidebar-modern .brand-text {
+            color: #f8fbff;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            text-shadow: 0 2px 10px rgba(15, 23, 42, 0.35);
+        }
+
+        .sidebar-modern .sidebar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(125, 166, 210, 0.5) transparent;
+        }
+
+        .sidebar-modern .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar-modern .sidebar::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: rgba(125, 166, 210, 0.42);
+        }
+
+        .sidebar-modern .nav-header {
+            color: #9eb3cc;
+            font-size: 0.69rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding-top: 0.9rem;
+            padding-bottom: 0.45rem;
+        }
+
+        .sidebar-modern .nav-sidebar .nav-link {
+            margin: 0.17rem 0.4rem;
+            border-radius: 11px;
+            border: 1px solid transparent;
+            color: #d7e5f7;
+            padding: 0.58rem 0.72rem;
+            transition: all 170ms ease;
+        }
+
+        .sidebar-modern .nav-sidebar > .nav-item > .nav-link {
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.015);
+        }
+
+        .sidebar-modern .nav-sidebar .nav-link p {
+            font-weight: 500;
+            letter-spacing: 0.01em;
+        }
+
+        .sidebar-modern .nav-sidebar .nav-link .nav-icon {
+            width: 1.84rem;
+            height: 1.84rem;
+            margin-right: 0.5rem;
+            border-radius: 9px;
+            line-height: 1.84rem;
+            text-align: center;
+            background: rgba(148, 163, 184, 0.16);
+            color: #97b4d2;
+            font-size: 0.87rem;
+            transition: all 170ms ease;
+        }
+
+        .sidebar-modern .nav-sidebar .nav-link .right {
+            color: #9ab4d1;
+        }
+
+        .sidebar-modern .nav-sidebar .nav-link:hover,
+        .sidebar-modern .nav-sidebar .nav-link:focus {
+            background: rgba(37, 99, 235, 0.18);
+            border-color: rgba(125, 166, 210, 0.3);
+            color: #f5fbff;
+            transform: translateX(2px);
+        }
+
+        .sidebar-modern .nav-sidebar .nav-link:hover .nav-icon,
+        .sidebar-modern .nav-sidebar .nav-link:focus .nav-icon {
+            background: rgba(191, 219, 254, 0.23);
+            color: #eaf5ff;
+        }
+
+        .sidebar-modern .nav-sidebar .menu-open > .nav-link,
+        .sidebar-modern .nav-sidebar .nav-link.active {
+            background: linear-gradient(135deg, #0f6aa7 0%, #17a2b8 100%);
+            border-color: rgba(255, 255, 255, 0.26);
+            box-shadow: 0 10px 22px rgba(9, 91, 138, 0.36);
+            color: #f8fdff;
+        }
+
+        .sidebar-modern .nav-sidebar .menu-open > .nav-link .nav-icon,
+        .sidebar-modern .nav-sidebar .nav-link.active .nav-icon {
+            background: rgba(255, 255, 255, 0.22);
+            color: #fff;
+        }
+
+        .sidebar-modern .nav-treeview {
+            margin: 0.22rem 0.38rem 0.42rem 1.35rem;
+            padding-left: 0.46rem;
+            border-left: 1px dashed rgba(148, 163, 184, 0.38);
+        }
+
+        .sidebar-modern .nav-treeview > .nav-item > .nav-link {
+            margin: 0.14rem 0;
+            padding: 0.48rem 0.6rem;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.24);
+        }
+
+        .sidebar-modern .nav-treeview > .nav-item > .nav-link:hover,
+        .sidebar-modern .nav-treeview > .nav-item > .nav-link:focus {
+            background: rgba(37, 99, 235, 0.26);
+            transform: none;
+        }
+
+        .sidebar-modern .nav-treeview > .nav-item > .nav-link.active {
+            background: linear-gradient(135deg, #2c7fbf 0%, #0ea5e9 100%);
+        }
+
+        .sidebar-modern .nav-treeview > .nav-item > .nav-link .nav-icon {
+            width: 1.6rem;
+            height: 1.6rem;
+            line-height: 1.6rem;
+            border-radius: 7px;
+            font-size: 0.72rem;
+        }
+
+        @media (max-width: 991.98px) {
+            .content-wrapper > .content > .container-fluid {
+                padding-left: 0.65rem;
+                padding-right: 0.65rem;
+            }
+
+            .sidebar-modern .nav-sidebar .nav-link {
+                margin-left: 0.35rem;
+                margin-right: 0.35rem;
+            }
+        }
+    </style>
 </head>
 <body class="hold-transition sidebar-mini">
 <div class="wrapper">
@@ -78,7 +349,7 @@
         @include('auth.logout')
     @endauth
 
-    <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <aside class="main-sidebar sidebar-dark-primary elevation-4 sidebar-modern">
         <a href="{{ route('dashboard') }}" class="brand-link text-center">
             <span class="brand-text font-weight-light">{{ $tenantTitle }}</span>
         </a>
@@ -196,6 +467,12 @@
                         <a href="{{ route('mikrotik-connections.index') }}" class="nav-link">
                             <i class="nav-icon fas fa-server"></i>
                             <p>Router (NAS)</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ route('olt-connections.index') }}" class="nav-link {{ request()->routeIs('olt-connections.*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-broadcast-tower"></i>
+                            <p>Monitoring OLT</p>
                         </a>
                     </li>
                     <li class="nav-item has-treeview {{ request()->routeIs(...$profilePaketRoutes) ? 'menu-open' : '' }}">
@@ -544,16 +821,6 @@
     </aside>
 
     <div class="content-wrapper">
-        <section class="content-header">
-            <div class="container-fluid">
-                <div class="row mb-2">
-                    <div class="col-sm-6">
-                        <h1>@yield('title')</h1>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         @if($subscriptionExpired)
         <section class="content-header pb-0">
             <div class="container-fluid">
