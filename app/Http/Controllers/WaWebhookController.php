@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\WaWebhookLog;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -19,22 +20,14 @@ class WaWebhookController extends Controller
      *   ...
      * }
      */
-    public function session(Request $request)
+    public function session(Request $request): JsonResponse
     {
         $payload = $request->all();
 
         Log::info('WA Webhook session event', $payload);
 
         try {
-            $sessionId = $payload['session'] ?? $payload['session_id'] ?? $payload['device'] ?? $payload['device_id'] ?? null;
-            $status = $payload['status'] ?? $payload['state'] ?? null;
-
-            WaWebhookLog::create([
-                'event_type' => 'session',
-                'session_id' => is_scalar($sessionId) ? (string) $sessionId : null,
-                'status' => is_scalar($status) ? (string) $status : null,
-                'payload' => $payload,
-            ]);
+            $this->persistSessionEvent($payload);
         } catch (\Throwable $e) {
             Log::warning('WA Webhook: failed to save session log', ['error' => $e->getMessage()]);
         }
@@ -68,59 +61,172 @@ class WaWebhookController extends Controller
      *   "isGroup": false
      * }
      */
-    public function message(Request $request)
+    public function message(Request $request): JsonResponse
+    {
+        return $this->handleMessageLikeEvent($request, 'message');
+    }
+
+    /**
+     * Handle webhook auto-reply event.
+     *
+     * Gateway mengirim POST ke {WEBHOOK_BASE_URL}/webhook/auto-reply
+     * Payload sama dengan endpoint message.
+     */
+    public function autoReply(Request $request): JsonResponse
+    {
+        return $this->handleMessageLikeEvent($request, 'auto_reply');
+    }
+
+    /**
+     * Handle delivery status event.
+     *
+     * Gateway mengirim POST ke {WEBHOOK_BASE_URL}/webhook/status
+     * Payload contoh:
+     * {
+     *   "session": "session-id",
+     *   "message_id": "BAE5F...",
+     *   "message_status": "READ",
+     *   "tracking_url": "/message/status?...",
+     * }
+     */
+    public function status(Request $request): JsonResponse
     {
         $payload = $request->all();
 
-        Log::info('WA Webhook message event', $payload);
+        Log::info('WA Webhook status event', $payload);
 
         try {
-            $sessionId = $payload['session'] ?? $payload['session_id'] ?? $payload['device'] ?? $payload['device_id'] ?? null;
-            $senderValue = $payload['sender'] ?? $payload['from'] ?? $payload['phone'] ?? $payload['receiver'] ?? $payload['to'] ?? null;
-            $msgBody = $payload['message'] ?? $payload['text'] ?? $payload['caption'] ?? null;
-            $status = $payload['message_status'] ?? $payload['status'] ?? $payload['msg_status'] ?? null;
+            $trackingContext = $payload['message_id'] ?? $payload['tracking_url'] ?? null;
 
-            if (is_string($senderValue) && str_contains($senderValue, ',')) {
-                $senderValue = trim(explode(',', $senderValue, 2)[0]);
-            }
-
-            if (is_array($msgBody)) {
-                $msgBody = $msgBody['text'] ?? $msgBody['caption'] ?? json_encode($msgBody);
-            }
-
-            if ($msgBody === null && isset($payload['data'])) {
-                $msgData = $payload['data'];
-                if (is_array($msgData) && isset($msgData[0]) && is_array($msgData[0])) {
-                    $msgBody = $msgData[0]['message'] ?? $msgData[0]['text'] ?? $msgData[0]['caption'] ?? null;
-                }
-            }
-
-            if (is_array($msgBody)) {
-                $msgBody = $msgBody['text'] ?? $msgBody['caption'] ?? json_encode($msgBody);
-            }
-
-            $sender = null;
-            if (is_scalar($senderValue)) {
-                $senderRaw = preg_replace('/@.*/', '', (string) $senderValue);
-                $senderDigits = preg_replace('/\D+/', '', $senderRaw);
-                $sender = $senderDigits !== '' ? $senderDigits : $senderRaw;
-                if ($sender === '') {
-                    $sender = null;
-                }
+            if (is_array($trackingContext)) {
+                $trackingContext = json_encode($trackingContext);
             }
 
             WaWebhookLog::create([
-                'event_type' => 'message',
-                'session_id' => is_scalar($sessionId) ? (string) $sessionId : null,
-                'sender' => $sender,
-                'message' => is_string($msgBody) ? mb_substr($msgBody, 0, 1000) : null,
-                'status' => is_scalar($status) ? (string) $status : null,
+                'event_type' => 'status',
+                'session_id' => $this->extractSessionId($payload),
+                'sender' => $this->extractSender($payload),
+                'message' => is_scalar($trackingContext) ? mb_substr((string) $trackingContext, 0, 1000) : null,
+                'status' => $this->extractStatus($payload),
                 'payload' => $payload,
             ]);
         } catch (\Throwable $e) {
-            Log::warning('WA Webhook: failed to save message log', ['error' => $e->getMessage()]);
+            Log::warning('WA Webhook: failed to save status log', ['error' => $e->getMessage()]);
         }
 
         return response()->json(['status' => true]);
+    }
+
+    protected function handleMessageLikeEvent(Request $request, string $eventType): JsonResponse
+    {
+        $payload = $request->all();
+
+        Log::info('WA Webhook '.$eventType.' event', $payload);
+
+        try {
+            WaWebhookLog::create([
+                'event_type' => $eventType,
+                'session_id' => $this->extractSessionId($payload),
+                'sender' => $this->extractSender($payload),
+                'message' => $this->extractMessageBody($payload),
+                'status' => $this->extractStatus($payload),
+                'payload' => $payload,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('WA Webhook: failed to save '.$eventType.' log', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['status' => true]);
+    }
+
+    protected function persistSessionEvent(array $payload): void
+    {
+        WaWebhookLog::create([
+            'event_type' => 'session',
+            'session_id' => $this->extractSessionId($payload),
+            'status' => is_scalar($payload['status'] ?? null) ? (string) ($payload['status'] ?? null) : null,
+            'payload' => $payload,
+        ]);
+    }
+
+    protected function extractSessionId(array $payload): ?string
+    {
+        $sessionId = $payload['session'] ?? $payload['session_id'] ?? $payload['device'] ?? $payload['device_id'] ?? null;
+
+        if (! is_scalar($sessionId)) {
+            return null;
+        }
+
+        $value = trim((string) $sessionId);
+
+        return $value !== '' ? $value : null;
+    }
+
+    protected function extractSender(array $payload): ?string
+    {
+        $senderValue = $payload['sender'] ?? $payload['from'] ?? $payload['phone'] ?? $payload['receiver'] ?? $payload['to'] ?? null;
+
+        if (! is_scalar($senderValue)) {
+            return null;
+        }
+
+        $senderRaw = trim((string) $senderValue);
+
+        if ($senderRaw === '') {
+            return null;
+        }
+
+        if (str_contains($senderRaw, ',')) {
+            $senderRaw = trim(explode(',', $senderRaw, 2)[0]);
+        }
+
+        $senderRaw = preg_replace('/@.*/', '', $senderRaw) ?? $senderRaw;
+        $senderDigits = preg_replace('/\D+/', '', $senderRaw) ?? '';
+        $sender = $senderDigits !== '' ? $senderDigits : $senderRaw;
+
+        return $sender !== '' ? $sender : null;
+    }
+
+    protected function extractMessageBody(array $payload): ?string
+    {
+        $messageBody = $payload['message'] ?? $payload['text'] ?? $payload['caption'] ?? null;
+
+        if (is_array($messageBody)) {
+            $messageBody = $messageBody['text'] ?? $messageBody['caption'] ?? $messageBody['message'] ?? json_encode($messageBody);
+        }
+
+        if ($messageBody === null && isset($payload['data']) && is_array($payload['data'])) {
+            $payloadData = $payload['data'];
+
+            if (isset($payloadData[0]) && is_array($payloadData[0])) {
+                $firstData = $payloadData[0];
+                $messageBody = $firstData['message'] ?? $firstData['text'] ?? $firstData['caption'] ?? null;
+            } else {
+                $messageBody = $payloadData['message'] ?? $payloadData['text'] ?? $payloadData['caption'] ?? null;
+            }
+        }
+
+        if (is_array($messageBody)) {
+            $messageBody = $messageBody['text'] ?? $messageBody['caption'] ?? $messageBody['message'] ?? json_encode($messageBody);
+        }
+
+        if (! is_scalar($messageBody)) {
+            return null;
+        }
+
+        return mb_substr((string) $messageBody, 0, 1000);
+    }
+
+    protected function extractStatus(array $payload): ?string
+    {
+        $status = $payload['message_status'] ?? $payload['status'] ?? $payload['msg_status'] ?? $payload['state'] ?? null;
+
+        if (! is_scalar($status)) {
+            return null;
+        }
+
+        $value = trim((string) $status);
+
+        return $value !== '' ? $value : null;
     }
 }

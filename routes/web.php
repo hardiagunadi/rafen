@@ -315,8 +315,12 @@ Route::post('/subscription/payment/callback', [SubscriptionController::class, 'p
 // GET = verification ping from gateway, POST = actual webhook payload
 Route::match(['GET', 'POST'], '/webhook/wa/session', [WaWebhookController::class, 'session'])->name('wa.webhook.session');
 Route::match(['GET', 'POST'], '/webhook/wa/message', [WaWebhookController::class, 'message'])->name('wa.webhook.message');
+Route::match(['GET', 'POST'], '/webhook/wa/auto-reply', [WaWebhookController::class, 'autoReply'])->name('wa.webhook.auto-reply');
+Route::match(['GET', 'POST'], '/webhook/wa/status', [WaWebhookController::class, 'status'])->name('wa.webhook.status');
 Route::match(['GET', 'POST'], '/webhook/session', [WaWebhookController::class, 'session'])->name('wa.webhook.session.compat');
 Route::match(['GET', 'POST'], '/webhook/message', [WaWebhookController::class, 'message'])->name('wa.webhook.message.compat');
+Route::match(['GET', 'POST'], '/webhook/auto-reply', [WaWebhookController::class, 'autoReply'])->name('wa.webhook.auto-reply.compat');
+Route::match(['GET', 'POST'], '/webhook/status', [WaWebhookController::class, 'status'])->name('wa.webhook.status.compat');
 
 // Super Admin Routes
 Route::middleware(['auth', \App\Http\Middleware\SuperAdminMiddleware::class])->prefix('super-admin')->name('super-admin.')->group(function () {

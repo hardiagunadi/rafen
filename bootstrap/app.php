@@ -16,6 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'subscription/payment/callback',
             'webhook/wa/session',
             'webhook/wa/message',
+            'webhook/wa/auto-reply',
+            'webhook/wa/status',
+            'webhook/session',
+            'webhook/message',
+            'webhook/auto-reply',
+            'webhook/status',
         ]);
         $middleware->alias([
             'tenant' => \App\Http\Middleware\TenantMiddleware::class,

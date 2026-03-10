@@ -112,14 +112,29 @@
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_session')"><i class="fas fa-copy"></i></button>
                             </div>
                         </div>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm mb-1">
                             <div class="input-group-prepend"><span class="input-group-text">Message</span></div>
                             <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_message" value="{{ url('/webhook/wa/message') }}" readonly>
                             <div class="input-group-append">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_message')"><i class="fas fa-copy"></i></button>
                             </div>
                         </div>
-                        <p class="text-muted small mt-2 mb-0">Kompatibel juga dengan endpoint standar docs: <code>{{ url('/webhook/session') }}</code> dan <code>{{ url('/webhook/message') }}</code>.</p>
+                        <div class="input-group input-group-sm mb-1">
+                            <div class="input-group-prepend"><span class="input-group-text">Auto Reply</span></div>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_auto_reply" value="{{ url('/webhook/wa/auto-reply') }}" readonly>
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_auto_reply')"><i class="fas fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <div class="input-group-prepend"><span class="input-group-text">Status</span></div>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_status" value="{{ url('/webhook/wa/status') }}" readonly>
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_status')"><i class="fas fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <p class="text-muted small mt-2 mb-0">Penting: isi field gateway dengan <code>Base URL</code> saja, jangan sampai berakhiran <code>/message</code> atau <code>/session</code>.</p>
+                        <p class="text-muted small mt-1 mb-0">Kompatibel juga dengan endpoint standar docs: <code>{{ url('/webhook/session') }}</code>, <code>{{ url('/webhook/message') }}</code>, <code>{{ url('/webhook/auto-reply') }}</code>, dan <code>{{ url('/webhook/status') }}</code>.</p>
                         <p class="text-muted small mt-1 mb-0">Log pesan masuk tersedia di menu <strong>Log → Log WA Blast</strong>.</p>
                     </div>
 
