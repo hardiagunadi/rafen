@@ -34,14 +34,14 @@ class ProfileGroupController extends Controller
     {
         $user = auth()->user();
         $search = $request->input('search.value', '');
-        $typeFilter = $request->input('filter_type');
         $validTypes = ['pppoe', 'hotspot'];
+        $typeFilter = strtolower(trim((string) $request->input('filter_type', '')));
         $normalizedTypeFilter = in_array($typeFilter, $validTypes, true) ? $typeFilter : null;
 
         $query = ProfileGroup::query()
             ->accessibleBy($user)
             ->with('mikrotikConnection')
-            ->when($normalizedTypeFilter !== null, fn ($q) => $q->where('type', $normalizedTypeFilter))
+            ->when($normalizedTypeFilter !== null, fn ($q) => $q->whereRaw('LOWER(type) = ?', [$normalizedTypeFilter]))
             ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"))
             ->latest();
 
@@ -305,6 +305,10 @@ class ProfileGroupController extends Controller
 
     private function hydrateHostRange(array $data): array
     {
+        if (($data['type'] ?? null) === 'hotspot') {
+            $data['dns_servers'] = null;
+        }
+
         if (($data['ip_pool_mode'] ?? null) !== 'sql') {
             $data['host_min'] = null;
             $data['host_max'] = null;

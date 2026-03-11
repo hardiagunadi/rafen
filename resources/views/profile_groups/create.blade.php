@@ -92,9 +92,9 @@
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group col-md-6">
+                    <div class="form-group col-md-6" id="dns-server-group">
                         <label>DNS Server</label>
-                        <input type="text" name="dns_servers" value="{{ old('dns_servers', '8.8.8.8,8.8.4.4') }}" class="form-control @error('dns_servers') is-invalid @enderror" placeholder="8.8.8.8,8.8.4.4">
+                        <input type="text" id="dns_servers" name="dns_servers" value="{{ old('dns_servers', '8.8.8.8,8.8.4.4') }}" class="form-control @error('dns_servers') is-invalid @enderror" placeholder="8.8.8.8,8.8.4.4">
                         @error('dns_servers')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="form-group col-md-6">
@@ -136,7 +136,22 @@
             document.getElementById('sql-pool-fields').style.display = poolMode === 'sql' ? '' : 'none';
         }
 
+        function syncDnsField() {
+            var type = document.querySelector('select[name="type"]').value;
+            var dnsGroup = document.getElementById('dns-server-group');
+            var dnsInput = document.getElementById('dns_servers');
+            var isHotspot = type === 'hotspot';
+
+            if (!dnsGroup || !dnsInput) {
+                return;
+            }
+
+            dnsGroup.style.display = isHotspot ? 'none' : '';
+            dnsInput.disabled = isHotspot;
+        }
+
         document.querySelector('select[name="type"]').addEventListener('change', syncPoolMode);
+        document.querySelector('select[name="type"]').addEventListener('change', syncDnsField);
         document.getElementById('ip_pool_mode').addEventListener('change', syncSqlFields);
 
         // Init on load
@@ -152,6 +167,8 @@
             } else {
                 sqlFields.style.display = poolMode === 'sql' ? '' : 'none';
             }
+
+            syncDnsField();
         })();
 
         // --- Parent Queue: fetch otomatis dari semua Mikrotik ---

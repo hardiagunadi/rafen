@@ -89,47 +89,57 @@
     var dtTable;
 
     function init() {
-        if (!document.getElementById('profile-group-table')) return;
-        if ($.fn.DataTable.isDataTable('#profile-group-table')) return;
+        var table = document.getElementById('profile-group-table');
+        if (!table) return;
 
-        dtTable = $('#profile-group-table').DataTable({
-            processing: true, serverSide: true,
-            ajax: {
-                url: '{{ route("profile-groups.datatable") }}',
-                data: function (d) {
-                    d.filter_type = document.getElementById('filter-group-type').value || '';
+        if ($.fn.DataTable.isDataTable('#profile-group-table')) {
+            dtTable = $('#profile-group-table').DataTable();
+        } else {
+            dtTable = $('#profile-group-table').DataTable({
+                processing: true, serverSide: true,
+                ajax: {
+                    url: '{{ route("profile-groups.datatable") }}',
+                    data: function (d) {
+                        d.filter_type = document.getElementById('filter-group-type').value || '';
+                    }
+                },
+                columns: [
+                    { data: null, orderable: false, render: function(d, t, row) {
+                        return '<input type="checkbox" class="row-check" value="' + row.id + '">';
+                    }},
+                    { data: 'name' },
+                    { data: 'owner', orderable: false },
+                    { data: 'router', orderable: false },
+                    { data: 'type', orderable: false },
+                    { data: 'ip_pool_mode', orderable: false },
+                    { data: 'pool_info', orderable: false },
+                    { data: null, orderable: false, render: function(d, t, row) {
+                        return '<div class="text-right">'
+                            + '<a href="' + row.edit_url + '" class="btn btn-sm btn-warning text-white mr-1"><i class="fas fa-pen"></i></a>'
+                            + '<button class="btn btn-sm btn-success mr-1" onclick="exportSingle(\'' + row.export_url + '\')" title="Export ke Router"><i class="fas fa-upload"></i></button>'
+                            + '<button class="btn btn-sm btn-danger" data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus group ini?"><i class="fas fa-trash"></i></button>'
+                            + '</div>';
+                    }},
+                ],
+                pageLength: 20, stateSave: false,
+            });
+        }
+
+        var filterType = document.getElementById('filter-group-type');
+        if (filterType) {
+            filterType.onchange = function () {
+                if (dtTable) {
+                    dtTable.ajax.reload();
                 }
-            },
-            columns: [
-                { data: null, orderable: false, render: function(d, t, row) {
-                    return '<input type="checkbox" class="row-check" value="' + row.id + '">';
-                }},
-                { data: 'name' },
-                { data: 'owner', orderable: false },
-                { data: 'router', orderable: false },
-                { data: 'type', orderable: false },
-                { data: 'ip_pool_mode', orderable: false },
-                { data: 'pool_info', orderable: false },
-                { data: null, orderable: false, render: function(d, t, row) {
-                    return '<div class="text-right">'
-                        + '<a href="' + row.edit_url + '" class="btn btn-sm btn-warning text-white mr-1"><i class="fas fa-pen"></i></a>'
-                        + '<button class="btn btn-sm btn-success mr-1" onclick="exportSingle(\'' + row.export_url + '\')" title="Export ke Router"><i class="fas fa-upload"></i></button>'
-                        + '<button class="btn btn-sm btn-danger" data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus group ini?"><i class="fas fa-trash"></i></button>'
-                        + '</div>';
-                }},
-            ],
-            pageLength: 20, stateSave: false,
-        });
+            };
+        }
 
-        document.getElementById('filter-group-type').addEventListener('change', function () {
-            if (dtTable) {
-                dtTable.ajax.reload();
-            }
-        });
-
-        document.getElementById('select-all').addEventListener('change', function () {
-            document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
-        });
+        var selectAll = document.getElementById('select-all');
+        if (selectAll) {
+            selectAll.onchange = function () {
+                document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+            };
+        }
     }
 
     window.exportSingle = function (url) {
