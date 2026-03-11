@@ -6,10 +6,16 @@ use App\Models\HotspotUser;
 use App\Models\Invoice;
 use App\Models\PppUser;
 use App\Models\TenantSettings;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class WaNotificationService
 {
+    /**
+     * @var array<string, int>
+     */
+    private static array $fallbackRotationCounters = [];
+
     /**
      * Notifikasi saat pelanggan PPP atau Hotspot baru didaftarkan.
      */
@@ -24,6 +30,7 @@ class WaNotificationService
 
         if (empty(trim($phone))) {
             Log::info('WA skip: nomor HP kosong', $context);
+
             return;
         }
 
@@ -41,17 +48,23 @@ class WaNotificationService
             $dueDate = $isPpp ? ($user->jatuh_tempo ? \Carbon\Carbon::parse($user->jatuh_tempo)->format('d/m/Y') : '-') : '-';
             $customerId = $user->customer_id ?? $user->username ?? '-';
             $harga = $isPpp
-                ? ($user->profile ? 'Rp ' . number_format($user->profile->harga ?? 0, 0, ',', '.') : '-')
+                ? ($user->profile ? 'Rp '.number_format($user->profile->harga ?? 0, 0, ',', '.') : '-')
                 : '-';
             $csNumber = $settings->business_phone ?? '-';
+            $customerName = self::normalizeCustomerName($user->customer_name ?? null);
 
-            $template = $settings->getTemplate('registration');
+            $template = self::pickTemplateVariant($settings, 'registration');
 
-            $message = str_replace(
-                ['{name}', '{username}', '{service}', '{profile}', '{due_date}', '{customer_id}', '{total}', '{cs_number}'],
-                [$user->customer_name, $user->username, $serviceLabel, $profileName, $dueDate, $customerId, $harga, $csNumber],
-                $template
-            );
+            $message = self::renderTemplate($template, [
+                'name' => $customerName,
+                'username' => $user->username,
+                'service' => $serviceLabel,
+                'profile' => $profileName,
+                'due_date' => $dueDate,
+                'customer_id' => $customerId,
+                'total' => $harga,
+                'cs_number' => $csNumber,
+            ]);
 
             $service->sendMessage($phone, $message, $context);
         } catch (\Throwable $e) {
@@ -73,6 +86,7 @@ class WaNotificationService
 
         if (empty(trim($phone))) {
             Log::info('WA skip: nomor HP kosong', $context);
+
             return;
         }
 
@@ -82,17 +96,18 @@ class WaNotificationService
                 return;
             }
 
-            $template = $settings->getTemplate('invoice');
+            $template = self::pickTemplateVariant($settings, 'invoice');
 
-            $customerId  = $invoice->customer_id ?? ($user->customer_id ?? '-');
+            $customerId = $invoice->customer_id ?? ($user->customer_id ?? '-');
             $profileName = $invoice->paket_langganan ?? '-';
             $serviceType = $invoice->tipe_service ? strtoupper($invoice->tipe_service) : '-';
-            $csNumber    = $settings->business_phone ?? '-';
+            $csNumber = $settings->business_phone ?? '-';
+            $customerName = self::normalizeCustomerName($invoice->customer_name ?? null);
 
             // Bank accounts
             $bankAccounts = $user->owner?->bankAccounts()->active()->get()
                 ?? \App\Models\BankAccount::where('user_id', $invoice->owner_id)->where('is_active', true)->get();
-            $bankLines = $bankAccounts->map(fn($b) => $b->bank_name . ' ' . $b->account_number . ' a/n ' . $b->account_name)->join("\n");
+            $bankLines = $bankAccounts->map(fn ($b) => $b->bank_name.' '.$b->account_number.' a/n '.$b->account_name)->join("\n");
 
             // Payment link (generate token jika belum ada)
             if (empty($invoice->payment_token)) {
@@ -100,22 +115,18 @@ class WaNotificationService
             }
             $paymentLink = route('customer.invoice', $invoice->payment_token);
 
-            $message = str_replace(
-                ['{name}', '{invoice_no}', '{total}', '{due_date}', '{customer_id}', '{profile}', '{service}', '{cs_number}', '{bank_account}', '{payment_link}'],
-                [
-                    $invoice->customer_name,
-                    $invoice->invoice_number,
-                    'Rp ' . number_format($invoice->total, 0, ',', '.'),
-                    $invoice->due_date ? $invoice->due_date->format('d/m/Y') : '-',
-                    $customerId,
-                    $profileName,
-                    $serviceType,
-                    $csNumber,
-                    $bankLines,
-                    $paymentLink,
-                ],
-                $template
-            );
+            $message = self::renderTemplate($template, [
+                'name' => $customerName,
+                'invoice_no' => $invoice->invoice_number,
+                'total' => 'Rp '.number_format($invoice->total, 0, ',', '.'),
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('d/m/Y') : '-',
+                'customer_id' => $customerId,
+                'profile' => $profileName,
+                'service' => $serviceType,
+                'cs_number' => $csNumber,
+                'bank_account' => $bankLines,
+                'payment_link' => $paymentLink,
+            ]);
 
             $service->sendMessage($phone, $message, $context);
         } catch (\Throwable $e) {
@@ -138,6 +149,7 @@ class WaNotificationService
 
         if (empty(trim($phone))) {
             Log::info('WA skip: nomor HP kosong', $context);
+
             return;
         }
 
@@ -147,7 +159,7 @@ class WaNotificationService
                 return;
             }
 
-            $template = $settings->getTemplate('on_process');
+            $template = self::pickTemplateVariant($settings, 'on_process');
 
             $isPpp = $user instanceof PppUser;
             $profileName = $isPpp
@@ -156,18 +168,23 @@ class WaNotificationService
             $serviceLabel = $isPpp ? 'PPPoE' : 'Hotspot';
             $customerId = $user->customer_id ?? $user->username ?? '-';
             $csNumber = $settings->business_phone ?? '-';
+            $customerName = self::normalizeCustomerName($user->customer_name ?? null);
 
             $bankAccounts = $user->owner?->bankAccounts()->active()->get()
                 ?? \App\Models\BankAccount::where('user_id', $settings->user_id)->where('is_active', true)->get();
-            $bankLines = $bankAccounts->map(fn ($b) => $b->bank_name . ' ' . $b->account_number . ' a/n ' . $b->account_name)->join("\n");
+            $bankLines = $bankAccounts->map(fn ($b) => $b->bank_name.' '.$b->account_number.' a/n '.$b->account_name)->join("\n");
 
-            $total = $invoice ? 'Rp ' . number_format($invoice->total, 0, ',', '.') : '-';
+            $total = $invoice ? 'Rp '.number_format($invoice->total, 0, ',', '.') : '-';
 
-            $message = str_replace(
-                ['{name}', '{customer_id}', '{profile}', '{service}', '{total}', '{cs_number}', '{bank_account}'],
-                [$user->customer_name, $customerId, $profileName, $serviceLabel, $total, $csNumber, $bankLines],
-                $template
-            );
+            $message = self::renderTemplate($template, [
+                'name' => $customerName,
+                'customer_id' => $customerId,
+                'profile' => $profileName,
+                'service' => $serviceLabel,
+                'total' => $total,
+                'cs_number' => $csNumber,
+                'bank_account' => $bankLines,
+            ]);
 
             $service->sendMessage($phone, $message, $context);
         } catch (\Throwable $e) {
@@ -188,6 +205,7 @@ class WaNotificationService
 
         if (! $invoice->pppUser) {
             Log::info('WA skip: pelanggan (pppUser) tidak ditemukan', $context);
+
             return;
         }
 
@@ -195,6 +213,7 @@ class WaNotificationService
 
         if (empty(trim($phone))) {
             Log::info('WA skip: nomor HP kosong', array_merge($context, ['user_id' => $invoice->pppUser->id]));
+
             return;
         }
 
@@ -204,32 +223,92 @@ class WaNotificationService
                 return;
             }
 
-            $template = $settings->getTemplate('payment');
+            $template = self::pickTemplateVariant($settings, 'payment');
 
-            $paidAt      = $invoice->paid_at ? $invoice->paid_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
-            $customerId  = $invoice->customer_id ?? ($invoice->pppUser->customer_id ?? '-');
+            $paidAt = $invoice->paid_at ? $invoice->paid_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
+            $customerId = $invoice->customer_id ?? ($invoice->pppUser->customer_id ?? '-');
             $profileName = $invoice->paket_langganan ?? '-';
             $serviceType = $invoice->tipe_service ? strtoupper($invoice->tipe_service) : '-';
-            $csNumber    = $settings->business_phone ?? '-';
+            $csNumber = $settings->business_phone ?? '-';
+            $customerName = self::normalizeCustomerName($invoice->customer_name ?? null);
 
-            $message = str_replace(
-                ['{name}', '{invoice_no}', '{total}', '{paid_at}', '{customer_id}', '{profile}', '{service}', '{cs_number}'],
-                [
-                    $invoice->customer_name,
-                    $invoice->invoice_number,
-                    'Rp ' . number_format($invoice->total, 0, ',', '.'),
-                    $paidAt,
-                    $customerId,
-                    $profileName,
-                    $serviceType,
-                    $csNumber,
-                ],
-                $template
-            );
+            $message = self::renderTemplate($template, [
+                'name' => $customerName,
+                'invoice_no' => $invoice->invoice_number,
+                'total' => 'Rp '.number_format($invoice->total, 0, ',', '.'),
+                'paid_at' => $paidAt,
+                'customer_id' => $customerId,
+                'profile' => $profileName,
+                'service' => $serviceType,
+                'cs_number' => $csNumber,
+            ]);
 
             $service->sendMessage($phone, $message, array_merge($context, ['user_id' => $invoice->pppUser->id]));
         } catch (\Throwable $e) {
             Log::warning('WA notifyInvoicePaid failed', ['error' => $e->getMessage(), 'invoice_id' => $invoice->id]);
         }
+    }
+
+    private static function pickTemplateVariant(TenantSettings $settings, string $type): string
+    {
+        $variants = $settings->getTemplateVariants($type);
+        if ($variants === []) {
+            return '';
+        }
+
+        if (count($variants) === 1) {
+            return $variants[0];
+        }
+
+        $index = self::nextRotationIndex($settings, $type, count($variants));
+
+        return $variants[$index];
+    }
+
+    private static function nextRotationIndex(TenantSettings $settings, string $type, int $variantCount): int
+    {
+        $ownerId = (int) ($settings->user_id ?? 0);
+        $counterKey = "wa:template-rotation:{$ownerId}:{$type}";
+        $counter = 0;
+
+        try {
+            $previous = (int) Cache::get($counterKey, 0);
+            $counter = $previous >= 1_000_000 ? 1 : ($previous + 1);
+            Cache::put($counterKey, $counter, now()->addDays(30));
+        } catch (\Throwable) {
+            $fallbackKey = "{$ownerId}:{$type}";
+            $previous = self::$fallbackRotationCounters[$fallbackKey] ?? 0;
+            $counter = $previous >= 1_000_000 ? 1 : ($previous + 1);
+            self::$fallbackRotationCounters[$fallbackKey] = $counter;
+        }
+
+        if ($counter <= 0) {
+            $counter = 1;
+        }
+
+        return ($counter - 1) % max(1, $variantCount);
+    }
+
+    /**
+     * @param  array<string, mixed>  $replacements
+     */
+    private static function renderTemplate(string $template, array $replacements): string
+    {
+        $search = [];
+        $replace = [];
+
+        foreach ($replacements as $key => $value) {
+            $search[] = '{'.$key.'}';
+            $replace[] = (string) $value;
+        }
+
+        return str_replace($search, $replace, $template);
+    }
+
+    private static function normalizeCustomerName(?string $name): string
+    {
+        $cleaned = trim((string) $name);
+
+        return $cleaned !== '' ? $cleaned : 'Pelanggan';
     }
 }

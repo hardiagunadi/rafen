@@ -62,20 +62,58 @@
                             <div class="form-group">
                                 <label>Status Langganan</label>
                                 <select name="subscription_status" class="form-control">
-                                    <option value="trial" {{ $tenant->subscription_status === 'trial' ? 'selected' : '' }}>Trial</option>
-                                    <option value="active" {{ $tenant->subscription_status === 'active' ? 'selected' : '' }}>Aktif</option>
-                                    <option value="expired" {{ $tenant->subscription_status === 'expired' ? 'selected' : '' }}>Berakhir</option>
-                                    <option value="suspended" {{ $tenant->subscription_status === 'suspended' ? 'selected' : '' }}>Suspend</option>
+                                    <option value="trial" {{ old('subscription_status', $tenant->subscription_status) === 'trial' ? 'selected' : '' }}>Trial</option>
+                                    <option value="active" {{ old('subscription_status', $tenant->subscription_status) === 'active' ? 'selected' : '' }}>Aktif</option>
+                                    <option value="expired" {{ old('subscription_status', $tenant->subscription_status) === 'expired' ? 'selected' : '' }}>Berakhir</option>
+                                    <option value="suspended" {{ old('subscription_status', $tenant->subscription_status) === 'suspended' ? 'selected' : '' }}>Suspend</option>
                                 </select>
                             </div>
                         </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Metode Langganan</label>
+                                <select name="subscription_method" id="subscription_method" class="form-control @error('subscription_method') is-invalid @enderror">
+                                    <option value="monthly" {{ old('subscription_method', $tenant->subscription_method ?? 'monthly') === 'monthly' ? 'selected' : '' }}>Bulanan</option>
+                                    <option value="license" {{ old('subscription_method', $tenant->subscription_method) === 'license' ? 'selected' : '' }}>Lisensi (Tahunan)</option>
+                                </select>
+                                @error('subscription_method')
+                                    <span class="invalid-feedback">{{ $message }}</span>
+                                @enderror
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="license_limit_fields" class="row d-none">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Limit Mikrotik (Lisensi)</label>
+                                <input type="number" name="license_max_mikrotik" class="form-control @error('license_max_mikrotik') is-invalid @enderror" value="{{ old('license_max_mikrotik', $tenant->license_max_mikrotik) }}" min="-1">
+                                @error('license_max_mikrotik')
+                                    <span class="invalid-feedback">{{ $message }}</span>
+                                @enderror
+                                <small class="text-muted">Isi <code>-1</code> untuk tanpa batas.</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Limit PPP Users (Lisensi)</label>
+                                <input type="number" name="license_max_ppp_users" class="form-control @error('license_max_ppp_users') is-invalid @enderror" value="{{ old('license_max_ppp_users', $tenant->license_max_ppp_users) }}" min="-1">
+                                @error('license_max_ppp_users')
+                                    <span class="invalid-feedback">{{ $message }}</span>
+                                @enderror
+                                <small class="text-muted">Isi <code>-1</code> untuk tanpa batas.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Paket Langganan</label>
                                 <select name="subscription_plan_id" class="form-control">
                                     <option value="">- Tidak ada -</option>
                                     @foreach($plans as $plan)
-                                    <option value="{{ $plan->id }}" {{ $tenant->subscription_plan_id == $plan->id ? 'selected' : '' }}>
+                                    <option value="{{ $plan->id }}" {{ (string) old('subscription_plan_id', $tenant->subscription_plan_id) === (string) $plan->id ? 'selected' : '' }}>
                                         {{ $plan->name }}
                                     </option>
                                     @endforeach
@@ -143,3 +181,30 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+function toggleLicenseLimitFields() {
+    var method = document.getElementById('subscription_method');
+    var wrapper = document.getElementById('license_limit_fields');
+    if (!method || !wrapper) {
+        return;
+    }
+
+    if (method.value === 'license') {
+        wrapper.classList.remove('d-none');
+    } else {
+        wrapper.classList.add('d-none');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var method = document.getElementById('subscription_method');
+    if (!method) {
+        return;
+    }
+    method.addEventListener('change', toggleLicenseLimitFields);
+    toggleLicenseLimitFields();
+});
+</script>
+@endpush

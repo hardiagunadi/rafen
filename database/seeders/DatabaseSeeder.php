@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
                 'password' => 'password',
                 'role' => 'administrator',
                 'is_super_admin' => true,
+                'subscription_method' => User::SUBSCRIPTION_METHOD_MONTHLY,
             ],
         );
 

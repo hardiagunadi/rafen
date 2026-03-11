@@ -220,6 +220,18 @@ class PppUserController extends Controller
     public function store(StorePppUserRequest $request): RedirectResponse
     {
         $data = $this->prepareData($request->validated());
+        $ownerId = isset($data['owner_id']) ? (int) $data['owner_id'] : $request->user()->effectiveOwnerId();
+        $owner = User::query()->find($ownerId);
+
+        if ($owner && $owner->hasReachedPppUsersLimit($ownerId)) {
+            $limit = $owner->getEffectivePppUsersLimit();
+
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'customer_name' => "Batas PPP Users tenant sudah tercapai ({$limit}). Ubah limit lisensi/paket terlebih dahulu.",
+                ]);
+        }
 
         $user = PppUser::create($data);
 

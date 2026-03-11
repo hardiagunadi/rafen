@@ -3,6 +3,38 @@
 @section('title', 'Detail OLT HSGQ')
 
 @section('content')
+@php
+    $currentUser = auth()->user();
+    $canManageOlt = $currentUser->isSuperAdmin() || in_array($currentUser->role, ['administrator', 'noc'], true);
+    $canPollOlt = $canManageOlt || $currentUser->role === 'teknisi';
+    $isPollingInProgress = $oltConnection->isPollingInProgress();
+    $pollingProgressPercent = $oltConnection->pollingProgressPercent();
+    $pollingMessage = $oltConnection->pollingDisplayMessage();
+
+    if ($isPollingInProgress) {
+        $pollingBadgeClass = 'badge-info';
+        $pollingBadgeLabel = 'Sedang Polling';
+    } elseif ($oltConnection->last_poll_success === null) {
+        $pollingBadgeClass = 'badge-secondary';
+        $pollingBadgeLabel = 'Belum Pernah Polling';
+    } elseif ($oltConnection->last_poll_success) {
+        $pollingBadgeClass = 'badge-success';
+        $pollingBadgeLabel = 'Sukses';
+    } else {
+        $pollingBadgeClass = 'badge-danger';
+        $pollingBadgeLabel = 'Gagal';
+    }
+
+    if ($isPollingInProgress) {
+        $pollingAlertClass = 'alert-info';
+    } elseif ($oltConnection->last_poll_success === true) {
+        $pollingAlertClass = 'alert-success';
+    } elseif ($oltConnection->last_poll_success === false) {
+        $pollingAlertClass = 'alert-danger';
+    } else {
+        $pollingAlertClass = 'alert-secondary';
+    }
+@endphp
 <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
         <div>
@@ -13,13 +45,15 @@
             <a href="{{ route('olt-connections.index') }}" class="btn btn-sm btn-outline-secondary">
                 <i class="fas fa-arrow-left mr-1"></i>Daftar OLT
             </a>
-            @if(auth()->user()->role !== 'teknisi')
+            @if($canPollOlt)
                 <form action="{{ route('olt-connections.poll', $oltConnection) }}" method="POST" class="d-inline">
                     @csrf
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="fas fa-sync-alt mr-1"></i>Polling Sekarang
                     </button>
                 </form>
+            @endif
+            @if($canManageOlt)
                 <a href="{{ route('olt-connections.edit', $oltConnection) }}" class="btn btn-sm btn-warning text-white">
                     <i class="fas fa-pen mr-1"></i>Edit
                 </a>
@@ -41,29 +75,18 @@
                 </div>
             </div>
             <div class="col-lg-4">
-                <div><strong>Polling terakhir:</strong> {{ $oltConnection->last_polled_at?->format('Y-m-d H:i:s') ?? '-' }}</div>
-                <div><strong>Hasil polling:</strong>
-                    @if($oltConnection->isPollingInProgress())
-                        <span class="badge badge-info">Sedang Polling</span>
-                    @elseif($oltConnection->last_poll_success === null)
-                        <span class="badge badge-secondary">Belum Pernah Polling</span>
-                    @elseif($oltConnection->last_poll_success)
-                        <span class="badge badge-success">Sukses</span>
-                    @else
-                        <span class="badge badge-danger">Gagal</span>
-                    @endif
-                </div>
-                @if($oltConnection->isPollingInProgress() && $oltConnection->pollingProgressPercent() !== null)
-                    <div class="mt-2">
-                        <small class="text-muted d-block mb-1">Progres: {{ $oltConnection->pollingProgressPercent() }}%</small>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-info" role="progressbar"
-                                style="width: {{ $oltConnection->pollingProgressPercent() }}%;"
-                                aria-valuenow="{{ $oltConnection->pollingProgressPercent() }}" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
+                <div><strong>Polling terakhir:</strong> <span id="polling-last-polled-at">{{ $oltConnection->last_polled_at?->format('Y-m-d H:i:s') ?? '-' }}</span></div>
+                <div><strong>Hasil polling:</strong> <span id="polling-status-badge" class="badge {{ $pollingBadgeClass }}">{{ $pollingBadgeLabel }}</span></div>
+                <div class="mt-2 {{ $isPollingInProgress && $pollingProgressPercent !== null ? '' : 'd-none' }}" id="polling-progress-wrapper">
+                    <small class="text-muted d-block mb-1" id="polling-progress-label">Progres: {{ $pollingProgressPercent ?? 0 }}%</small>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-info" role="progressbar"
+                            id="polling-progress-bar"
+                            style="width: {{ $pollingProgressPercent ?? 0 }}%;"
+                            aria-valuenow="{{ $pollingProgressPercent ?? 0 }}" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
-                @endif
-                <div><strong>Total ONU tersimpan:</strong> {{ number_format($totalOnuStored) }}</div>
+                </div>
+                <div><strong>Total ONU tersimpan:</strong> <span id="total-onu-stored">{{ number_format($totalOnuStored) }}</span></div>
             </div>
             <div class="col-lg-4">
                 <div><strong>OID MAC / Identifier:</strong> <code>{{ $oltConnection->oid_serial ?: '-' }}</code></div>
@@ -72,11 +95,9 @@
                 <div><strong>OID Status:</strong> <code>{{ $oltConnection->oid_status ?: '-' }}</code></div>
             </div>
         </div>
-        @if($oltConnection->pollingDisplayMessage())
-            <div class="alert {{ $oltConnection->isPollingInProgress() ? 'alert-info' : ($oltConnection->last_poll_success ? 'alert-success' : 'alert-danger') }} mt-3 mb-0">
-                {{ $oltConnection->pollingDisplayMessage() }}
-            </div>
-        @endif
+        <div id="polling-message-alert" class="alert {{ $pollingAlertClass }} mt-3 mb-0 {{ $pollingMessage ? '' : 'd-none' }}">
+            {{ $pollingMessage ?? '' }}
+        </div>
     </div>
 </div>
 
@@ -118,32 +139,30 @@
                 </button>
             </div>
             <div class="small text-muted">
-                Total ONU: {{ number_format($activeSummary) }} |
-                Online: {{ number_format($onlineSummary) }} |
-                Offline: {{ number_format($offlineSummary) }}
+                Total ONU: <span id="summary-active">{{ number_format($activeSummary) }}</span> |
+                Online: <span id="summary-online">{{ number_format($onlineSummary) }}</span> |
+                Offline: <span id="summary-offline">{{ number_format($offlineSummary) }}</span>
             </div>
         </div>
-        @if($summaryRows->isNotEmpty())
-            <div class="row mt-2">
-                @foreach($summaryRows as $summaryRow)
-                    <div class="col-xl-3 col-lg-4 col-md-6 mb-2">
-                        <div class="border rounded px-3 py-2 h-100 {{ $selectedPortId === $summaryRow['port_id'] ? 'border-primary bg-light' : '' }}"
-                            data-port-summary="{{ $summaryRow['port_id'] }}">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <strong>{{ $summaryRow['port_id'] }}</strong>
-                                <button type="button" class="btn btn-link btn-sm p-0" data-port-summary-filter="{{ $summaryRow['port_id'] }}">
-                                    Filter
-                                </button>
-                            </div>
-                            <div class="small text-muted mt-2">Total {{ number_format($summaryRow['total']) }}</div>
-                            <div class="small text-success">Online {{ number_format($summaryRow['online']) }}</div>
-                            <div class="small text-danger">Offline {{ number_format($summaryRow['offline']) }}</div>
-                            <div class="small text-info">Tx OLT {{ $summaryRow['tx_olt_dbm'] !== null ? number_format((float) $summaryRow['tx_olt_dbm'], 2).' dBm' : '-' }}</div>
+        <div class="row mt-2" id="onu-port-summary-container">
+            @foreach($summaryRows as $summaryRow)
+                <div class="col-xl-3 col-lg-4 col-md-6 mb-2">
+                    <div class="border rounded px-3 py-2 h-100 {{ $selectedPortId === $summaryRow['port_id'] ? 'border-primary bg-light' : '' }}"
+                        data-port-summary="{{ $summaryRow['port_id'] }}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong>{{ $summaryRow['port_id'] }}</strong>
+                            <button type="button" class="btn btn-link btn-sm p-0" data-port-summary-filter="{{ $summaryRow['port_id'] }}">
+                                Filter
+                            </button>
                         </div>
+                        <div class="small text-muted mt-2">Total <span data-summary-total>{{ number_format($summaryRow['total']) }}</span></div>
+                        <div class="small text-success">Online <span data-summary-online>{{ number_format($summaryRow['online']) }}</span></div>
+                        <div class="small text-danger">Offline <span data-summary-offline>{{ number_format($summaryRow['offline']) }}</span></div>
+                        <div class="small text-info">Tx OLT <span data-summary-tx-olt>{{ $summaryRow['tx_olt_dbm'] !== null ? number_format((float) $summaryRow['tx_olt_dbm'], 2).' dBm' : '-' }}</span></div>
                     </div>
-                @endforeach
-            </div>
-        @endif
+                </div>
+            @endforeach
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -172,12 +191,6 @@
 @push('scripts')
 <script>
 (function () {
-    @if($oltConnection->isPollingInProgress())
-    window.setTimeout(function () {
-        window.location.reload();
-    }, 3000);
-    @endif
-
     function init() {
         var tableElement = document.getElementById('onu-optics-table');
 
@@ -189,12 +202,49 @@
         var searchInput = document.getElementById('onu-search-input');
         var resetButton = document.getElementById('onu-filter-reset');
         var statusButtons = Array.from(document.querySelectorAll('[data-status-filter]'));
-        var summaryCards = Array.from(document.querySelectorAll('[data-port-summary]'));
-        var summaryFilterButtons = Array.from(document.querySelectorAll('[data-port-summary-filter]'));
+        var summaryContainer = document.getElementById('onu-port-summary-container');
         var searchTimer = null;
+        var numberFormatter = new Intl.NumberFormat('id-ID');
+        var pollingStatusUrl = '{{ route('olt-connections.polling-status', $oltConnection) }}';
+        var pollingWatcherTimer = null;
+        var pollState = {
+            isPolling: @json($isPollingInProgress),
+            completionHandled: false,
+        };
+
+        function formatInteger(value) {
+            var number = parseInt(value, 10);
+
+            if (Number.isNaN(number)) {
+                return numberFormatter.format(0);
+            }
+
+            return numberFormatter.format(number);
+        }
+
+        function formatTxOlt(value) {
+            var number = Number(value);
+
+            if (!Number.isFinite(number)) {
+                return '-';
+            }
+
+            return number.toFixed(2) + ' dBm';
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
 
         function activeStatus() {
-            var activeButton = document.querySelector('[data-status-filter].active, [data-status-filter].btn-primary, [data-status-filter].btn-success, [data-status-filter].btn-danger');
+            var activeButton = statusButtons.find(function (button) {
+                return button.classList.contains('active');
+            });
 
             return activeButton ? activeButton.getAttribute('data-status-filter') || '' : '';
         }
@@ -221,13 +271,159 @@
         }
 
         function updateSummaryCards(selectedPortId) {
-            summaryCards.forEach(function (card) {
+            Array.from(document.querySelectorAll('[data-port-summary]')).forEach(function (card) {
                 var portId = card.getAttribute('data-port-summary');
                 var isActive = selectedPortId !== '' && portId === selectedPortId;
 
                 card.classList.toggle('border-primary', isActive);
                 card.classList.toggle('bg-light', isActive);
             });
+        }
+
+        function renderSummaryCards(summaryRows) {
+            if (!summaryContainer) {
+                return;
+            }
+
+            if (!Array.isArray(summaryRows) || summaryRows.length === 0) {
+                summaryContainer.innerHTML = '';
+                updateSummaryCards(portFilter.value);
+
+                return;
+            }
+
+            summaryContainer.innerHTML = summaryRows.map(function (summaryRow) {
+                var portId = summaryRow.port_id ? String(summaryRow.port_id) : '-';
+                var total = formatInteger(summaryRow.total);
+                var online = formatInteger(summaryRow.online);
+                var offline = formatInteger(summaryRow.offline);
+                var txOlt = formatTxOlt(summaryRow.tx_olt_dbm);
+                var cardClass = 'border rounded px-3 py-2 h-100';
+
+                if (portFilter.value !== '' && portFilter.value === portId) {
+                    cardClass += ' border-primary bg-light';
+                }
+
+                return '<div class="col-xl-3 col-lg-4 col-md-6 mb-2">'
+                    + '<div class="' + cardClass + '" data-port-summary="' + escapeHtml(portId) + '">'
+                    + '<div class="d-flex justify-content-between align-items-center">'
+                    + '<strong>' + escapeHtml(portId) + '</strong>'
+                    + '<button type="button" class="btn btn-link btn-sm p-0" data-port-summary-filter="' + escapeHtml(portId) + '">Filter</button>'
+                    + '</div>'
+                    + '<div class="small text-muted mt-2">Total <span data-summary-total>' + total + '</span></div>'
+                    + '<div class="small text-success">Online <span data-summary-online>' + online + '</span></div>'
+                    + '<div class="small text-danger">Offline <span data-summary-offline>' + offline + '</span></div>'
+                    + '<div class="small text-info">Tx OLT <span data-summary-tx-olt>' + txOlt + '</span></div>'
+                    + '</div>'
+                    + '</div>';
+            }).join('');
+
+            updateSummaryCards(portFilter.value);
+        }
+
+        function syncPortFilterOptions(summaryRows) {
+            if (!portFilter || !Array.isArray(summaryRows)) {
+                return;
+            }
+
+            var selectedPortId = portFilter.value;
+            var optionRows = summaryRows.map(function (summaryRow) {
+                var portId = summaryRow.port_id ? String(summaryRow.port_id) : '';
+
+                if (portId === '') {
+                    return '';
+                }
+
+                return '<option value="' + escapeHtml(portId) + '">' + escapeHtml(portId) + '</option>';
+            }).join('');
+
+            portFilter.innerHTML = '<option value="">Semua Port ID</option>' + optionRows;
+
+            if (selectedPortId !== '') {
+                portFilter.value = selectedPortId;
+            }
+        }
+
+        function setTextContent(id, value) {
+            var element = document.getElementById(id);
+
+            if (!element) {
+                return;
+            }
+
+            element.textContent = value;
+        }
+
+        function updatePollingPanel(snapshot) {
+            var statusBadge = document.getElementById('polling-status-badge');
+            var progressWrapper = document.getElementById('polling-progress-wrapper');
+            var progressLabel = document.getElementById('polling-progress-label');
+            var progressBar = document.getElementById('polling-progress-bar');
+            var messageAlert = document.getElementById('polling-message-alert');
+            var pollMessage = typeof snapshot.poll_message === 'string' ? snapshot.poll_message.trim() : '';
+            var badgeClass = 'badge-secondary';
+            var badgeLabel = 'Belum Pernah Polling';
+            var alertClass = 'alert-secondary';
+            var progress = parseInt(snapshot.poll_progress_percent, 10);
+            var summary = snapshot.summary && typeof snapshot.summary === 'object' ? snapshot.summary : {};
+
+            if (snapshot.is_polling) {
+                badgeClass = 'badge-info';
+                badgeLabel = 'Sedang Polling';
+                alertClass = 'alert-info';
+            } else if (snapshot.last_poll_success === true) {
+                badgeClass = 'badge-success';
+                badgeLabel = 'Sukses';
+                alertClass = 'alert-success';
+            } else if (snapshot.last_poll_success === false) {
+                badgeClass = 'badge-danger';
+                badgeLabel = 'Gagal';
+                alertClass = 'alert-danger';
+            }
+
+            if (statusBadge) {
+                statusBadge.classList.remove('badge-info', 'badge-secondary', 'badge-success', 'badge-danger');
+                statusBadge.classList.add(badgeClass);
+                statusBadge.textContent = badgeLabel;
+            }
+
+            setTextContent('polling-last-polled-at', snapshot.last_polled_at || '-');
+            setTextContent('total-onu-stored', formatInteger(summary.total_onu_stored));
+            setTextContent('summary-active', formatInteger(summary.active));
+            setTextContent('summary-online', formatInteger(summary.online));
+            setTextContent('summary-offline', formatInteger(summary.offline));
+
+            if (progressWrapper && progressLabel && progressBar) {
+                if (snapshot.is_polling && Number.isFinite(progress)) {
+                    var normalizedProgress = Math.max(0, Math.min(100, progress));
+                    progressWrapper.classList.remove('d-none');
+                    progressLabel.textContent = 'Progres: ' + normalizedProgress + '%';
+                    progressBar.style.width = normalizedProgress + '%';
+                    progressBar.setAttribute('aria-valuenow', String(normalizedProgress));
+                } else {
+                    progressWrapper.classList.add('d-none');
+                    progressLabel.textContent = 'Progres: 0%';
+                    progressBar.style.width = '0%';
+                    progressBar.setAttribute('aria-valuenow', '0');
+                }
+            }
+
+            if (messageAlert) {
+                messageAlert.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-danger', 'alert-secondary');
+
+                if (pollMessage === '') {
+                    messageAlert.classList.add('d-none');
+                    messageAlert.textContent = '';
+                } else {
+                    messageAlert.classList.add(alertClass);
+                    messageAlert.textContent = pollMessage;
+                }
+            }
+
+            if (Array.isArray(summary.rows)) {
+                syncPortFilterOptions(summary.rows);
+                renderSummaryCards(summary.rows);
+            }
         }
 
         function syncQueryString() {
@@ -322,6 +518,67 @@
             table.ajax.reload(null, resetPaging);
         }
 
+        function fetchPollingStatus() {
+            return fetch(pollingStatusUrl, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                credentials: 'same-origin',
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Polling status unavailable.');
+                    }
+
+                    return response.json();
+                })
+                .then(function (snapshot) {
+                    updatePollingPanel(snapshot);
+
+                    var wasPolling = pollState.isPolling;
+                    pollState.isPolling = Boolean(snapshot.is_polling);
+
+                    if (!wasPolling && pollState.isPolling) {
+                        pollState.completionHandled = false;
+                    }
+
+                    if (wasPolling && !pollState.isPolling && !pollState.completionHandled) {
+                        pollState.completionHandled = true;
+                        table.ajax.reload(null, false);
+
+                        if (window.showToast) {
+                            if (snapshot.last_poll_success === true) {
+                                window.showToast('Polling SNMP selesai. Tabel ONU diperbarui otomatis.', 'success');
+                            } else if (snapshot.last_poll_success === false) {
+                                window.showToast(snapshot.poll_message || 'Polling SNMP gagal.', 'danger');
+                            }
+                        }
+
+                        stopPollingWatcher();
+                    }
+                })
+                .catch(function () {
+                });
+        }
+
+        function startPollingWatcher() {
+            if (pollingWatcherTimer !== null) {
+                return;
+            }
+
+            pollingWatcherTimer = window.setInterval(fetchPollingStatus, 2500);
+        }
+
+        function stopPollingWatcher() {
+            if (pollingWatcherTimer === null) {
+                return;
+            }
+
+            window.clearInterval(pollingWatcherTimer);
+            pollingWatcherTimer = null;
+        }
+
         portFilter.addEventListener('change', function () {
             reloadTable(true);
         });
@@ -341,12 +598,18 @@
             });
         });
 
-        summaryFilterButtons.forEach(function (button) {
-            button.addEventListener('click', function () {
+        if (summaryContainer) {
+            summaryContainer.addEventListener('click', function (event) {
+                var button = event.target.closest('[data-port-summary-filter]');
+
+                if (!button) {
+                    return;
+                }
+
                 portFilter.value = button.getAttribute('data-port-summary-filter') || '';
                 reloadTable(true);
             });
-        });
+        }
 
         resetButton.addEventListener('click', function () {
             searchInput.value = '';
@@ -359,6 +622,11 @@
         updateStatusButtons('{{ $selectedStatus }}');
         updateSummaryCards(portFilter.value);
         syncQueryString();
+
+        if (pollState.isPolling) {
+            fetchPollingStatus();
+            startPollingWatcher();
+        }
     }
 
     document.addEventListener('DOMContentLoaded', init);

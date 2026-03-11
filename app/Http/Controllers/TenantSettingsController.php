@@ -10,6 +10,7 @@ use App\Services\MidtransService;
 use App\Services\TripayService;
 use App\Services\WaGatewayService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class TenantSettingsController extends Controller
 {
@@ -367,7 +368,7 @@ class TenantSettingsController extends Controller
             'wa_gateway_url' => 'nullable|url|max:255',
             'wa_gateway_token' => 'nullable|string|max:500|required_with:wa_gateway_url',
             'wa_gateway_key' => 'nullable|string|max:500',
-            'wa_webhook_secret' => 'nullable|string|max:255',
+            'wa_webhook_secret' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9_-]+$/'],
             'wa_notify_registration' => 'boolean',
             'wa_notify_invoice' => 'boolean',
             'wa_notify_payment' => 'boolean',
@@ -376,11 +377,11 @@ class TenantSettingsController extends Controller
             'wa_antispam_delay_ms' => 'integer|min:500|max:10000',
             'wa_antispam_max_per_minute' => 'integer|min:1|max:20',
             'wa_msg_randomize' => 'boolean',
-            'wa_template_registration' => 'nullable|string|max:2000',
-            'wa_template_invoice' => 'nullable|string|max:2000',
-            'wa_template_payment' => 'nullable|string|max:2000',
+            'wa_template_registration' => 'nullable|string|max:10000',
+            'wa_template_invoice' => 'nullable|string|max:10000',
+            'wa_template_payment' => 'nullable|string|max:10000',
             'wa_notify_on_process' => 'boolean',
-            'wa_template_on_process' => 'nullable|string|max:2000',
+            'wa_template_on_process' => 'nullable|string|max:10000',
             'tenant_id' => 'nullable|integer',
         ]);
 
@@ -395,6 +396,14 @@ class TenantSettingsController extends Controller
         }
 
         unset($validated['tenant_id']);
+
+        $gatewayUrl = trim((string) ($validated['wa_gateway_url'] ?? ''));
+        $webhookSecret = trim((string) ($validated['wa_webhook_secret'] ?? ''));
+
+        if ($gatewayUrl !== '' && $webhookSecret === '') {
+            $validated['wa_webhook_secret'] = Str::random(40);
+        }
+
         $settings->update($validated);
 
         return back()->with('success', 'Pengaturan WhatsApp berhasil diperbarui.');

@@ -15,6 +15,12 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
+    public const SUBSCRIPTION_METHOD_MONTHLY = 'monthly';
+
+    public const SUBSCRIPTION_METHOD_LICENSE = 'license';
+
+    public const LICENSE_DURATION_DAYS = 365;
+
     /**
      * The attributes that are mass assignable.
      *
@@ -34,6 +40,9 @@ class User extends Authenticatable
         'subscription_status',
         'subscription_expires_at',
         'subscription_plan_id',
+        'subscription_method',
+        'license_max_mikrotik',
+        'license_max_ppp_users',
         'vpn_username',
         'vpn_password',
         'vpn_ip',
@@ -66,6 +75,8 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'is_super_admin' => 'boolean',
             'subscription_expires_at' => 'date',
+            'license_max_mikrotik' => 'integer',
+            'license_max_ppp_users' => 'integer',
             'vpn_enabled' => 'boolean',
             'trial_days_remaining' => 'integer',
             'registered_at' => 'datetime',
@@ -175,6 +186,66 @@ class User extends Authenticatable
         return $this->isSuperAdmin();
     }
 
+    public function isLicenseSubscription(): bool
+    {
+        return $this->subscription_method === self::SUBSCRIPTION_METHOD_LICENSE;
+    }
+
+    public function resolveSubscriptionDurationDays(?SubscriptionPlan $plan = null, ?int $durationDays = null): int
+    {
+        if ($this->isLicenseSubscription()) {
+            return self::LICENSE_DURATION_DAYS;
+        }
+
+        if ($durationDays !== null && $durationDays > 0) {
+            return $durationDays;
+        }
+
+        return max(1, (int) ($plan?->duration_days ?? 30));
+    }
+
+    public function getEffectiveMikrotikLimit(): int
+    {
+        if ($this->isLicenseSubscription() && $this->license_max_mikrotik !== null) {
+            return (int) $this->license_max_mikrotik;
+        }
+
+        return (int) ($this->subscriptionPlan?->max_mikrotik ?? -1);
+    }
+
+    public function getEffectivePppUsersLimit(): int
+    {
+        if ($this->isLicenseSubscription() && $this->license_max_ppp_users !== null) {
+            return (int) $this->license_max_ppp_users;
+        }
+
+        return (int) ($this->subscriptionPlan?->max_ppp_users ?? -1);
+    }
+
+    public function hasReachedMikrotikLimit(?int $ownerId = null): bool
+    {
+        $limit = $this->getEffectiveMikrotikLimit();
+        if ($limit < 0) {
+            return false;
+        }
+
+        return MikrotikConnection::query()
+            ->where('owner_id', $ownerId ?? $this->effectiveOwnerId())
+            ->count() >= $limit;
+    }
+
+    public function hasReachedPppUsersLimit(?int $ownerId = null): bool
+    {
+        $limit = $this->getEffectivePppUsersLimit();
+        if ($limit < 0) {
+            return false;
+        }
+
+        return PppUser::query()
+            ->where('owner_id', $ownerId ?? $this->effectiveOwnerId())
+            ->count() >= $limit;
+    }
+
     public function hasActiveSubscription(): bool
     {
         return $this->subscription_status === 'active'
@@ -236,7 +307,7 @@ class User extends Authenticatable
 
     public function activateSubscription(SubscriptionPlan $plan, ?int $durationDays = null): void
     {
-        $duration = $durationDays ?? $plan->duration_days;
+        $duration = $this->resolveSubscriptionDurationDays($plan, $durationDays);
 
         $this->update([
             'subscription_status' => 'active',

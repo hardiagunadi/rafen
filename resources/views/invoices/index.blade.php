@@ -52,10 +52,11 @@
 
 <script>
 (function () {
-    function statusBadge(status) {
-        return status === 'paid'
-            ? '<span class="badge badge-success">Lunas</span>'
-            : '<span class="badge badge-warning">Belum Bayar</span>';
+    function statusBadge(status, type, row) {
+        var label = row && row.status_label ? row.status_label : (status === 'paid' ? 'Lunas' : 'Belum Bayar');
+        var variant = row && row.status_variant ? row.status_variant : (status === 'paid' ? 'success' : 'warning');
+
+        return '<span class="badge badge-' + variant + '">' + $.fn.dataTable.render.text().display(label) + '</span>';
     }
 
     function renderAksi(d, type, row) {
@@ -71,10 +72,14 @@
                 + '><i class="fas fa-check"></i></button>';
         }
         var view = '<a href="' + row.show_url + '" class="btn btn-info btn-sm mr-1" title="Lihat Invoice"><i class="fas fa-eye"></i></a>';
-        var nota = '<a href="' + row.nota_url + '" target="_blank" class="btn btn-secondary btn-sm mr-1" title="Cetak Nota"><i class="fas fa-receipt"></i></a>';
-        var del = '<button class="btn btn-danger btn-sm"'
-            + ' data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus invoice ini?"'
-            + '><i class="fas fa-trash"></i></button>';
+        var nota = row.can_nota
+            ? '<a href="' + row.nota_url + '" target="_blank" class="btn btn-secondary btn-sm mr-1" title="Cetak Nota"><i class="fas fa-receipt"></i></a>'
+            : '';
+        var del = row.can_delete
+            ? ('<button class="btn btn-danger btn-sm"'
+                + ' data-ajax-delete="' + row.destroy_url + '" data-confirm="Hapus invoice ini?"'
+                + '><i class="fas fa-trash"></i></button>')
+            : '';
         return '<div class="text-right d-flex justify-content-end" style="gap:2px;">' + renew + pay + view + nota + del + '</div>';
     }
 
@@ -195,7 +200,7 @@
                         <div class="small text-muted mt-1">Pelanggan</div>
                         <div id="pay-customer-name">-</div>
                         <div class="small text-muted mt-1">Total Tagihan</div>
-                        <div class="font-weight-bold text-success" id="pay-total">-</div>
+                        <div class="font-weight-bold text-success" id="pay-total" role="button" tabindex="0" title="Klik untuk isi Tunai Diterima" style="cursor: pointer;">-</div>
                     </div>
                     <div class="form-group">
                         <label>Tunai Diterima <span class="text-muted small">(kosongkan jika tidak ada)</span></label>
@@ -305,14 +310,58 @@
         }
     }
 
+    function fillCashFromTotal() {
+        var totalEl = document.getElementById('pay-total');
+        if (!totalEl) return;
+
+        var total = parseInt(totalEl.dataset.raw, 10) || 0;
+        if (total <= 0) return;
+
+        var cashDisplay = document.getElementById('pay-cash-display');
+        var cashHidden = document.getElementById('pay-cash');
+        var transferDisplay = document.getElementById('pay-transfer-display');
+        var transferHidden = document.getElementById('pay-transfer');
+
+        cashDisplay.value = formatRibuan(total);
+        cashHidden.value = total;
+        transferDisplay.value = '';
+        transferHidden.value = '';
+        updateSisaInfo();
+        cashDisplay.focus();
+    }
+
     attachMoneyInput('pay-cash-display', 'pay-cash');
     attachMoneyInput('pay-transfer-display', 'pay-transfer');
 
+    var payTotal = document.getElementById('pay-total');
+    payTotal.addEventListener('click', fillCashFromTotal);
+    payTotal.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        fillCashFromTotal();
+    });
+
+    var payForm = document.getElementById('form-pay');
+    var paySubmitButton = document.getElementById('btn-pay-submit');
+
+    payForm.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        if (e.target && e.target.tagName === 'TEXTAREA') return;
+        if (paySubmitButton.disabled) return;
+
+        e.preventDefault();
+        if (typeof payForm.requestSubmit === 'function') {
+            payForm.requestSubmit(paySubmitButton);
+        } else {
+            paySubmitButton.click();
+        }
+    });
+
     // Submit form bayar via AJAX
-    document.getElementById('form-pay').addEventListener('submit', function (e) {
+    payForm.addEventListener('submit', function (e) {
         e.preventDefault();
         var form = this;
-        var submitBtn = document.getElementById('btn-pay-submit');
+        var submitBtn = paySubmitButton;
         submitBtn.disabled = true;
         var origText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Memproses...';

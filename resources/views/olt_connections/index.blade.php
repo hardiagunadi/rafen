@@ -3,10 +3,15 @@
 @section('title', 'Monitoring OLT')
 
 @section('content')
+@php
+    $currentUser = auth()->user();
+    $canManageOlt = $currentUser->isSuperAdmin() || in_array($currentUser->role, ['administrator', 'noc'], true);
+    $canPollOlt = $canManageOlt || $currentUser->role === 'teknisi';
+@endphp
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title mb-0">Monitoring OLT</h3>
-        @if(auth()->user()->role !== 'teknisi')
+        @if($canManageOlt)
             <a href="{{ route('olt-connections.create') }}" class="btn btn-primary btn-sm">
                 <i class="fas fa-plus mr-1"></i> Tambah OLT HSGQ
             </a>
@@ -66,13 +71,15 @@
                                 <a href="{{ route('olt-connections.show', $connection) }}" class="btn btn-outline-primary btn-sm" title="Lihat Detail">
                                     <i class="fas fa-eye"></i>
                                 </a>
-                                @if(auth()->user()->role !== 'teknisi')
+                                @if($canPollOlt)
                                     <form action="{{ route('olt-connections.poll', $connection) }}" method="POST" class="d-inline">
                                         @csrf
                                         <button type="submit" class="btn btn-outline-success btn-sm" title="Polling Sekarang">
                                             <i class="fas fa-sync-alt"></i>
                                         </button>
                                     </form>
+                                @endif
+                                @if($canManageOlt)
                                     <a href="{{ route('olt-connections.edit', $connection) }}" class="btn btn-outline-warning btn-sm" title="Edit">
                                         <i class="fas fa-pen"></i>
                                     </a>

@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProcessPaidInvoiceSideEffectsJob;
 use App\Models\Invoice;
-use App\Models\TeknisiSetoran;
+use App\Models\PppUser;
 use App\Models\TenantSettings;
 use App\Services\IsolirSynchronizer;
 use App\Services\RadiusReplySynchronizer;
@@ -13,11 +14,13 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 class InvoiceController extends Controller
 {
     use LogsActivity;
+
     public function index(Request $request): View
     {
         return view('invoices.index');
@@ -25,52 +28,63 @@ class InvoiceController extends Controller
 
     public function datatable(Request $request): JsonResponse
     {
-        $user   = $request->user();
+        $user = $request->user();
+        $isTeknisi = $user->role === 'teknisi';
         $search = $request->input('search.value', '');
 
         $query = Invoice::query()
             ->with(['pppUser.profile', 'owner'])
-            ->withCount(['payments as pending_count' => fn($q) => $q->where('status', 'pending')])
+            ->withCount(['payments as pending_count' => fn ($q) => $q->where('status', 'pending')])
             ->accessibleBy($user)
-            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
-            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($search !== '', fn ($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('invoice_number', 'like', "%{$search}%")
-                   ->orWhere('customer_name', 'like', "%{$search}%")
-                   ->orWhere('customer_id', 'like', "%{$search}%");
+                    ->orWhere('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_id', 'like', "%{$search}%");
             }))
             ->orderByDesc('created_at');
 
-        $total    = Invoice::query()->accessibleBy($user)->count();
+        $total = Invoice::query()->accessibleBy($user)->count();
         $filtered = $query->count();
-        $rows     = $query->offset($request->integer('start'))
+        $rows = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
             ->get();
 
+        $this->enforceOverdueIsolationForInvoices($rows);
+
         return response()->json([
-            'draw'            => $request->integer('draw'),
-            'recordsTotal'    => $total,
+            'draw' => $request->integer('draw'),
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(fn($r) => [
-                'id'              => $r->id,
-                'invoice_number'  => $r->invoice_number,
-                'customer_id'     => $r->customer_id ?? '-',
-                'customer_name'   => $r->customer_name ?? '-',
-                'tipe_service'    => strtoupper(str_replace('_', '/', $r->tipe_service ?? '')),
-                'paket_langganan' => $r->paket_langganan ?? '-',
-                'total'           => number_format($r->total, 0, ',', '.'),
-                'due_date'        => $r->due_date ? \Carbon\Carbon::parse($r->due_date)->format('Y-m-d') : '-',
-                'owner_name'      => $r->owner?->name ?? '-',
-                'status'          => $r->status,
-                'has_pending'     => ($r->pending_count ?? 0) > 0,
-                'can_pay'         => $r->status === 'unpaid' && ($r->pending_count ?? 0) === 0,
-                'can_renew'       => $r->status === 'unpaid' && abs($r->created_at->diffInSeconds($r->updated_at)) < 5,
-                'pay_url'         => route('invoices.pay', $r->id),
-                'renew_url'       => route('invoices.renew', $r->id),
-                'destroy_url'     => route('invoices.destroy', $r->id),
-                'show_url'        => route('invoices.show', $r->id),
-                'print_url'       => route('invoices.print', $r->id),
-                'nota_url'        => route('invoices.nota', $r->id),
-            ]),
+            'data' => $rows->map(function (Invoice $r) use ($isTeknisi): array {
+                [$statusLabel, $statusVariant] = $this->resolveInvoiceStatusDisplay($r);
+
+                return [
+                    'id' => $r->id,
+                    'invoice_number' => $r->invoice_number,
+                    'customer_id' => $r->customer_id ?? '-',
+                    'customer_name' => $r->customer_name ?? '-',
+                    'tipe_service' => strtoupper(str_replace('_', '/', $r->tipe_service ?? '')),
+                    'paket_langganan' => $r->paket_langganan ?? '-',
+                    'total' => number_format($r->total, 0, ',', '.'),
+                    'due_date' => $r->due_date ? \Carbon\Carbon::parse($r->due_date)->format('Y-m-d') : '-',
+                    'owner_name' => $r->owner?->name ?? '-',
+                    'status' => $r->status,
+                    'status_label' => $statusLabel,
+                    'status_variant' => $statusVariant,
+                    'has_pending' => ($r->pending_count ?? 0) > 0,
+                    'can_pay' => $r->status === 'unpaid' && ($r->pending_count ?? 0) === 0,
+                    'can_renew' => $r->status === 'unpaid' && abs($r->created_at->diffInSeconds($r->updated_at)) < 5,
+                    'can_nota' => ! $isTeknisi,
+                    'can_delete' => ! $isTeknisi,
+                    'pay_url' => route('invoices.pay', $r->id),
+                    'renew_url' => route('invoices.renew', $r->id),
+                    'destroy_url' => route('invoices.destroy', $r->id),
+                    'show_url' => route('invoices.show', $r->id),
+                    'print_url' => route('invoices.print', $r->id),
+                    'nota_url' => route('invoices.nota', $r->id),
+                ];
+            }),
         ]);
     }
 
@@ -78,14 +92,14 @@ class InvoiceController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
         $invoice->load(['pppUser.profile', 'owner', 'payment']);
 
-        $bankAccounts   = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
-        $settings       = $invoice->owner?->getSettings();
+        $bankAccounts = $invoice->owner?->bankAccounts()->active()->get() ?? collect();
+        $settings = $invoice->owner?->getSettings();
         $pendingPayment = \App\Models\Payment::where('invoice_id', $invoice->id)
             ->where('status', 'pending')
             ->latest()
@@ -98,7 +112,7 @@ class InvoiceController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -113,7 +127,7 @@ class InvoiceController extends Controller
     public function notaBulk(Request $request): View
     {
         $user = auth()->user();
-        $ids  = array_filter(explode(',', $request->input('ids', '')), 'is_numeric');
+        $ids = array_filter(explode(',', $request->input('ids', '')), 'is_numeric');
 
         $invoices = Invoice::query()
             ->with(['pppUser', 'owner'])
@@ -130,7 +144,7 @@ class InvoiceController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $invoice->owner_id !== $user->effectiveOwnerId()) {
             abort(403);
         }
 
@@ -150,55 +164,58 @@ class InvoiceController extends Controller
             abort(403);
         }
 
+        if ($invoice->status === 'paid') {
+            if (request()->wantsJson()) {
+                return response()->json(['status' => 'Invoice sudah dibayar.']);
+            }
+
+            return redirect()->back()->with('status', 'Invoice sudah dibayar.');
+        }
+
+        $paidAt = now();
+        $cashReceived = (float) ($request->input('cash_received') ?: 0);
+        $hasCashReceived = $cashReceived > 0;
+        $wasOnProcess = false;
+        $wasIsolir = false;
+        $pppUserId = null;
+
         $invoice->update([
-            'status'          => 'paid',
-            'paid_at'         => now(),
-            'paid_by'         => $user->id,
-            'cash_received'   => $request->input('cash_received') ?: null,
+            'status' => 'paid',
+            'paid_at' => $paidAt,
+            'paid_by' => $user->id,
+            'cash_received' => $request->input('cash_received') ?: null,
             'transfer_amount' => $request->input('transfer_amount') ?: null,
-            'payment_note'    => $request->input('payment_note') ?: null,
+            'payment_note' => $request->input('payment_note') ?: null,
         ]);
         if ($invoice->pppUser) {
-            $pppUser      = $invoice->pppUser;
+            $pppUser = $invoice->pppUser;
+            $pppUserId = $pppUser->id;
             $wasOnProcess = $pppUser->status_registrasi === 'on_process';
-            $wasIsolir    = $pppUser->status_akun === 'isolir';
+            $wasIsolir = $pppUser->status_akun === 'isolir';
 
             $pppUser->update([
                 'status_bayar' => 'sudah_bayar',
-                'status_akun'  => 'enable',
-                'jatuh_tempo'  => $this->extendDueDate($invoice),
+                'status_akun' => 'enable',
+                'jatuh_tempo' => $this->extendDueDate($invoice),
             ]);
 
             if ($wasOnProcess) {
                 $pppUser->update(['status_registrasi' => 'aktif']);
             }
-
-            $pppUser->refresh();
-            app(RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
-
-            if ($wasIsolir) {
-                app(IsolirSynchronizer::class)->deisolate($pppUser);
-            }
         }
 
         $this->logActivity('paid', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
 
-        $cashReceived = $request->input('cash_received');
-        if ($cashReceived && (float) $cashReceived > 0) {
-            TeknisiSetoran::createOrRecalculateForUser(
-                $user->id,
-                (int) $invoice->owner_id,
-                now()->toDateString()
-            );
-        }
-
-        $settings = TenantSettings::getOrCreate((int) $invoice->owner_id);
-
-        if (isset($wasOnProcess) && $wasOnProcess) {
-            WaNotificationService::notifyRegistration($settings, $pppUser->fresh()->load('profile'));
-        }
-
-        WaNotificationService::notifyInvoicePaid($settings, $invoice->fresh()->load('pppUser'));
+        ProcessPaidInvoiceSideEffectsJob::dispatchAfterResponse(
+            invoiceId: (int) $invoice->id,
+            ownerId: (int) $invoice->owner_id,
+            paidByUserId: (int) $user->id,
+            pppUserId: $pppUserId,
+            wasOnProcess: $wasOnProcess,
+            wasIsolir: $wasIsolir,
+            hasCashReceived: $hasCashReceived,
+            paidDate: $paidAt->toDateString(),
+        );
 
         if (request()->wantsJson()) {
             return response()->json(['status' => 'Invoice dibayar.']);
@@ -219,6 +236,7 @@ class InvoiceController extends Controller
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Invoice sudah dibayar.'], 422);
             }
+
             return redirect()->back()->with('status', 'Invoice sudah dibayar.');
         }
 
@@ -226,6 +244,7 @@ class InvoiceController extends Controller
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Layanan sudah diperpanjang untuk periode ini.'], 422);
             }
+
             return redirect()->back()->with('status', 'Layanan sudah diperpanjang untuk periode ini.');
         }
 
@@ -303,18 +322,20 @@ class InvoiceController extends Controller
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'WhatsApp Gateway belum dikonfigurasi.'], 422);
             }
+
             return redirect()->back()->with('error', 'WhatsApp Gateway belum dikonfigurasi.');
         }
 
         $invoice->load('pppUser');
 
         $pppUser = $invoice->pppUser;
-        $phone   = $pppUser->nomor_hp ?? '';
+        $phone = $pppUser->nomor_hp ?? '';
 
         if (! $pppUser || empty(trim($phone))) {
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Pelanggan tidak ditemukan atau nomor HP tidak tersedia.'], 422);
             }
+
             return redirect()->back()->with('error', 'Pelanggan tidak ditemukan atau nomor HP tidak tersedia.');
         }
 
@@ -324,26 +345,62 @@ class InvoiceController extends Controller
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'WA Gateway tidak dapat diinisialisasi.'], 422);
             }
+
             return redirect()->back()->with('error', 'WA Gateway tidak dapat diinisialisasi.');
         }
 
         if ($invoice->isPaid()) {
             $template = $settings->getTemplate('payment');
-            $paidAt   = $invoice->paid_at ? $invoice->paid_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
-            $message  = str_replace(
-                ['{name}', '{invoice_no}', '{total}', '{paid_at}'],
-                [$invoice->customer_name, $invoice->invoice_number, number_format($invoice->total, 0, ',', '.'), $paidAt],
+            $paidAt = $invoice->paid_at ? $invoice->paid_at->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
+            $customerId = $invoice->customer_id ?? ($pppUser->customer_id ?? '-');
+            $profileName = $invoice->paket_langganan ?? ($pppUser->profile?->name ?? '-');
+            $serviceType = $invoice->tipe_service ? strtoupper($invoice->tipe_service) : strtoupper((string) $pppUser->tipe_service);
+            $csNumber = $settings->business_phone ?? '-';
+            $message = str_replace(
+                ['{name}', '{invoice_no}', '{total}', '{paid_at}', '{customer_id}', '{profile}', '{service}', '{cs_number}'],
+                [
+                    $invoice->customer_name ?? 'Pelanggan',
+                    $invoice->invoice_number,
+                    'Rp '.number_format($invoice->total, 0, ',', '.'),
+                    $paidAt,
+                    $customerId,
+                    $profileName,
+                    $serviceType,
+                    $csNumber,
+                ],
                 $template
             );
         } else {
             $template = $settings->getTemplate('invoice');
-            $message  = str_replace(
-                ['{name}', '{invoice_no}', '{total}', '{due_date}'],
+            $customerId = $invoice->customer_id ?? ($pppUser->customer_id ?? '-');
+            $profileName = $invoice->paket_langganan ?? ($pppUser->profile?->name ?? '-');
+            $serviceType = $invoice->tipe_service ? strtoupper($invoice->tipe_service) : strtoupper((string) $pppUser->tipe_service);
+            $csNumber = $settings->business_phone ?? '-';
+            $bankAccounts = $invoice->owner?->bankAccounts()->active()->get()
+                ?? \App\Models\BankAccount::where('user_id', $invoice->owner_id)->where('is_active', true)->get();
+            $bankLines = $bankAccounts->map(fn ($b) => $b->bank_name.' '.$b->account_number.' a/n '.$b->account_name)->join("\n");
+            if (empty(trim($bankLines))) {
+                $bankLines = '-';
+            }
+
+            if (empty($invoice->payment_token)) {
+                $invoice->update(['payment_token' => Invoice::generatePaymentToken()]);
+            }
+            $paymentLink = route('customer.invoice', $invoice->payment_token);
+
+            $message = str_replace(
+                ['{name}', '{invoice_no}', '{total}', '{due_date}', '{customer_id}', '{profile}', '{service}', '{cs_number}', '{bank_account}', '{payment_link}'],
                 [
-                    $invoice->customer_name,
+                    $invoice->customer_name ?? 'Pelanggan',
                     $invoice->invoice_number,
-                    number_format($invoice->total, 0, ',', '.'),
+                    'Rp '.number_format($invoice->total, 0, ',', '.'),
                     $invoice->due_date ? $invoice->due_date->format('d/m/Y') : '-',
+                    $customerId,
+                    $profileName,
+                    $serviceType,
+                    $csNumber,
+                    $bankLines,
+                    $paymentLink,
                 ],
                 $template
             );
@@ -354,10 +411,88 @@ class InvoiceController extends Controller
         $this->logActivity('send_wa', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
 
         if (request()->wantsJson()) {
-            return response()->json(['status' => 'Notifikasi WhatsApp berhasil dikirim ke ' . $phone]);
+            return response()->json(['status' => 'Notifikasi WhatsApp berhasil dikirim ke '.$phone]);
         }
 
-        return redirect()->back()->with('status', 'Notifikasi WhatsApp berhasil dikirim ke ' . $phone);
+        return redirect()->back()->with('status', 'Notifikasi WhatsApp berhasil dikirim ke '.$phone);
+    }
+
+    /**
+     * @param  Collection<int, Invoice>  $invoices
+     */
+    private function enforceOverdueIsolationForInvoices(Collection $invoices): void
+    {
+        $today = now()->toDateString();
+
+        $candidates = $invoices
+            ->pluck('pppUser')
+            ->filter(static fn ($pppUser): bool => $pppUser instanceof PppUser)
+            ->unique('id')
+            ->filter(static function (PppUser $pppUser) use ($today): bool {
+                if ($pppUser->status_akun !== 'enable') {
+                    return false;
+                }
+
+                if ($pppUser->status_bayar !== 'belum_bayar') {
+                    return false;
+                }
+
+                if ($pppUser->aksi_jatuh_tempo !== 'isolir') {
+                    return false;
+                }
+
+                if (! $pppUser->jatuh_tempo) {
+                    return false;
+                }
+
+                return $pppUser->jatuh_tempo->toDateString() <= $today;
+            });
+
+        if ($candidates->isEmpty()) {
+            return;
+        }
+
+        $settingsCache = [];
+        $radiusSync = app(RadiusReplySynchronizer::class);
+        $isolirSync = app(IsolirSynchronizer::class);
+
+        foreach ($candidates as $pppUser) {
+            $ownerId = (int) $pppUser->owner_id;
+
+            if (! isset($settingsCache[$ownerId])) {
+                $settingsCache[$ownerId] = TenantSettings::getOrCreate($ownerId);
+            }
+
+            if (! $settingsCache[$ownerId]->auto_isolate_unpaid) {
+                continue;
+            }
+
+            try {
+                $pppUser->update(['status_akun' => 'isolir']);
+                $pppUser->refresh();
+
+                $radiusSync->syncSingleUser($pppUser);
+                $isolirSync->isolate($pppUser);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function resolveInvoiceStatusDisplay(Invoice $invoice): array
+    {
+        if ($invoice->status === 'paid') {
+            return ['Lunas', 'success'];
+        }
+
+        if ($invoice->pppUser?->status_akun === 'isolir') {
+            return ['Belum Bayar - Terisolir', 'danger'];
+        }
+
+        return ['Belum Bayar', 'warning'];
     }
 
     private function extendDueDate(Invoice $invoice): Carbon

@@ -45,45 +45,45 @@ class UserManagementController extends Controller
 
     public function datatable(Request $request): JsonResponse
     {
-        $user   = auth()->user();
+        $user = auth()->user();
         $this->authorizeAccess($user);
 
         $search = $request->input('search.value', '');
 
         $query = User::query()
             ->with('parent')
-            ->when(! $user->isSuperAdmin(), fn($q) => $q->where('parent_id', $user->id))
-            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+            ->when(! $user->isSuperAdmin(), fn ($q) => $q->where('parent_id', $user->id))
+            ->when($search !== '', fn ($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('name', 'like', "%{$search}%")
-                   ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%");
             }))
             ->latest();
 
-        $total    = User::query()
-            ->when(! $user->isSuperAdmin(), fn($q) => $q->where('parent_id', $user->id))
+        $total = User::query()
+            ->when(! $user->isSuperAdmin(), fn ($q) => $q->where('parent_id', $user->id))
             ->count();
         $filtered = $query->count();
-        $rows     = $query->offset($request->integer('start'))
+        $rows = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
             ->get();
 
         return response()->json([
-            'draw'            => $request->integer('draw'),
-            'recordsTotal'    => $total,
+            'draw' => $request->integer('draw'),
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(fn($r) => [
-                'id'            => $r->id,
-                'name'          => $r->name,
-                'email'         => $r->email,
-                'role'          => strtoupper(str_replace('_', ' ', $r->role ?? '-')),
-                'tenant'        => $r->is_super_admin
+            'data' => $rows->map(fn ($r) => [
+                'id' => $r->id,
+                'name' => $r->name,
+                'email' => $r->email,
+                'role' => strtoupper(str_replace('_', ' ', $r->role ?? '-')),
+                'tenant' => $r->is_super_admin
                     ? '<span class="badge badge-dark">Super Admin</span>'
                     : ($r->parent_id === null
                         ? '<span class="badge badge-primary">Tenant Admin</span>'
                         : e($r->parent->name ?? '-')),
                 'last_login_at' => $r->last_login_at?->format('Y-m-d H:i:s') ?? '-',
-                'edit_url'      => route('users.edit', $r->id),
-                'destroy_url'   => route('users.destroy', $r->id),
+                'edit_url' => route('users.edit', $r->id),
+                'destroy_url' => route('users.destroy', $r->id),
             ]),
         ]);
     }
@@ -110,10 +110,13 @@ class UserManagementController extends Controller
             // Tenant admin creates sub-users under themselves
             $data['parent_id'] = $user->id;
             // Inherit subscription from parent tenant
-            $data['subscription_status']    = $user->subscription_status;
+            $data['subscription_status'] = $user->subscription_status;
             $data['subscription_expires_at'] = $user->subscription_expires_at;
-            $data['subscription_plan_id']   = $user->subscription_plan_id;
-            $data['trial_days_remaining']   = $user->trial_days_remaining;
+            $data['subscription_plan_id'] = $user->subscription_plan_id;
+            $data['subscription_method'] = $user->subscription_method;
+            $data['license_max_mikrotik'] = $user->license_max_mikrotik;
+            $data['license_max_ppp_users'] = $user->license_max_ppp_users;
+            $data['trial_days_remaining'] = $user->trial_days_remaining;
             // Prevent creating administrator-level or super admin accounts
             if (($data['role'] ?? '') === 'administrator') {
                 $data['role'] = 'it_support';
@@ -182,11 +185,11 @@ class UserManagementController extends Controller
     {
         return [
             'administrator' => 'Administrator',
-            'it_support'    => 'IT Support',
-            'noc'           => 'NOC',
-            'keuangan'      => 'Keuangan',
-            'mitra'         => 'Mitra',
-            'teknisi'       => 'Teknisi',
+            'it_support' => 'IT Support',
+            'noc' => 'NOC',
+            'keuangan' => 'Keuangan',
+            'mitra' => 'Mitra',
+            'teknisi' => 'Teknisi',
         ];
     }
 
@@ -194,10 +197,10 @@ class UserManagementController extends Controller
     {
         return [
             'it_support' => 'IT Support',
-            'noc'        => 'NOC',
-            'keuangan'   => 'Keuangan',
-            'mitra'      => 'Mitra',
-            'teknisi'    => 'Teknisi',
+            'noc' => 'NOC',
+            'keuangan' => 'Keuangan',
+            'mitra' => 'Mitra',
+            'teknisi' => 'Teknisi',
         ];
     }
 }

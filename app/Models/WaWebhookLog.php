@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WaWebhookLog extends Model
 {
     protected $fillable = [
+        'owner_id',
         'event_type',
         'session_id',
         'sender',
@@ -30,5 +32,19 @@ class WaWebhookLog extends Model
     public function scopeSessions($query)
     {
         return $query->where('event_type', 'session');
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function scopeAccessibleBy($query, User $user)
+    {
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+
+        return $query->where('owner_id', $user->effectiveOwnerId());
     }
 }

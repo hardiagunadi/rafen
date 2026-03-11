@@ -38,8 +38,28 @@
                         </span>
                     </li>
                     <li class="list-group-item">
+                        <b>Metode</b>
+                        <a class="float-right">
+                            {{ $tenant->isLicenseSubscription() ? 'Lisensi Tahunan' : 'Bulanan' }}
+                        </a>
+                    </li>
+                    <li class="list-group-item">
                         <b>Paket</b> <a class="float-right">{{ $tenant->subscriptionPlan->name ?? '-' }}</a>
                     </li>
+                    @if($tenant->isLicenseSubscription())
+                    <li class="list-group-item">
+                        <b>Limit Mikrotik</b>
+                        <a class="float-right">
+                            {{ $tenant->license_max_mikrotik === -1 ? 'Unlimited' : ($tenant->license_max_mikrotik ?? '-') }}
+                        </a>
+                    </li>
+                    <li class="list-group-item">
+                        <b>Limit PPP Users</b>
+                        <a class="float-right">
+                            {{ $tenant->license_max_ppp_users === -1 ? 'Unlimited' : ($tenant->license_max_ppp_users ?? '-') }}
+                        </a>
+                    </li>
+                    @endif
                     <li class="list-group-item">
                         <b>Berakhir</b>
                         <a class="float-right">
@@ -335,7 +355,7 @@
                         <select name="plan_id" id="changePlanSelect" class="form-control" required>
                             @foreach(\App\Models\SubscriptionPlan::active()->orderBy('sort_order')->get() as $plan)
                             <option value="{{ $plan->id }}" {{ $tenant->subscription_plan_id == $plan->id ? 'selected' : '' }}>
-                                {{ $plan->name }} — Rp {{ number_format($plan->price, 0, ',', '.') }} / {{ $plan->duration_days }} hari
+                                {{ $plan->name }} — Rp {{ number_format($plan->price, 0, ',', '.') }} / {{ $tenant->resolveSubscriptionDurationDays($plan) }} hari
                             </option>
                             @endforeach
                         </select>
@@ -414,10 +434,16 @@
                             @endforeach
                         </select>
                     </div>
+                    @if($tenant->isLicenseSubscription())
+                    <div class="alert alert-info mb-0">
+                        Tenant ini menggunakan metode lisensi tahunan. Durasi aktivasi otomatis 365 hari.
+                    </div>
+                    @else
                     <div class="form-group">
                         <label>Durasi (hari)</label>
                         <input type="number" name="duration_days" class="form-control" placeholder="Kosongkan untuk default paket">
                     </div>
+                    @endif
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
@@ -439,10 +465,17 @@
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body">
+                    @if($tenant->isLicenseSubscription())
+                    <input type="hidden" name="days" value="365">
+                    <div class="alert alert-info mb-0">
+                        Tenant ini menggunakan metode lisensi tahunan. Perpanjangan akan menambah 365 hari.
+                    </div>
+                    @else
                     <div class="form-group">
                         <label>Tambah Hari</label>
                         <input type="number" name="days" class="form-control" value="30" min="1" max="365" required>
                     </div>
+                    @endif
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
@@ -452,7 +485,7 @@
         </div>
     </div>
 </div>
-@push('js')
+@push('scripts')
 <script>
 // Change plan prorated preview
 var previewUrl = '{{ route("super-admin.tenants.change-plan.preview", $tenant) }}';

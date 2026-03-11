@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreUserRequest;
-use App\Models\User;
 use App\Models\TenantSettings;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -33,6 +33,7 @@ class RegisterController extends Controller
             'role' => 'administrator',
             'is_super_admin' => false,
             'subscription_status' => 'trial',
+            'subscription_method' => User::SUBSCRIPTION_METHOD_MONTHLY,
             'trial_days_remaining' => 14,
             'registered_at' => now(),
             'phone' => $data['phone'] ?? null,

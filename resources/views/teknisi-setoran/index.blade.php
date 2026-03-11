@@ -30,6 +30,14 @@
                         <th class="text-right" style="width:100px;">Aksi</th>
                     </tr>
                 </thead>
+                <tfoot>
+                    <tr class="font-weight-bold bg-light">
+                        <td colspan="3" class="text-right">Total</td>
+                        <td class="text-right" id="setoran-total-tagihan">Rp 0</td>
+                        <td class="text-right text-success" id="setoran-total-cash">Rp 0</td>
+                        <td colspan="3"></td>
+                    </tr>
+                </tfoot>
                 <tbody></tbody>
             </table>
         </div>
@@ -39,6 +47,10 @@
 <script>
 (function () {
     var ROLE = '{{ auth()->user()->role }}';
+    var currentSummary = {
+        total_tagihan_formatted: '0',
+        total_cash_formatted: '0',
+    };
 
     function statusBadge(status) {
         var map = {
@@ -53,13 +65,31 @@
         if (!document.getElementById('setoran-table')) return;
         if ($.fn.DataTable.isDataTable('#setoran-table')) return;
 
+        function renderFooterTotals() {
+            var totalTagihanElement = document.getElementById('setoran-total-tagihan');
+            var totalCashElement = document.getElementById('setoran-total-cash');
+            if (totalTagihanElement) {
+                totalTagihanElement.textContent = 'Rp ' + (currentSummary.total_tagihan_formatted || '0');
+            }
+            if (totalCashElement) {
+                totalCashElement.textContent = 'Rp ' + (currentSummary.total_cash_formatted || '0');
+            }
+        }
+
         var table = $('#setoran-table').DataTable({
             processing: true, serverSide: true,
             ajax: {
                 url: '{{ route("teknisi-setoran.datatable") }}',
                 data: function (d) {
                     d.status = $('#filter-status').val();
-                }
+                },
+                dataSrc: function (json) {
+                    currentSummary = json && json.summary ? json.summary : {
+                        total_tagihan_formatted: '0',
+                        total_cash_formatted: '0',
+                    };
+                    return json.data || [];
+                },
             },
             columns: [
                 { data: 'period_date' },
@@ -74,6 +104,9 @@
                 }},
             ],
             pageLength: 20, stateSave: false, order: [[0, 'desc']],
+            drawCallback: function () {
+                renderFooterTotals();
+            },
         });
 
         $('#filter-status').on('change', function () { table.ajax.reload(); });

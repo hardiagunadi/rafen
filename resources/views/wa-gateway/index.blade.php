@@ -81,6 +81,13 @@
                             placeholder="Masukkan master key (jika ada)" autocomplete="off">
                         <small class="text-muted">Token perangkat wajib diisi. Key hanya opsional jika gateway Anda mengaktifkan master key.</small>
                     </div>
+                    <div class="form-group">
+                        <label>Webhook Secret Tenant</label>
+                        <input type="text" name="wa_webhook_secret" class="form-control font-monospace"
+                            value="{{ old('wa_webhook_secret', $settings->wa_webhook_secret) }}"
+                            placeholder="Kosongkan untuk auto-generate saat simpan" autocomplete="off">
+                        <small class="text-muted">Digunakan untuk identifikasi tenant pada endpoint webhook bersama. Karakter yang diizinkan: huruf, angka, underscore, dash.</small>
+                    </div>
 
                     <button type="button" class="btn btn-info btn-sm mb-2" id="btn-test-wa" onclick="testWaGateway()">
                         <i class="fas fa-plug"></i> Test Koneksi
@@ -95,11 +102,15 @@
 
                     {{-- Webhook --}}
                     <h6 class="text-muted text-uppercase mb-3" style="font-size:0.75rem;letter-spacing:.08em">Webhook</h6>
+                    @php
+                        $webhookTenantId = $settings->user_id ?? auth()->user()->effectiveOwnerId();
+                        $webhookSecret = old('wa_webhook_secret', $settings->wa_webhook_secret) ?: 'ISI_SECRET_DULU';
+                    @endphp
                     <div class="alert alert-light border">
-                        <p class="mb-2 small"><strong>Konfigurasi di WA Gateway:</strong> set <code>webhookBaseUrl</code> ke nilai berikut:</p>
+                        <p class="mb-2 small"><strong>Konfigurasi di WA Gateway:</strong> set <code>webhookBaseUrl</code> tenant ke nilai berikut:</p>
                         <div class="input-group input-group-sm mb-1">
                             <div class="input-group-prepend"><span class="input-group-text">Base URL</span></div>
-                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_base" value="{{ url('/webhook/wa') }}" readonly>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_base" value="{{ route('wa.webhook.ingest.tenant', ['tenant' => $webhookTenantId, 'secret' => $webhookSecret]) }}" readonly>
                             <div class="input-group-append">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_base')"><i class="fas fa-copy"></i></button>
                             </div>
@@ -107,33 +118,34 @@
                         <p class="mb-2 small">Endpoint event yang dipanggil gateway:</p>
                         <div class="input-group input-group-sm mb-1">
                             <div class="input-group-prepend"><span class="input-group-text">Session</span></div>
-                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_session" value="{{ url('/webhook/wa/session') }}" readonly>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_session" value="{{ route('wa.webhook.session.tenant', ['tenant' => $webhookTenantId, 'secret' => $webhookSecret]) }}" readonly>
                             <div class="input-group-append">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_session')"><i class="fas fa-copy"></i></button>
                             </div>
                         </div>
                         <div class="input-group input-group-sm mb-1">
                             <div class="input-group-prepend"><span class="input-group-text">Message</span></div>
-                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_message" value="{{ url('/webhook/wa/message') }}" readonly>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_message" value="{{ route('wa.webhook.message.tenant', ['tenant' => $webhookTenantId, 'secret' => $webhookSecret]) }}" readonly>
                             <div class="input-group-append">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_message')"><i class="fas fa-copy"></i></button>
                             </div>
                         </div>
                         <div class="input-group input-group-sm mb-1">
                             <div class="input-group-prepend"><span class="input-group-text">Auto Reply</span></div>
-                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_auto_reply" value="{{ url('/webhook/wa/auto-reply') }}" readonly>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_auto_reply" value="{{ route('wa.webhook.auto-reply.tenant', ['tenant' => $webhookTenantId, 'secret' => $webhookSecret]) }}" readonly>
                             <div class="input-group-append">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_auto_reply')"><i class="fas fa-copy"></i></button>
                             </div>
                         </div>
                         <div class="input-group input-group-sm">
                             <div class="input-group-prepend"><span class="input-group-text">Status</span></div>
-                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_status" value="{{ url('/webhook/wa/status') }}" readonly>
+                            <input type="text" class="form-control form-control-sm font-monospace" id="webhook_url_status" value="{{ route('wa.webhook.status.tenant', ['tenant' => $webhookTenantId, 'secret' => $webhookSecret]) }}" readonly>
                             <div class="input-group-append">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyText('webhook_url_status')"><i class="fas fa-copy"></i></button>
                             </div>
                         </div>
                         <p class="text-muted small mt-2 mb-0">Penting: isi field gateway dengan <code>Base URL</code> saja, jangan sampai berakhiran <code>/message</code> atau <code>/session</code>.</p>
+                        <p class="text-muted small mt-1 mb-0">Jika masih muncul <code>ISI_SECRET_DULU</code> pada URL, simpan konfigurasi dulu agar secret otomatis dibuat.</p>
                         <p class="text-muted small mt-1 mb-0">Kompatibel juga dengan endpoint standar docs: <code>{{ url('/webhook/session') }}</code>, <code>{{ url('/webhook/message') }}</code>, <code>{{ url('/webhook/auto-reply') }}</code>, dan <code>{{ url('/webhook/status') }}</code>.</p>
                         <p class="text-muted small mt-1 mb-0">Log pesan masuk tersedia di menu <strong>Log → Log WA Blast</strong>.</p>
                     </div>
@@ -220,8 +232,10 @@
                         <code>{paid_at}</code> Waktu bayar &nbsp;
                         <code>{cs_number}</code> Nomor CS (dari Pengaturan) &nbsp;
                         <code>{bank_account}</code> Info rekening bank &nbsp;
+                        <code>{payment_link}</code> Link bayar pelanggan &nbsp;
                         <code>{username}</code> Username PPP
                     </div>
+                    <p class="text-muted small mb-2">Rotasi template aktif otomatis. Jika ingin custom beberapa versi pesan, pisahkan setiap versi dengan baris <code>---</code> dalam kolom template yang sama.</p>
                     <p class="text-muted small mb-3">Tombol <strong>Test Kirim</strong> mengirim pesan ke nomor HP bisnis (CS) dengan data dummy. Simpan dulu sebelum test agar template terbaru digunakan.</p>
 
                     <div class="form-group">
@@ -233,7 +247,7 @@
                         </div>
                         <textarea name="wa_template_registration" class="form-control" rows="6"
                             placeholder="{{ $settings->getDefaultTemplate('registration') }}">{{ old('wa_template_registration', $settings->wa_template_registration) }}</textarea>
-                        <small class="text-muted">Kosongkan untuk menggunakan template default.</small>
+                        <small class="text-muted">Kosongkan untuk template default humanis + rotasi otomatis.</small>
                         <div class="test-template-result mt-1" data-for="registration"></div>
                     </div>
                     <div class="form-group">
@@ -245,7 +259,7 @@
                         </div>
                         <textarea name="wa_template_invoice" class="form-control" rows="6"
                             placeholder="{{ $settings->getDefaultTemplate('invoice') }}">{{ old('wa_template_invoice', $settings->wa_template_invoice) }}</textarea>
-                        <small class="text-muted">Kosongkan untuk menggunakan template default.</small>
+                        <small class="text-muted">Kosongkan untuk template default humanis + rotasi otomatis.</small>
                         <div class="test-template-result mt-1" data-for="invoice"></div>
                     </div>
                     <div class="form-group">
@@ -257,7 +271,7 @@
                         </div>
                         <textarea name="wa_template_payment" class="form-control" rows="6"
                             placeholder="{{ $settings->getDefaultTemplate('payment') }}">{{ old('wa_template_payment', $settings->wa_template_payment) }}</textarea>
-                        <small class="text-muted">Kosongkan untuk menggunakan template default.</small>
+                        <small class="text-muted">Kosongkan untuk template default humanis + rotasi otomatis.</small>
                         <div class="test-template-result mt-1" data-for="payment"></div>
                     </div>
 

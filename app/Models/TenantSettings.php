@@ -10,6 +10,8 @@ class TenantSettings extends Model
 {
     use HasFactory;
 
+    public const TEMPLATE_ROTATION_SEPARATOR = '---';
+
     protected $fillable = [
         'user_id',
         'business_name',
@@ -162,23 +164,42 @@ class TenantSettings extends Model
     }
 
     /**
-     * Default template untuk tiap tipe notifikasi.
+     * @return array<int, string>
      */
-    public function getDefaultTemplate(string $type): string
+    public function getDefaultTemplateVariants(string $type): array
     {
         return match ($type) {
-            'registration' => "*#Konfirmasi Registrasi Pelanggan*\n\n*Kepada Yth Bapak/Ibu {name}*,\nTerima kasih telah menjadi pelanggan kami. Kami sangat berterima kasih dan berharap kami dapat memberikan layanan terbaik kepada Anda\nBerikut informasi data registrasi anda :\n\n*Nama Lengkap : {name}*\n*Id Pelanggan : {customer_id}*\n*Paket Layanan : {profile}*\n*Tipe Pengguna : {service}*\n*Harga Paket : {total}*\n\nUntuk menghindari terisolirnya layanan anda, harap selalu bayarkan tagihan sebelum tanggal jatuh tempo\n\nUntuk informasi lainnya silahkan hubungi nomor *_Whatsapp {cs_number}_* untuk bantuan Customer Service\n\n*_Salam Hormat_*.",
-            'invoice' => "*##Invoice anda sudah diterbitkan*\n\nKepada Yth Bapak/Ibu *{name}*,\nBerikut ini merupakan pengingat tagihan anda dengan nomor invoice : {invoice_no}\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJatuh Tempo : *{due_date}*\nJumlah : *{total}*\n\nBayar tagihan langsung melalui link berikut:\n*{payment_link}*\n\nAtau transfer ke rekening berikut:\n{bank_account}\n\nMohon sertakan ID PELANGGAN pada konfirmasi pembayaran anda\n\nUntuk informasi lainnya silahkan hubungi nomor *_Whatsapp {cs_number}_* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
-            'payment' => "*### Terima kasih atas pembayaran anda*\n\nKepada Yth Bapak/Ibu *{name}*,\nTerima kasih telah melunasi pembayaran invoice {invoice_no}\nBerikut informasi perpanjangan paket anda :\n\nId Pelanggan : {customer_id}\nPaket Layanan : {profile}\nTipe Pembayaran : {service}\nJumlah Dibayarkan: *{total}*\n\n_Silahkan hubungi kami jika layanan anda masih terputus setelah membaca pesan ini_\n\nUntuk informasi lainnya silahkan hubungi nomor *Whatsapp {cs_number}* untuk bantuan Customer Service\n\n_*Salam Hormat*_.",
-            'on_process' => "*#Pendaftaran Sedang Diproses*\n\nHalo *{name}*,\n\nTerima kasih telah mendaftar sebagai pelanggan kami. Pendaftaran Anda sedang dalam proses verifikasi.\n\nDetail layanan:\n- ID Pelanggan: *{customer_id}*\n- Paket: *{profile}*\n- Tipe: *{service}*\n- Tagihan: *Rp {total}*\n\nSilakan lakukan pembayaran ke rekening berikut agar layanan Anda segera diaktifkan:\n\n{bank_account}\n\nMohon sertakan *ID Pelanggan* pada keterangan transfer.\n\nInfo & bantuan: *{cs_number}*\n\n_*Salam Hormat*_.",
-            default => '',
+            'registration' => [
+                "Halo Bapak/Ibu {name},\n\nTerima kasih sudah bergabung bersama layanan kami.\nBerikut data registrasi Anda:\n- ID Pelanggan: {customer_id}\n- Username: {username}\n- Paket: {profile}\n- Tipe Layanan: {service}\n- Biaya Paket: {total}\n- Jatuh Tempo: {due_date}\n\nKalau ada pertanyaan, silakan hubungi CS kami di {cs_number}.",
+                "Selamat datang Bapak/Ibu {name},\n\nPendaftaran internet Anda sudah kami catat dengan detail berikut:\n- ID Pelanggan: {customer_id}\n- Username: {username}\n- Paket: {profile}\n- Jenis Layanan: {service}\n- Biaya: {total}\n\nAgar layanan tetap aktif, mohon lakukan pembayaran sebelum jatuh tempo. Kami siap bantu di {cs_number}.",
+                "Permisi Bapak/Ibu {name},\n\nRegistrasi Anda berhasil diproses.\nRingkasan akun:\n- ID Pelanggan: {customer_id}\n- Username: {username}\n- Paket: {profile}\n- Layanan: {service}\n- Harga Paket: {total}\n\nTerima kasih atas kepercayaannya. Jika perlu bantuan cepat, hubungi {cs_number}.",
+            ],
+            'invoice' => [
+                "Halo Bapak/Ibu {name},\n\nTagihan Anda sudah terbit dengan nomor {invoice_no}.\n- ID Pelanggan: {customer_id}\n- Paket: {profile}\n- Tipe Layanan: {service}\n- Jatuh Tempo: {due_date}\n- Total Tagihan: {total}\n\nPembayaran bisa langsung melalui link berikut:\n{payment_link}\n\nAtau transfer ke rekening:\n{bank_account}\n\nJika sudah transfer, mohon sertakan ID pelanggan saat konfirmasi ke {cs_number}.",
+                "Selamat siang Bapak/Ibu {name},\n\nIzin mengingatkan, invoice {invoice_no} sudah kami terbitkan.\n- ID Pelanggan: {customer_id}\n- Paket Langganan: {profile}\n- Jatuh Tempo: {due_date}\n- Tagihan: {total}\n\nBayar online:\n{payment_link}\n\nRekening pembayaran:\n{bank_account}\n\nKami siap bantu di {cs_number}.",
+                "Halo Bapak/Ibu {name},\n\nBerikut ringkasan tagihan bulan ini:\n- No Invoice: {invoice_no}\n- ID Pelanggan: {customer_id}\n- Paket: {profile}\n- Tipe Layanan: {service}\n- Jatuh Tempo: {due_date}\n- Total: {total}\n\nLink pembayaran:\n{payment_link}\n\nJika transfer manual, gunakan rekening berikut:\n{bank_account}\n\nInfo lanjutan dapat menghubungi {cs_number}.",
+            ],
+            'payment' => [
+                "Halo Bapak/Ibu {name},\n\nTerima kasih, pembayaran invoice {invoice_no} sudah kami terima.\n- ID Pelanggan: {customer_id}\n- Paket: {profile}\n- Tipe Layanan: {service}\n- Total Dibayar: {total}\n- Waktu Konfirmasi: {paid_at}\n\nBila layanan masih belum normal, silakan hubungi {cs_number}.",
+                "Terima kasih Bapak/Ibu {name},\n\nPembayaran Anda untuk invoice {invoice_no} sudah berhasil dikonfirmasi.\n- ID Pelanggan: {customer_id}\n- Paket: {profile}\n- Jumlah: {total}\n- Dikonfirmasi pada: {paid_at}\n\nKalau ada kendala, tim kami siap membantu di {cs_number}.",
+                "Kabar baik Bapak/Ibu {name},\n\nTagihan {invoice_no} sudah dinyatakan lunas.\n- ID Pelanggan: {customer_id}\n- Layanan: {service}\n- Paket: {profile}\n- Pembayaran: {total}\n- Waktu: {paid_at}\n\nTerima kasih atas pembayaran tepat waktunya. Bantuan cepat: {cs_number}.",
+            ],
+            'on_process' => [
+                "Halo Bapak/Ibu {name},\n\nPendaftaran Anda sedang kami proses.\nDetail sementara:\n- ID Pelanggan: {customer_id}\n- Paket: {profile}\n- Tipe Layanan: {service}\n- Tagihan Awal: {total}\n\nSilakan lakukan pembayaran ke rekening berikut agar layanan dapat segera diaktifkan:\n{bank_account}\n\nMohon cantumkan ID Pelanggan saat transfer. Jika ada pertanyaan, hubungi {cs_number}.",
+            ],
+            default => [],
         };
     }
 
+    public function getDefaultTemplate(string $type): string
+    {
+        return $this->getDefaultTemplateVariants($type)[0] ?? '';
+    }
+
     /**
-     * Ambil template (custom jika ada, default jika tidak).
+     * @return array<int, string>
      */
-    public function getTemplate(string $type): string
+    public function getTemplateVariants(string $type): array
     {
         $custom = match ($type) {
             'registration' => $this->wa_template_registration,
@@ -188,7 +209,38 @@ class TenantSettings extends Model
             default => null,
         };
 
-        return ! empty($custom) ? $custom : $this->getDefaultTemplate($type);
+        $customVariants = $this->splitTemplateVariants($custom);
+        if ($customVariants !== []) {
+            return $customVariants;
+        }
+
+        return $this->getDefaultTemplateVariants($type);
+    }
+
+    public function getTemplate(string $type): string
+    {
+        return $this->getTemplateVariants($type)[0] ?? '';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function splitTemplateVariants(?string $template): array
+    {
+        $template = trim((string) $template);
+        if ($template === '') {
+            return [];
+        }
+
+        $pattern = '/\R\s*'.preg_quote(self::TEMPLATE_ROTATION_SEPARATOR, '/').'\s*\R/u';
+        $parts = preg_split($pattern, $template) ?: [];
+        $variants = array_values(array_filter(array_map(static fn (string $part): string => trim($part), $parts), static fn (string $part): bool => $part !== ''));
+
+        if ($variants === []) {
+            return [$template];
+        }
+
+        return $variants;
     }
 
     public function hasMidtransConfigured(): bool

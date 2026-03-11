@@ -90,6 +90,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::post('olt-connections/auto-detect-model', [OltConnectionController::class, 'autoDetectModel'])->name('olt-connections.auto-detect-model');
     Route::post('olt-connections/auto-detect-oid', [OltConnectionController::class, 'autoDetectOid'])->name('olt-connections.auto-detect-oid');
     Route::post('olt-connections/{oltConnection}/poll', [OltConnectionController::class, 'poll'])->name('olt-connections.poll');
+    Route::get('olt-connections/{oltConnection}/polling-status', [OltConnectionController::class, 'pollingStatus'])->name('olt-connections.polling-status');
     Route::get('olt-connections/{oltConnection}/datatable', [OltConnectionController::class, 'datatable'])->name('olt-connections.datatable');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
     Route::resource('mikrotik-connections', MikrotikConnectionController::class);
@@ -313,14 +314,26 @@ Route::post('/subscription/payment/callback', [SubscriptionController::class, 'p
 
 // WA Gateway Webhooks (no auth required)
 // GET = verification ping from gateway, POST = actual webhook payload
+Route::match(['GET', 'POST'], '/webhook/wa', [WaWebhookController::class, 'ingest'])->name('wa.webhook.ingest');
 Route::match(['GET', 'POST'], '/webhook/wa/session', [WaWebhookController::class, 'session'])->name('wa.webhook.session');
 Route::match(['GET', 'POST'], '/webhook/wa/message', [WaWebhookController::class, 'message'])->name('wa.webhook.message');
 Route::match(['GET', 'POST'], '/webhook/wa/auto-reply', [WaWebhookController::class, 'autoReply'])->name('wa.webhook.auto-reply');
 Route::match(['GET', 'POST'], '/webhook/wa/status', [WaWebhookController::class, 'status'])->name('wa.webhook.status');
+Route::match(['GET', 'POST'], '/webhook/wa/{tenant}/{secret}', [WaWebhookController::class, 'ingest'])->whereNumber('tenant')->name('wa.webhook.ingest.tenant');
+Route::match(['GET', 'POST'], '/webhook/wa/{tenant}/{secret}/session', [WaWebhookController::class, 'session'])->whereNumber('tenant')->name('wa.webhook.session.tenant');
+Route::match(['GET', 'POST'], '/webhook/wa/{tenant}/{secret}/message', [WaWebhookController::class, 'message'])->whereNumber('tenant')->name('wa.webhook.message.tenant');
+Route::match(['GET', 'POST'], '/webhook/wa/{tenant}/{secret}/auto-reply', [WaWebhookController::class, 'autoReply'])->whereNumber('tenant')->name('wa.webhook.auto-reply.tenant');
+Route::match(['GET', 'POST'], '/webhook/wa/{tenant}/{secret}/status', [WaWebhookController::class, 'status'])->whereNumber('tenant')->name('wa.webhook.status.tenant');
+Route::match(['GET', 'POST'], '/webhook', [WaWebhookController::class, 'ingest'])->name('wa.webhook.ingest.compat');
 Route::match(['GET', 'POST'], '/webhook/session', [WaWebhookController::class, 'session'])->name('wa.webhook.session.compat');
 Route::match(['GET', 'POST'], '/webhook/message', [WaWebhookController::class, 'message'])->name('wa.webhook.message.compat');
 Route::match(['GET', 'POST'], '/webhook/auto-reply', [WaWebhookController::class, 'autoReply'])->name('wa.webhook.auto-reply.compat');
 Route::match(['GET', 'POST'], '/webhook/status', [WaWebhookController::class, 'status'])->name('wa.webhook.status.compat');
+Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}', [WaWebhookController::class, 'ingest'])->whereNumber('tenant')->name('wa.webhook.ingest.tenant.compat');
+Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/session', [WaWebhookController::class, 'session'])->whereNumber('tenant')->name('wa.webhook.session.tenant.compat');
+Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/message', [WaWebhookController::class, 'message'])->whereNumber('tenant')->name('wa.webhook.message.tenant.compat');
+Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/auto-reply', [WaWebhookController::class, 'autoReply'])->whereNumber('tenant')->name('wa.webhook.auto-reply.tenant.compat');
+Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/status', [WaWebhookController::class, 'status'])->whereNumber('tenant')->name('wa.webhook.status.tenant.compat');
 
 // Super Admin Routes
 Route::middleware(['auth', \App\Http\Middleware\SuperAdminMiddleware::class])->prefix('super-admin')->name('super-admin.')->group(function () {

@@ -6,8 +6,9 @@ use App\Http\Requests\StoreMikrotikConnectionRequest;
 use App\Http\Requests\TestMikrotikConnectionRequest;
 use App\Http\Requests\UpdateMikrotikConnectionRequest;
 use App\Models\MikrotikConnection;
-use App\Services\MikrotikPingService;
+use App\Models\User;
 use App\Services\IsolirSynchronizer;
+use App\Services\MikrotikPingService;
 use App\Services\RadiusClientsSynchronizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -33,64 +34,64 @@ class MikrotikConnectionController extends Controller
 
     public function datatable(Request $request): JsonResponse
     {
-        $user   = auth()->user();
+        $user = auth()->user();
         $search = $request->input('search.value', '');
         $staleSeconds = (int) config('ping.stale_seconds', 600);
 
         $query = MikrotikConnection::query()
             ->accessibleBy($user)
             ->withCount('radiusAccounts')
-            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+            ->when($search !== '', fn ($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('name', 'like', "%{$search}%")
-                   ->orWhere('host', 'like', "%{$search}%");
+                    ->orWhere('host', 'like', "%{$search}%");
             }))
             ->latest();
 
-        $total    = MikrotikConnection::query()->accessibleBy($user)->count();
+        $total = MikrotikConnection::query()->accessibleBy($user)->count();
         $filtered = $query->count();
-        $rows     = $query->offset($request->integer('start'))
+        $rows = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
             ->get();
 
         $isReadOnly = $user->role === 'teknisi';
 
         return response()->json([
-            'draw'            => $request->integer('draw'),
-            'recordsTotal'    => $total,
+            'draw' => $request->integer('draw'),
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(function ($r) use ($staleSeconds, $isReadOnly) {
+            'data' => $rows->map(function ($r) use ($staleSeconds, $isReadOnly) {
                 $isStale = $r->last_ping_at && $r->last_ping_at->diffInSeconds(now()) > $staleSeconds;
 
                 if ($r->is_online === null) {
                     $pingStatus = 'Belum Dicek';
-                    $pingClass  = 'badge-secondary';
+                    $pingClass = 'badge-secondary';
                 } elseif ($isStale) {
                     $pingStatus = 'Tidak Terhubung';
-                    $pingClass  = 'badge-danger';
+                    $pingClass = 'badge-danger';
                 } elseif ($r->ping_unstable) {
                     $pingStatus = 'Tidak Stabil';
-                    $pingClass  = 'badge-warning';
+                    $pingClass = 'badge-warning';
                 } elseif ($r->is_online) {
                     $pingStatus = 'Terhubung';
-                    $pingClass  = 'badge-success';
+                    $pingClass = 'badge-success';
                 } else {
                     $pingStatus = 'Tidak Terhubung';
-                    $pingClass  = 'badge-danger';
+                    $pingClass = 'badge-danger';
                 }
 
                 return [
-                    'id'               => $r->id,
-                    'name'             => $r->name,
-                    'host'             => $r->host,
-                    'ping_status'      => $pingStatus,
-                    'ping_class'       => $pingClass,
-                    'ping_message'     => $r->last_ping_message ?? '-',
-                    'last_ping_at'     => $r->last_ping_at?->format('Y-m-d H:i:s') ?? '-',
-                    'radius_count'     => $r->radius_accounts_count,
-                    'api_url'          => route('dashboard.api').'?connection_id='.$r->id,
-                    'edit_url'         => route('mikrotik-connections.edit', $r->id),
-                    'destroy_url'      => route('mikrotik-connections.destroy', $r->id),
-                    'can_edit'         => ! $isReadOnly,
+                    'id' => $r->id,
+                    'name' => $r->name,
+                    'host' => $r->host,
+                    'ping_status' => $pingStatus,
+                    'ping_class' => $pingClass,
+                    'ping_message' => $r->last_ping_message ?? '-',
+                    'last_ping_at' => $r->last_ping_at?->format('Y-m-d H:i:s') ?? '-',
+                    'radius_count' => $r->radius_accounts_count,
+                    'api_url' => route('dashboard.api').'?connection_id='.$r->id,
+                    'edit_url' => route('mikrotik-connections.edit', $r->id),
+                    'destroy_url' => route('mikrotik-connections.destroy', $r->id),
+                    'can_edit' => ! $isReadOnly,
                 ];
             }),
         ]);
@@ -117,8 +118,21 @@ class MikrotikConnectionController extends Controller
             abort(403);
         }
 
+        $ownerId = auth()->user()->effectiveOwnerId();
+        $owner = User::query()->find($ownerId);
+
+        if ($owner && $owner->hasReachedMikrotikLimit($ownerId)) {
+            $limit = $owner->getEffectiveMikrotikLimit();
+
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'name' => "Batas koneksi Mikrotik tenant sudah tercapai ({$limit}). Ubah limit lisensi/paket terlebih dahulu.",
+                ]);
+        }
+
         $data = $request->validated();
-        $data['owner_id'] = auth()->id();
+        $data['owner_id'] = $ownerId;
         $data['use_ssl'] = $request->boolean('use_ssl');
         $data['is_active'] = $request->boolean('is_active', true);
         $data['username'] = $data['username'] ?: $this->generateApiUsername();
@@ -184,7 +198,7 @@ class MikrotikConnectionController extends Controller
         if ($mikrotikConnection->radius_secret && file_exists($clientsPath) && is_readable($clientsPath)) {
             $contents = file_get_contents($clientsPath);
             $radiusSecretMismatch = $contents !== false
-                && ! str_contains($contents, 'secret = ' . $mikrotikConnection->radius_secret);
+                && ! str_contains($contents, 'secret = '.$mikrotikConnection->radius_secret);
         }
 
         return view('mikrotik_connections.edit', compact('mikrotikConnection', 'radiusHost', 'radiusSecretMismatch'));
@@ -199,12 +213,12 @@ class MikrotikConnectionController extends Controller
             $mikrotikConnection->refresh();
 
             return response()->json([
-                'is_online'     => $mikrotikConnection->is_online,
+                'is_online' => $mikrotikConnection->is_online,
                 'ping_unstable' => $mikrotikConnection->ping_unstable,
-                'message'       => $mikrotikConnection->last_ping_message,
+                'message' => $mikrotikConnection->last_ping_message,
             ]);
         } catch (Throwable $e) {
-            return response()->json(['error' => 'Ping gagal: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Ping gagal: '.$e->getMessage()], 500);
         }
     }
 
@@ -212,9 +226,10 @@ class MikrotikConnectionController extends Controller
     {
         try {
             $this->synchronizer->sync();
+
             return response()->json(['status' => 'RADIUS clients.conf berhasil disinkron.']);
         } catch (Throwable $e) {
-            return response()->json(['error' => 'Sync gagal: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Sync gagal: '.$e->getMessage()], 500);
         }
     }
 
@@ -339,7 +354,7 @@ class MikrotikConnectionController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isSuperAdmin() && $connection->owner_id !== $user->effectiveOwnerId()) {
+        if (! $user->isSuperAdmin() && $connection->owner_id !== $user->effectiveOwnerId()) {
             abort(403, 'Anda tidak memiliki akses ke koneksi ini.');
         }
     }

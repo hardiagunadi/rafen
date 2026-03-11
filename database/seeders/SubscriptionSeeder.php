@@ -91,7 +91,7 @@ class SubscriptionSeeder extends Seeder
         // Create super admin if not exists
         $superAdmin = User::where('email', 'admin@rafen.id')->first();
 
-        if (!$superAdmin) {
+        if (! $superAdmin) {
             User::create([
                 'name' => 'Super Admin',
                 'email' => 'admin@rafen.id',
@@ -99,6 +99,7 @@ class SubscriptionSeeder extends Seeder
                 'role' => 'administrator',
                 'is_super_admin' => true,
                 'subscription_status' => 'active',
+                'subscription_method' => User::SUBSCRIPTION_METHOD_MONTHLY,
                 'registered_at' => now(),
             ]);
         } else {

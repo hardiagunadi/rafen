@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Invoice;
 use App\Models\MikrotikConnection;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
@@ -86,7 +85,7 @@ class SuperAdminController extends Controller
 
         $tenant->load([
             'subscriptionPlan',
-            'subscriptions' => fn($q) => $q->with('plan')->orderByDesc('created_at')->limit(10),
+            'subscriptions' => fn ($q) => $q->with('plan')->orderByDesc('created_at')->limit(10),
             'mikrotikConnections',
             'pppUsers',
             'tenantSettings',
@@ -129,12 +128,15 @@ class SuperAdminController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $tenant->id,
+            'email' => 'required|email|unique:users,email,'.$tenant->id,
             'phone' => 'nullable|string|max:20',
             'company_name' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:1000',
             'subscription_status' => 'required|in:trial,active,expired,suspended',
             'subscription_plan_id' => 'nullable|exists:subscription_plans,id',
+            'subscription_method' => 'required|in:monthly,license',
+            'license_max_mikrotik' => 'nullable|required_if:subscription_method,license|integer|min:-1',
+            'license_max_ppp_users' => 'nullable|required_if:subscription_method,license|integer|min:-1',
             'subscription_expires_at' => 'nullable|date',
             'trial_days_remaining' => 'nullable|integer|min:0',
             'vpn_enabled' => 'boolean',
@@ -142,6 +144,13 @@ class SuperAdminController extends Controller
             'vpn_password' => 'nullable|string|max:100',
             'vpn_ip' => 'nullable|string|max:45',
         ]);
+
+        if ($validated['subscription_method'] !== User::SUBSCRIPTION_METHOD_LICENSE) {
+            $validated['license_max_mikrotik'] = null;
+            $validated['license_max_ppp_users'] = null;
+        }
+
+        $validated['vpn_enabled'] = $request->boolean('vpn_enabled');
 
         $tenant->update($validated);
 
@@ -157,7 +166,8 @@ class SuperAdminController extends Controller
         ]);
 
         $plan = SubscriptionPlan::findOrFail($request->plan_id);
-        $duration = $request->duration_days ?? $plan->duration_days;
+        $durationDays = $request->filled('duration_days') ? (int) $request->input('duration_days') : null;
+        $duration = $tenant->resolveSubscriptionDurationDays($plan, $durationDays);
 
         // Expire all previous active/pending subscriptions
         $tenant->subscriptions()->whereIn('status', ['active', 'pending'])->update(['status' => 'expired']);
@@ -192,48 +202,60 @@ class SuperAdminController extends Controller
     public function extendTenant(Request $request, User $tenant)
     {
         $request->validate([
-            'days' => 'required|integer|min:1|max:365',
+            'days' => $tenant->isLicenseSubscription()
+                ? 'nullable|integer|min:1|max:3650'
+                : 'required|integer|min:1|max:365',
         ]);
 
-        $tenant->extendSubscription($request->days);
+        $days = $tenant->isLicenseSubscription()
+            ? User::LICENSE_DURATION_DAYS
+            : (int) $request->input('days');
 
-        return back()->with('success', "Langganan diperpanjang {$request->days} hari.");
+        $tenant->extendSubscription($days);
+
+        if ($tenant->isLicenseSubscription()) {
+            return back()->with('success', 'Lisensi tenant diperpanjang 1 tahun (365 hari).');
+        }
+
+        return back()->with('success', "Langganan diperpanjang {$days} hari.");
     }
 
     public function changePlanPreview(Request $request, User $tenant)
     {
         $request->validate(['plan_id' => 'required|exists:subscription_plans,id']);
 
-        $plan    = SubscriptionPlan::findOrFail($request->plan_id);
+        $plan = SubscriptionPlan::findOrFail($request->plan_id);
         $oldPlan = $tenant->subscriptionPlan;
 
-        $remainingDays  = 0;
+        $remainingDays = 0;
         $remainingValue = 0;
+        $newDurationDays = $tenant->resolveSubscriptionDurationDays($plan);
+        $oldDurationDays = $oldPlan ? $tenant->resolveSubscriptionDurationDays($oldPlan) : 0;
 
         if ($tenant->subscription_expires_at && $tenant->subscription_expires_at->isFuture() && $oldPlan) {
-            $remainingDays  = (int) now()->diffInDays($tenant->subscription_expires_at, false);
-            $remainingDays  = max(0, $remainingDays);
-            $pricePerDay    = $oldPlan->duration_days > 0 ? ($oldPlan->price / $oldPlan->duration_days) : 0;
+            $remainingDays = (int) now()->diffInDays($tenant->subscription_expires_at, false);
+            $remainingDays = max(0, $remainingDays);
+            $pricePerDay = $oldDurationDays > 0 ? ($oldPlan->price / $oldDurationDays) : 0;
             $remainingValue = round($pricePerDay * $remainingDays);
         }
 
         $proratedCost = max(0, $plan->price - $remainingValue);
-        $extraDays    = 0;
+        $extraDays = 0;
         if ($remainingValue > $plan->price) {
-            $newPricePerDay = $plan->duration_days > 0 ? ($plan->price / $plan->duration_days) : 1;
-            $extraDays      = (int) floor(($remainingValue - $plan->price) / $newPricePerDay);
+            $newPricePerDay = $newDurationDays > 0 ? ($plan->price / $newDurationDays) : 1;
+            $extraDays = (int) floor(($remainingValue - $plan->price) / $newPricePerDay);
         }
-        $totalDuration = $plan->duration_days + $extraDays;
+        $totalDuration = $newDurationDays + $extraDays;
 
         return response()->json([
-            'remaining_days'   => $remainingDays,
-            'remaining_value'  => $remainingValue,
-            'prorated_cost'    => $proratedCost,
-            'extra_days'       => $extraDays,
-            'total_duration'   => $totalDuration,
-            'new_plan_price'   => (float) $plan->price,
-            'new_plan_name'    => $plan->name,
-            'new_plan_days'    => $plan->duration_days,
+            'remaining_days' => $remainingDays,
+            'remaining_value' => $remainingValue,
+            'prorated_cost' => $proratedCost,
+            'extra_days' => $extraDays,
+            'total_duration' => $totalDuration,
+            'new_plan_price' => (float) $plan->price,
+            'new_plan_name' => $plan->name,
+            'new_plan_days' => $newDurationDays,
         ]);
     }
 
@@ -244,31 +266,33 @@ class SuperAdminController extends Controller
         }
 
         $request->validate([
-            'plan_id'        => 'required|exists:subscription_plans,id',
+            'plan_id' => 'required|exists:subscription_plans,id',
             'payment_method' => 'nullable|string|max:100',
-            'notes'          => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:500',
         ]);
 
-        $plan    = SubscriptionPlan::findOrFail($request->plan_id);
+        $plan = SubscriptionPlan::findOrFail($request->plan_id);
         $oldPlan = $tenant->subscriptionPlan;
 
         // Calculate prorated values
-        $remainingDays  = 0;
+        $remainingDays = 0;
         $remainingValue = 0;
+        $newDurationDays = $tenant->resolveSubscriptionDurationDays($plan);
+        $oldDurationDays = $oldPlan ? $tenant->resolveSubscriptionDurationDays($oldPlan) : 0;
 
         if ($tenant->subscription_expires_at && $tenant->subscription_expires_at->isFuture() && $oldPlan) {
-            $remainingDays  = max(0, (int) now()->diffInDays($tenant->subscription_expires_at, false));
-            $pricePerDay    = $oldPlan->duration_days > 0 ? ($oldPlan->price / $oldPlan->duration_days) : 0;
+            $remainingDays = max(0, (int) now()->diffInDays($tenant->subscription_expires_at, false));
+            $pricePerDay = $oldDurationDays > 0 ? ($oldPlan->price / $oldDurationDays) : 0;
             $remainingValue = round($pricePerDay * $remainingDays);
         }
 
         $proratedCost = max(0, $plan->price - $remainingValue);
-        $extraDays    = 0;
+        $extraDays = 0;
         if ($remainingValue > $plan->price) {
-            $newPricePerDay = $plan->duration_days > 0 ? ($plan->price / $plan->duration_days) : 1;
-            $extraDays      = (int) floor(($remainingValue - $plan->price) / $newPricePerDay);
+            $newPricePerDay = $newDurationDays > 0 ? ($plan->price / $newDurationDays) : 1;
+            $extraDays = (int) floor(($remainingValue - $plan->price) / $newPricePerDay);
         }
-        $totalDuration = $plan->duration_days + $extraDays;
+        $totalDuration = $newDurationDays + $extraDays;
 
         $newExpiry = now()->addDays($totalDuration);
 
@@ -276,40 +300,40 @@ class SuperAdminController extends Controller
         $tenant->subscriptions()->whereIn('status', ['active', 'pending'])->update(['status' => 'expired']);
 
         $tenant->update([
-            'subscription_plan_id'    => $plan->id,
-            'subscription_status'     => 'active',
+            'subscription_plan_id' => $plan->id,
+            'subscription_status' => 'active',
             'subscription_expires_at' => $newExpiry,
         ]);
 
         $subscription = Subscription::create([
-            'user_id'              => $tenant->id,
+            'user_id' => $tenant->id,
             'subscription_plan_id' => $plan->id,
-            'start_date'           => now(),
-            'end_date'             => $newExpiry,
-            'status'               => 'active',
-            'amount_paid'          => $proratedCost,
-            'activated_at'         => now(),
+            'start_date' => now(),
+            'end_date' => $newExpiry,
+            'status' => 'active',
+            'amount_paid' => $proratedCost,
+            'activated_at' => now(),
         ]);
 
         // Record payment (prorated)
         if ($proratedCost > 0) {
             Payment::create([
-                'payment_number'  => Payment::generatePaymentNumber(),
-                'payment_type'    => 'subscription',
-                'user_id'         => $tenant->id,
+                'payment_number' => Payment::generatePaymentNumber(),
+                'payment_type' => 'subscription',
+                'user_id' => $tenant->id,
                 'subscription_id' => $subscription->id,
                 'payment_channel' => 'manual',
-                'payment_method'  => $request->input('payment_method', 'Transfer Manual'),
-                'amount'          => $proratedCost,
-                'fee'             => 0,
-                'total_amount'    => $proratedCost,
-                'status'          => 'paid',
-                'paid_at'         => now(),
-                'notes'           => $request->input('notes') ?: "Perubahan paket: {$oldPlan?->name} → {$plan->name}. Sisa nilai: Rp " . number_format($remainingValue, 0, ',', '.'),
+                'payment_method' => $request->input('payment_method', 'Transfer Manual'),
+                'amount' => $proratedCost,
+                'fee' => 0,
+                'total_amount' => $proratedCost,
+                'status' => 'paid',
+                'paid_at' => now(),
+                'notes' => $request->input('notes') ?: "Perubahan paket: {$oldPlan?->name} → {$plan->name}. Sisa nilai: Rp ".number_format($remainingValue, 0, ',', '.'),
             ]);
         }
 
-        return back()->with('success', "Paket berhasil diubah ke {$plan->name}. Tagihan prorated: Rp " . number_format($proratedCost, 0, ',', '.') . ". Aktif hingga: " . $newExpiry->format('d M Y') . ".");
+        return back()->with('success', "Paket berhasil diubah ke {$plan->name}. Tagihan prorated: Rp ".number_format($proratedCost, 0, ',', '.').'. Aktif hingga: '.$newExpiry->format('d M Y').'.');
     }
 
     public function confirmSubscriptionPayment(Request $request, User $tenant, Subscription $subscription)
@@ -324,23 +348,23 @@ class SuperAdminController extends Controller
 
         $request->validate([
             'payment_method' => 'nullable|string|max:100',
-            'notes'          => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:500',
         ]);
 
         // Create a manual payment record
         Payment::create([
-            'payment_number'  => Payment::generatePaymentNumber(),
-            'payment_type'    => 'subscription',
-            'user_id'         => $tenant->id,
+            'payment_number' => Payment::generatePaymentNumber(),
+            'payment_type' => 'subscription',
+            'user_id' => $tenant->id,
             'subscription_id' => $subscription->id,
             'payment_channel' => 'manual',
-            'payment_method'  => $request->input('payment_method', 'Transfer Manual'),
-            'amount'          => $subscription->amount_paid,
-            'fee'             => 0,
-            'total_amount'    => $subscription->amount_paid,
-            'status'          => 'paid',
-            'paid_at'         => now(),
-            'notes'           => $request->input('notes'),
+            'payment_method' => $request->input('payment_method', 'Transfer Manual'),
+            'amount' => $subscription->amount_paid,
+            'fee' => 0,
+            'total_amount' => $subscription->amount_paid,
+            'status' => 'paid',
+            'paid_at' => now(),
+            'notes' => $request->input('notes'),
         ]);
 
         // Activate subscription
@@ -365,8 +389,16 @@ class SuperAdminController extends Controller
             'phone' => 'nullable|string|max:20',
             'company_name' => 'nullable|string|max:255',
             'subscription_plan_id' => 'nullable|exists:subscription_plans,id',
+            'subscription_method' => 'required|in:monthly,license',
+            'license_max_mikrotik' => 'nullable|required_if:subscription_method,license|integer|min:-1',
+            'license_max_ppp_users' => 'nullable|required_if:subscription_method,license|integer|min:-1',
             'trial_days' => 'nullable|integer|min:0|max:90',
         ]);
+
+        if ($validated['subscription_method'] !== User::SUBSCRIPTION_METHOD_LICENSE) {
+            $validated['license_max_mikrotik'] = null;
+            $validated['license_max_ppp_users'] = null;
+        }
 
         $user = User::create([
             'name' => $validated['name'],
@@ -378,6 +410,9 @@ class SuperAdminController extends Controller
             'is_super_admin' => false,
             'subscription_status' => 'trial',
             'subscription_plan_id' => $validated['subscription_plan_id'] ?? null,
+            'subscription_method' => $validated['subscription_method'],
+            'license_max_mikrotik' => $validated['license_max_mikrotik'] ?? null,
+            'license_max_ppp_users' => $validated['license_max_ppp_users'] ?? null,
             'trial_days_remaining' => $validated['trial_days'] ?? 14,
             'registered_at' => now(),
         ]);
@@ -541,7 +576,7 @@ class SuperAdminController extends Controller
 
     public function generateVpnCredentials(User $tenant)
     {
-        $username = 'tenant_' . $tenant->id;
+        $username = 'tenant_'.$tenant->id;
         $password = \Str::random(16);
 
         $tenant->update([

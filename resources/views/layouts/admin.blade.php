@@ -469,12 +469,14 @@
                             <p>Router (NAS)</p>
                         </a>
                     </li>
+                    @if(in_array(auth()->user()->role, ['administrator', 'noc', 'teknisi'], true))
                     <li class="nav-item">
                         <a href="{{ route('olt-connections.index') }}" class="nav-link {{ request()->routeIs('olt-connections.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-broadcast-tower"></i>
                             <p>Monitoring OLT</p>
                         </a>
                     </li>
+                    @endif
                     <li class="nav-item has-treeview {{ request()->routeIs(...$profilePaketRoutes) ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs(...$profilePaketRoutes) ? 'active' : '' }}">
                             <i class="nav-icon fas fa-box"></i>

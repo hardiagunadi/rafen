@@ -37,33 +37,41 @@ class TeknisiSetoranController extends Controller
         $query = TeknisiSetoran::query()
             ->with(['teknisi', 'verifiedBy'])
             ->accessibleBy($user)
-            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
-            ->when($request->filled('teknisi_id'), fn($q) => $q->where('teknisi_id', $request->teknisi_id))
-            ->when($search !== '', fn($q) => $q->whereHas('teknisi', fn($q2) => $q2->where('name', 'like', "%{$search}%")))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('teknisi_id'), fn ($q) => $q->where('teknisi_id', $request->teknisi_id))
+            ->when($search !== '', fn ($q) => $q->whereHas('teknisi', fn ($q2) => $q2->where('name', 'like', "%{$search}%")))
             ->orderByDesc('period_date');
 
-        $total    = (clone $query)->count();
+        $total = (clone $query)->count();
         $filtered = $total;
-        $rows     = $query->offset($request->integer('start'))
+        $totalTagihan = (float) (clone $query)->sum('total_tagihan');
+        $totalCash = (float) (clone $query)->sum('total_cash');
+        $rows = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
             ->get();
 
         return response()->json([
-            'draw'            => $request->integer('draw'),
-            'recordsTotal'    => $total,
+            'draw' => $request->integer('draw'),
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(fn($r) => [
-                'id'             => $r->id,
-                'period_date'    => $r->period_date->format('Y-m-d'),
-                'teknisi_name'   => $r->teknisi?->name ?? '-',
+            'summary' => [
+                'total_tagihan' => $totalTagihan,
+                'total_cash' => $totalCash,
+                'total_tagihan_formatted' => number_format($totalTagihan, 0, ',', '.'),
+                'total_cash_formatted' => number_format($totalCash, 0, ',', '.'),
+            ],
+            'data' => $rows->map(fn ($r) => [
+                'id' => $r->id,
+                'period_date' => $r->period_date->format('Y-m-d'),
+                'teknisi_name' => $r->teknisi?->name ?? '-',
                 'total_invoices' => $r->total_invoices,
-                'total_tagihan'  => number_format($r->total_tagihan, 0, ',', '.'),
-                'total_cash'     => number_format($r->total_cash, 0, ',', '.'),
-                'status'         => $r->status,
-                'verified_by'    => $r->verifiedBy?->name ?? '-',
-                'submitted_at'   => $r->submitted_at?->format('Y-m-d H:i') ?? '-',
-                'verified_at'    => $r->verified_at?->format('Y-m-d H:i') ?? '-',
-                'show_url'       => route('teknisi-setoran.show', $r->id),
+                'total_tagihan' => number_format($r->total_tagihan, 0, ',', '.'),
+                'total_cash' => number_format($r->total_cash, 0, ',', '.'),
+                'status' => $r->status,
+                'verified_by' => $r->verifiedBy?->name ?? '-',
+                'submitted_at' => $r->submitted_at?->format('Y-m-d H:i') ?? '-',
+                'verified_at' => $r->verified_at?->format('Y-m-d H:i') ?? '-',
+                'show_url' => route('teknisi-setoran.show', $r->id),
             ]),
         ]);
     }
@@ -104,6 +112,7 @@ class TeknisiSetoranController extends Controller
             if ($request->wantsJson()) {
                 return response()->json(['error' => 'Setoran untuk periode ini sudah ada.'], 422);
             }
+
             return redirect()->route('teknisi-setoran.show', $existing)->with('status', 'Setoran sudah ada.');
         }
 
@@ -117,17 +126,18 @@ class TeknisiSetoranController extends Controller
             if ($request->wantsJson()) {
                 return response()->json(['error' => 'Tidak ada invoice yang dibayar pada periode ini.'], 422);
             }
+
             return redirect()->back()->with('error', 'Tidak ada invoice yang dibayar pada periode ini.');
         }
 
         $setoran = TeknisiSetoran::create([
-            'owner_id'       => $ownerId,
-            'teknisi_id'     => $teknisiId,
-            'period_date'    => $periodDate,
+            'owner_id' => $ownerId,
+            'teknisi_id' => $teknisiId,
+            'period_date' => $periodDate,
             'total_invoices' => $invoices->count(),
-            'total_tagihan'  => $invoices->sum('total'),
-            'total_cash'     => $invoices->sum('cash_received'),
-            'status'         => 'draft',
+            'total_tagihan' => $invoices->sum('total'),
+            'total_cash' => $invoices->sum('cash_received'),
+            'status' => 'draft',
         ]);
 
         if ($request->wantsJson()) {
@@ -151,13 +161,14 @@ class TeknisiSetoranController extends Controller
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Setoran sudah disubmit atau diverifikasi.'], 422);
             }
+
             return redirect()->back()->with('error', 'Setoran sudah disubmit atau diverifikasi.');
         }
 
         // Recalculate sebelum submit
         $teknisiSetoran->recalculate();
         $teknisiSetoran->update([
-            'status'       => 'submitted',
+            'status' => 'submitted',
             'submitted_at' => now(),
         ]);
 
@@ -182,14 +193,15 @@ class TeknisiSetoranController extends Controller
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Setoran belum disubmit atau sudah diverifikasi.'], 422);
             }
+
             return redirect()->back()->with('error', 'Setoran belum disubmit atau sudah diverifikasi.');
         }
 
         $teknisiSetoran->update([
-            'status'      => 'verified',
+            'status' => 'verified',
             'verified_by' => $user->id,
             'verified_at' => now(),
-            'notes'       => $request->input('notes'),
+            'notes' => $request->input('notes'),
         ]);
 
         if (request()->wantsJson()) {

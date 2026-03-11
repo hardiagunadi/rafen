@@ -21,37 +21,37 @@ class SubscriptionController extends Controller
 
     public function subscriptionsDatatable(Request $request)
     {
-        $user   = $request->user();
+        $user = $request->user();
         $search = $request->input('search.value', '');
 
         $query = $user->subscriptions()
             ->with('plan')
-            ->when($search !== '', fn($q) => $q->whereHas('plan', fn($q2) => $q2->where('name', 'like', "%{$search}%")))
+            ->when($search !== '', fn ($q) => $q->whereHas('plan', fn ($q2) => $q2->where('name', 'like', "%{$search}%")))
             ->orderByDesc('created_at');
 
-        $total    = $user->subscriptions()->count();
+        $total = $user->subscriptions()->count();
         $filtered = $query->count();
-        $rows     = $query->offset($request->integer('start'))
+        $rows = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 10)))
             ->get();
 
         $statusLabels = [
-            'active'    => '<span class="badge badge-success">Aktif</span>',
-            'pending'   => '<span class="badge badge-warning">Menunggu Pembayaran</span>',
-            'expired'   => '<span class="badge badge-secondary">Berakhir</span>',
+            'active' => '<span class="badge badge-success">Aktif</span>',
+            'pending' => '<span class="badge badge-warning">Menunggu Pembayaran</span>',
+            'expired' => '<span class="badge badge-secondary">Berakhir</span>',
             'cancelled' => '<span class="badge badge-danger">Dibatalkan</span>',
         ];
 
         return response()->json([
-            'draw'            => $request->integer('draw'),
-            'recordsTotal'    => $total,
+            'draw' => $request->integer('draw'),
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(fn($r) => [
-                'plan'       => $r->plan->name ?? '-',
+            'data' => $rows->map(fn ($r) => [
+                'plan' => $r->plan->name ?? '-',
                 'start_date' => $r->start_date->format('d M Y'),
-                'end_date'   => $r->end_date->format('d M Y'),
-                'status'     => $statusLabels[$r->status] ?? $r->status,
-                'amount'     => 'Rp '.number_format($r->amount_paid, 0, ',', '.'),
+                'end_date' => $r->end_date->format('d M Y'),
+                'status' => $statusLabels[$r->status] ?? $r->status,
+                'amount' => 'Rp '.number_format($r->amount_paid, 0, ',', '.'),
             ]),
         ]);
     }
@@ -59,20 +59,22 @@ class SubscriptionController extends Controller
     public function plans()
     {
         $plans = SubscriptionPlan::active()->orderBy('sort_order')->get();
+        $user = auth()->user();
 
-        return view('subscription.plans', compact('plans'));
+        return view('subscription.plans', compact('plans', 'user'));
     }
 
     public function subscribe(Request $request, SubscriptionPlan $plan)
     {
         $user = $request->user();
+        $durationDays = $user->resolveSubscriptionDurationDays($plan);
 
         // Create pending subscription
         $subscription = Subscription::create([
             'user_id' => $user->id,
             'subscription_plan_id' => $plan->id,
             'start_date' => now(),
-            'end_date' => now()->addDays($plan->duration_days),
+            'end_date' => now()->addDays($durationDays),
             'status' => 'pending',
             'amount_paid' => $plan->price,
         ]);
@@ -96,7 +98,7 @@ class SubscriptionController extends Controller
 
         // Filter only enabled channels
         $enabledCodes = config('tripay.enabled_channels', []);
-        $channels = array_filter($channels, fn($ch) => in_array($ch['code'], $enabledCodes));
+        $channels = array_filter($channels, fn ($ch) => in_array($ch['code'], $enabledCodes));
 
         return view('subscription.payment', compact('subscription', 'channels'));
     }
@@ -139,7 +141,7 @@ class SubscriptionController extends Controller
         $tripay = TripayService::forSystem();
 
         // Verify signature
-        if (!$tripay->verifyCallback($callbackData)) {
+        if (! $tripay->verifyCallback($callbackData)) {
             return response()->json(['success' => false, 'message' => 'Invalid signature'], 400);
         }
 
@@ -149,7 +151,7 @@ class SubscriptionController extends Controller
         // Find payment by merchant reference
         $payment = \App\Models\Payment::where('merchant_ref', $merchantRef)->first();
 
-        if (!$payment) {
+        if (! $payment) {
             return response()->json(['success' => false, 'message' => 'Payment not found'], 404);
         }
 
@@ -177,16 +179,19 @@ class SubscriptionController extends Controller
         $user = $request->user();
         $plan = $user->subscriptionPlan ?? SubscriptionPlan::active()->first();
 
-        if (!$plan) {
+        if (! $plan) {
             return redirect()->route('subscription.plans')
                 ->with('error', 'Silakan pilih paket langganan.');
         }
 
+        $durationDays = $user->resolveSubscriptionDurationDays($plan);
+        $startDate = $user->subscription_expires_at ?? now();
+
         $subscription = Subscription::create([
             'user_id' => $user->id,
             'subscription_plan_id' => $plan->id,
-            'start_date' => $user->subscription_expires_at ?? now(),
-            'end_date' => ($user->subscription_expires_at ?? now())->addDays($plan->duration_days),
+            'start_date' => $startDate,
+            'end_date' => $startDate->copy()->addDays($durationDays),
             'status' => 'pending',
             'amount_paid' => $plan->price,
         ]);
@@ -201,42 +206,42 @@ class SubscriptionController extends Controller
 
     public function historyDatatable(Request $request)
     {
-        $user   = $request->user();
+        $user = $request->user();
         $search = $request->input('search.value', '');
 
         $query = $user->payments()
             ->where('payment_type', 'subscription')
             ->with('subscription.plan')
-            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+            ->when($search !== '', fn ($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('payment_number', 'like', "%{$search}%")
-                   ->orWhere('payment_channel', 'like', "%{$search}%");
+                    ->orWhere('payment_channel', 'like', "%{$search}%");
             }))
             ->orderByDesc('created_at');
 
-        $total    = $user->payments()->where('payment_type', 'subscription')->count();
+        $total = $user->payments()->where('payment_type', 'subscription')->count();
         $filtered = $query->count();
-        $rows     = $query->offset($request->integer('start'))
+        $rows = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
             ->get();
 
         $statusLabels = [
-            'paid'    => '<span class="badge badge-success">Dibayar</span>',
+            'paid' => '<span class="badge badge-success">Dibayar</span>',
             'pending' => '<span class="badge badge-warning">Menunggu</span>',
             'expired' => '<span class="badge badge-secondary">Kedaluwarsa</span>',
-            'failed'  => '<span class="badge badge-danger">Gagal</span>',
+            'failed' => '<span class="badge badge-danger">Gagal</span>',
         ];
 
         return response()->json([
-            'draw'            => $request->integer('draw'),
-            'recordsTotal'    => $total,
+            'draw' => $request->integer('draw'),
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(fn($r) => [
-                'payment_number'   => $r->payment_number,
-                'plan'             => $r->subscription?->plan?->name ?? '-',
-                'payment_channel'  => $r->payment_channel ?? '-',
-                'total_amount'     => 'Rp '.number_format($r->total_amount, 0, ',', '.'),
-                'status'           => $statusLabels[$r->status] ?? $r->status,
-                'created_at'       => $r->created_at->format('d M Y H:i'),
+            'data' => $rows->map(fn ($r) => [
+                'payment_number' => $r->payment_number,
+                'plan' => $r->subscription?->plan?->name ?? '-',
+                'payment_channel' => $r->payment_channel ?? '-',
+                'total_amount' => 'Rp '.number_format($r->total_amount, 0, ',', '.'),
+                'status' => $statusLabels[$r->status] ?? $r->status,
+                'created_at' => $r->created_at->format('d M Y H:i'),
             ]),
         ]);
     }

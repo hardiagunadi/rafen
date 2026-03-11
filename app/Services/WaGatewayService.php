@@ -12,6 +12,9 @@ class WaGatewayService
     /** Delay in milliseconds between messages (anti-spam) */
     private int $delayMs = 0;
 
+    /** Minimal interval antar pengiriman per tenant untuk antrean lintas proses */
+    private int $dispatchIntervalMs = 1200;
+
     /** Max messages per minute (0 = unlimited) */
     private int $maxPerMinute = 0;
 
@@ -64,8 +67,11 @@ class WaGatewayService
             $key
         );
 
+        $configuredDelayMs = max(0, (int) ($settings->wa_antispam_delay_ms ?? 1200));
+        $instance->dispatchIntervalMs = max(900, $configuredDelayMs > 0 ? $configuredDelayMs : 1200);
+
         if ($settings->wa_antispam_enabled) {
-            $instance->delayMs = max(0, (int) ($settings->wa_antispam_delay_ms ?? 1000));
+            $instance->delayMs = $configuredDelayMs;
             $instance->maxPerMinute = max(0, (int) ($settings->wa_antispam_max_per_minute ?? 20));
         }
 
@@ -100,7 +106,7 @@ class WaGatewayService
     }
 
     /**
-     * Apply anti-spam delay before sending a message.
+     * Apply anti-spam rate limit before sending a message.
      */
     private function applyAntiSpamDelay(): void
     {
@@ -119,11 +125,85 @@ class WaGatewayService
                 $this->minuteStart = microtime(true);
             }
         }
+    }
 
-        // Fixed delay between messages
-        if ($this->delayMs > 0 && $this->sentThisMinute > 0) {
-            usleep($this->delayMs * 1000);
+    private function applyDispatchQueueDelay(array $context = []): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
         }
+
+        if ($this->ownerId === null) {
+            return;
+        }
+
+        $lockPath = storage_path('framework/cache/wa-dispatch-'.$this->ownerId.'.lock');
+        $lockDir = dirname($lockPath);
+
+        if (! is_dir($lockDir)) {
+            @mkdir($lockDir, 0775, true);
+        }
+
+        $handle = @fopen($lockPath, 'c+');
+        if ($handle === false) {
+            return;
+        }
+
+        try {
+            if (! flock($handle, LOCK_EX)) {
+                return;
+            }
+
+            $nowMs = $this->currentTimeMs();
+            rewind($handle);
+            $raw = stream_get_contents($handle);
+            $nextAllowedMs = is_string($raw) && is_numeric(trim($raw)) ? (int) trim($raw) : 0;
+
+            if ($nextAllowedMs > $nowMs) {
+                $waitMs = $nextAllowedMs - $nowMs;
+                Log::info('WA queue: waiting dispatch slot', [
+                    'owner_id' => $this->ownerId,
+                    'wait_ms' => $waitMs,
+                    'event' => $context['event'] ?? null,
+                ]);
+                usleep($waitMs * 1000);
+                $nowMs = $this->currentTimeMs();
+            }
+
+            $jitterMs = 250;
+            try {
+                $jitterMs = random_int(120, 520);
+            } catch (\Throwable) {
+                $jitterMs = 250;
+            }
+
+            $reserveUntilMs = $nowMs + $this->resolveDispatchIntervalMs() + $jitterMs;
+            ftruncate($handle, 0);
+            rewind($handle);
+            fwrite($handle, (string) $reserveUntilMs);
+            fflush($handle);
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    private function resolveDispatchIntervalMs(): int
+    {
+        if ($this->dispatchIntervalMs > 0) {
+            return $this->dispatchIntervalMs;
+        }
+
+        if ($this->delayMs > 0) {
+            return max(900, $this->delayMs);
+        }
+
+        return 1200;
+    }
+
+    private function currentTimeMs(): int
+    {
+        return (int) floor(microtime(true) * 1000);
     }
 
     /**
@@ -208,6 +288,7 @@ class WaGatewayService
 
         $phone = $normalized;
 
+        $this->applyDispatchQueueDelay($context);
         $this->applyAntiSpamDelay();
 
         if ($this->randomize) {

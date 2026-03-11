@@ -20,7 +20,7 @@
             <div class="card-body text-center">
                 <h2 class="text-primary">
                     Rp {{ number_format($plan->price, 0, ',', '.') }}
-                    <small class="text-muted">/ {{ $plan->duration_days }} hari</small>
+                    <small class="text-muted">/ {{ $user ? $user->resolveSubscriptionDurationDays($plan) : $plan->duration_days }} hari</small>
                 </h2>
 
                 @if($plan->description)

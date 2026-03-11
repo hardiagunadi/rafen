@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\MikrotikConnection;
-use App\Models\ProfileGroup;
 use App\Models\PppUser;
+use App\Models\ProfileGroup;
 use App\Models\TenantSettings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -31,9 +31,22 @@ use RuntimeException;
  */
 class IsolirSynchronizer
 {
+    private const PPPOE_PARENT_QUEUE_NAME = '0. PPPOe Pelanggan';
+
+    private const HOTSPOT_PARENT_QUEUE_NAME = '1. Hotspot';
+
+    private const EXPIRED_PARENT_QUEUE_NAME = '2. Expired User';
+
+    private const LOOPBACK_INTERFACE_NAME = 'rafen-isolir-loopback';
+
+    private const LOOPBACK_INTERFACE_COMMENT = 'Rafen: loopback isolir';
+
+    private const GATEWAY_ADDRESS_COMMENT = 'Rafen: gateway isolir';
+
     // Attribute vendor Mikrotik untuk menentukan PPP profile via RADIUS
     private const MIKROTIK_GROUP_ATTR = 'Mikrotik-Group';
-    private const FRAMED_POOL_ATTR    = 'Framed-Pool';
+
+    private const FRAMED_POOL_ATTR = 'Framed-Pool';
 
     /**
      * Aktifkan isolir untuk user PPP.
@@ -54,18 +67,28 @@ class IsolirSynchronizer
         }
 
         $profileName = $connection?->isolir_profile_name ?: 'isolir-pppoe';
-        $poolName    = $connection?->isolir_pool_name    ?: 'pool-isolir';
+        $poolName = $connection?->isolir_pool_name ?: 'pool-isolir';
+        $rateLimit = $connection?->isolir_rate_limit ?: '128k/128k';
 
         // 3. Hapus semua radreply lama (IP statis / pool normal)
         DB::table('radreply')
             ->where('username', $user->username)
-            ->whereIn('attribute', ['Framed-IP-Address', 'Framed-IP-Netmask', self::FRAMED_POOL_ATTR, self::MIKROTIK_GROUP_ATTR])
+            ->whereIn('attribute', [
+                'Framed-IP-Address',
+                'Framed-IP-Netmask',
+                self::FRAMED_POOL_ATTR,
+                self::MIKROTIK_GROUP_ATTR,
+                'Mikrotik-Queue-Parent-Name',
+                'Mikrotik-Rate-Limit',
+            ])
             ->delete();
 
-        // 4. Set radreply isolir: Mikrotik-Group + Framed-Pool
+        // 4. Set radreply isolir: profile, pool, parent queue, rate-limit
         DB::table('radreply')->insert([
             ['username' => $user->username, 'attribute' => self::MIKROTIK_GROUP_ATTR, 'op' => ':=', 'value' => $profileName],
             ['username' => $user->username, 'attribute' => self::FRAMED_POOL_ATTR,    'op' => ':=', 'value' => $poolName],
+            ['username' => $user->username, 'attribute' => 'Mikrotik-Queue-Parent-Name', 'op' => ':=', 'value' => self::EXPIRED_PARENT_QUEUE_NAME],
+            ['username' => $user->username, 'attribute' => 'Mikrotik-Rate-Limit', 'op' => ':=', 'value' => $rateLimit],
         ]);
 
         // 5. Pertahankan radcheck (password tetap) agar user bisa reconnect
@@ -77,10 +100,10 @@ class IsolirSynchronizer
 
         if (! $exists && $user->ppp_password) {
             DB::table('radcheck')->insert([
-                'username'  => $user->username,
+                'username' => $user->username,
                 'attribute' => 'Cleartext-Password',
-                'op'        => ':=',
-                'value'     => $user->ppp_password,
+                'op' => ':=',
+                'value' => $user->ppp_password,
             ]);
         }
 
@@ -122,11 +145,11 @@ class IsolirSynchronizer
         try {
             $client->connect();
 
-            $pool    = $connection->isolir_pool_name    ?: 'pool-isolir';
-            $range   = $connection->isolir_pool_range   ?: '10.99.0.2-10.99.0.254';
-            $gateway = $connection->isolir_gateway      ?: '10.99.0.1';
+            $pool = $connection->isolir_pool_name ?: 'pool-isolir';
+            $range = $connection->isolir_pool_range ?: '10.99.0.2-10.99.0.254';
+            $gateway = $connection->isolir_gateway ?: '10.99.0.1';
             $profile = $connection->isolir_profile_name ?: 'isolir-pppoe';
-            $rate    = $connection->isolir_rate_limit   ?: '128k/128k';
+            $rate = $connection->isolir_rate_limit ?: '128k/128k';
 
             // Ambil URL halaman isolir dari settings tenant atau dari field isolir_url
             $isolirUrl = $this->resolveIsolirUrl($connection, $ownerId);
@@ -140,8 +163,8 @@ class IsolirSynchronizer
             // -- 2. PPP Profile isolir --
             $this->ensurePppProfile($client, $profile, $gateway, $pool, $rate);
 
-            // -- 3. IP Address untuk gateway pool isolir (pada interface loopback/bridge) --
-            // Tidak perlu — gateway PPP profile di Mikrotik ditangani oleh local-address profile
+            // -- 3. IP Address gateway isolir pada interface loopback/bridge --
+            $this->ensureGatewayAddress($client, $gateway, $subnet);
 
             // -- 3. Parent Queues (PPPoE, Hotspot, Expired User) --
             $this->ensureParentQueues($client, $connection, $subnet, $rate);
@@ -159,7 +182,7 @@ class IsolirSynchronizer
             // Tandai setup sudah selesai
             $connection->update([
                 'isolir_setup_done' => true,
-                'isolir_setup_at'   => now(),
+                'isolir_setup_at' => now(),
             ]);
 
         } catch (RuntimeException $e) {
@@ -177,7 +200,7 @@ class IsolirSynchronizer
     {
         $connection->update([
             'isolir_setup_done' => false,
-            'isolir_setup_at'   => null,
+            'isolir_setup_at' => null,
         ]);
     }
 
@@ -205,9 +228,10 @@ class IsolirSynchronizer
 
         if ($ownerId) {
             $settings = TenantSettings::getOrCreate($ownerId);
-            $appUrl   = rtrim(config('app.url', ''), '/');
-            $host     = parse_url($appUrl, PHP_URL_HOST) ?: $appUrl;
-            $port     = parse_url($appUrl, PHP_URL_PORT);
+            $appUrl = rtrim(config('app.url', ''), '/');
+            $host = parse_url($appUrl, PHP_URL_HOST) ?: $appUrl;
+            $port = parse_url($appUrl, PHP_URL_PORT);
+
             return $port ? "{$host}:{$port}" : $host;
         }
 
@@ -228,8 +252,10 @@ class IsolirSynchronizer
         $parts = explode('.', $gateway);
         if (count($parts) === 4) {
             $parts[3] = '0';
+
             return implode('.', $parts).'/24';
         }
+
         return '10.99.0.0/24';
     }
 
@@ -243,22 +269,31 @@ class IsolirSynchronizer
         string $isolirSubnet,
         string $rateLimit
     ): void {
+        $hasPppoeParentQueue = $this->queueExists($client, self::PPPOE_PARENT_QUEUE_NAME);
+
         // -- 0. PPPOe Pelanggan: target dari profile_groups PPPoE milik tenant --
         $pppoeTarget = $this->resolvePppoeTarget($connection);
         if ($pppoeTarget) {
-            $this->ensureSimpleQueue($client, '0. PPPOe Pelanggan', $pppoeTarget, '0/0',
+            $this->ensureSimpleQueue($client, self::PPPOE_PARENT_QUEUE_NAME, $pppoeTarget, '0/0',
                 'rafen: parent queue pelanggan PPPoE');
+            $hasPppoeParentQueue = true;
         }
 
         // -- 1. Hotspot: target dari kolom hotspot_subnet per-router --
         if ($connection->hotspot_subnet) {
-            $this->ensureSimpleQueue($client, '1. Hotspot', $connection->hotspot_subnet, '0/0',
+            $this->ensureSimpleQueue($client, self::HOTSPOT_PARENT_QUEUE_NAME, $connection->hotspot_subnet, '0/0',
                 'rafen: parent queue hotspot');
         }
 
         // -- 2. Expired User: target subnet isolir, throttle sesuai isolir_rate_limit --
-        $this->ensureSimpleQueue($client, '2. Expired User', $isolirSubnet, $rateLimit,
-            'rafen-isolir: throttle pelanggan jatuh tempo');
+        $this->ensureSimpleQueue(
+            $client,
+            self::EXPIRED_PARENT_QUEUE_NAME,
+            $isolirSubnet,
+            $rateLimit,
+            'rafen-isolir: throttle pelanggan jatuh tempo',
+            $hasPppoeParentQueue ? self::PPPOE_PARENT_QUEUE_NAME : null
+        );
     }
 
     /**
@@ -271,32 +306,52 @@ class IsolirSynchronizer
         string $name,
         string $target,
         string $maxLimit,
-        string $comment
+        string $comment,
+        ?string $parent = null
     ): void {
         $existing = $client->command('/queue/simple/print', [], ['name' => $name]);
 
         if (! empty($existing['data'])) {
-            $entry        = $existing['data'][0];
-            $needsUpdate  = ($entry['target'] ?? '') !== $target
-                         || ($entry['max-limit'] ?? '') !== $maxLimit;
+            $entry = $existing['data'][0];
+            $currentParent = (string) ($entry['parent'] ?? '');
+            $desiredParent = $parent ?? '';
+            $needsUpdate = ($entry['target'] ?? '') !== $target
+                         || ($entry['max-limit'] ?? '') !== $maxLimit
+                         || ($entry['comment'] ?? '') !== $comment
+                         || $currentParent !== $desiredParent;
 
             if ($needsUpdate) {
-                $client->command('/queue/simple/set', [
-                    '.id'       => $entry['.id'],
-                    'target'    => $target,
+                $payload = [
+                    '.id' => $entry['.id'],
+                    'target' => $target,
                     'max-limit' => $maxLimit,
-                    'comment'   => $comment,
-                ]);
+                    'comment' => $comment,
+                ];
+
+                if ($parent !== null) {
+                    $payload['parent'] = $parent;
+                } elseif ($currentParent !== '') {
+                    $payload['parent'] = 'none';
+                }
+
+                $client->command('/queue/simple/set', $payload);
             }
+
             return;
         }
 
-        $client->command('/queue/simple/add', [
-            'name'      => $name,
-            'target'    => $target,
+        $payload = [
+            'name' => $name,
+            'target' => $target,
             'max-limit' => $maxLimit,
-            'comment'   => $comment,
-        ]);
+            'comment' => $comment,
+        ];
+
+        if ($parent !== null) {
+            $payload['parent'] = $parent;
+        }
+
+        $client->command('/queue/simple/add', $payload);
     }
 
     /**
@@ -316,12 +371,20 @@ class IsolirSynchronizer
 
         $subnets = $groups->map(function ($g) {
             $netmask = (int) $g->netmask;
-            $mask    = ~((1 << (32 - $netmask)) - 1);
+            $mask = ~((1 << (32 - $netmask)) - 1);
             $network = long2ip(ip2long($g->ip_address) & $mask);
+
             return "{$network}/{$netmask}";
         })->unique()->sort()->values();
 
         return $subnets->isNotEmpty() ? $subnets->implode(',') : null;
+    }
+
+    private function queueExists(MikrotikApiClient $client, string $name): bool
+    {
+        $existing = $client->command('/queue/simple/print', [], ['name' => $name]);
+
+        return ! empty($existing['data']);
     }
 
     private function ensureIpPool(MikrotikApiClient $client, string $poolName, string $ranges): void
@@ -332,7 +395,7 @@ class IsolirSynchronizer
         }
 
         $client->command('/ip/pool/add', [
-            'name'   => $poolName,
+            'name' => $poolName,
             'ranges' => $ranges,
             'comment' => 'Rafen: pool isolir pelanggan',
         ]);
@@ -351,12 +414,134 @@ class IsolirSynchronizer
         }
 
         $client->command('/ppp/profile/add', [
-            'name'           => $profileName,
-            'local-address'  => $gateway,
+            'name' => $profileName,
+            'local-address' => $gateway,
             'remote-address' => $poolName,
-            'rate-limit'     => $rateLimit,
-            'comment'        => 'Rafen: profile isolir - jangan hapus',
+            'rate-limit' => $rateLimit,
+            'comment' => 'Rafen: profile isolir - jangan hapus',
         ]);
+    }
+
+    private function ensureGatewayAddress(MikrotikApiClient $client, string $gateway, string $subnet): void
+    {
+        $interface = $this->ensureLoopbackInterface($client);
+        $prefix = $this->subnetPrefix($subnet);
+        $desiredAddress = "{$gateway}/{$prefix}";
+
+        $addresses = $client->command('/ip/address/print');
+        $sameGatewayEntries = [];
+        $primaryStatic = null;
+
+        foreach ($addresses['data'] as $entry) {
+            $address = (string) ($entry['address'] ?? '');
+            if (str_starts_with($address, "{$gateway}/")) {
+                $sameGatewayEntries[] = $entry;
+
+                if ($primaryStatic === null && ! $this->isDynamicAddress($entry)) {
+                    $primaryStatic = $entry;
+                }
+            }
+        }
+
+        if ($primaryStatic !== null) {
+            $payload = ['.id' => $primaryStatic['.id']];
+            $needsUpdate = false;
+
+            if (($primaryStatic['address'] ?? '') !== $desiredAddress) {
+                $payload['address'] = $desiredAddress;
+                $needsUpdate = true;
+            }
+
+            if (($primaryStatic['interface'] ?? '') !== $interface) {
+                $payload['interface'] = $interface;
+                $needsUpdate = true;
+            }
+
+            if (($primaryStatic['comment'] ?? '') !== self::GATEWAY_ADDRESS_COMMENT) {
+                $payload['comment'] = self::GATEWAY_ADDRESS_COMMENT;
+                $needsUpdate = true;
+            }
+
+            if ($needsUpdate) {
+                $client->command('/ip/address/set', $payload);
+            }
+
+            foreach ($sameGatewayEntries as $duplicate) {
+                if (! isset($duplicate['.id'])) {
+                    continue;
+                }
+
+                if (($duplicate['.id'] ?? null) === ($primaryStatic['.id'] ?? null)) {
+                    continue;
+                }
+
+                if (! $this->isDynamicAddress($duplicate)) {
+                    $client->command('/ip/address/remove', ['.id' => $duplicate['.id']]);
+                }
+            }
+
+            return;
+        }
+
+        try {
+            $client->command('/ip/address/add', [
+                'address' => $desiredAddress,
+                'interface' => $interface,
+                'comment' => self::GATEWAY_ADDRESS_COMMENT,
+            ]);
+        } catch (RuntimeException $exception) {
+            // Jika gateway address sudah ada sebagai dynamic address, lanjutkan tanpa gagal total setup.
+            if (! str_contains(strtolower($exception->getMessage()), 'already have such address')) {
+                throw $exception;
+            }
+        }
+    }
+
+    private function ensureLoopbackInterface(MikrotikApiClient $client): string
+    {
+        $existingByName = $client->command('/interface/bridge/print', [], ['name' => self::LOOPBACK_INTERFACE_NAME]);
+        if (! empty($existingByName['data'])) {
+            return self::LOOPBACK_INTERFACE_NAME;
+        }
+
+        $existingByComment = $client->command('/interface/bridge/print', [], ['comment' => self::LOOPBACK_INTERFACE_COMMENT]);
+        if (! empty($existingByComment['data'])) {
+            return (string) ($existingByComment['data'][0]['name'] ?? self::LOOPBACK_INTERFACE_NAME);
+        }
+
+        $client->command('/interface/bridge/add', [
+            'name' => self::LOOPBACK_INTERFACE_NAME,
+            'comment' => self::LOOPBACK_INTERFACE_COMMENT,
+            'protocol-mode' => 'none',
+        ]);
+
+        return self::LOOPBACK_INTERFACE_NAME;
+    }
+
+    private function subnetPrefix(string $subnet): int
+    {
+        if (str_contains($subnet, '/')) {
+            [, $prefix] = explode('/', $subnet, 2);
+
+            return max(1, min(32, (int) $prefix));
+        }
+
+        return 24;
+    }
+
+    /**
+     * @param  array<string, string>  $entry
+     */
+    private function isDynamicAddress(array $entry): bool
+    {
+        $dynamic = strtolower((string) ($entry['dynamic'] ?? ''));
+        if ($dynamic !== '') {
+            return $dynamic === 'true' || $dynamic === 'yes' || $dynamic === '1';
+        }
+
+        $flags = strtolower((string) ($entry['flags'] ?? ''));
+
+        return str_contains($flags, 'd');
     }
 
     /**
@@ -368,39 +553,39 @@ class IsolirSynchronizer
     {
         $rules = [
             [
-                'chain'       => 'forward',
+                'chain' => 'forward',
                 'src-address' => $subnet,
-                'protocol'    => 'udp',
-                'dst-port'    => '53',
-                'action'      => 'accept',
-                'comment'     => 'rafen-isolir: izin DNS',
+                'protocol' => 'udp',
+                'dst-port' => '53',
+                'action' => 'accept',
+                'comment' => 'rafen-isolir: izin DNS',
             ],
             [
-                'chain'       => 'forward',
+                'chain' => 'forward',
                 'src-address' => $subnet,
-                'protocol'    => 'tcp',
-                'dst-port'    => '53',
-                'action'      => 'accept',
-                'comment'     => 'rafen-isolir: izin DNS TCP',
+                'protocol' => 'tcp',
+                'dst-port' => '53',
+                'action' => 'accept',
+                'comment' => 'rafen-isolir: izin DNS TCP',
             ],
             [
-                'chain'       => 'forward',
+                'chain' => 'forward',
                 'src-address' => $subnet,
-                'protocol'    => 'tcp',
-                'dst-port'    => '80,443',
-                'action'      => 'accept',
-                'comment'     => 'rafen-isolir: izin HTTP HTTPS',
+                'protocol' => 'tcp',
+                'dst-port' => '80,443',
+                'action' => 'accept',
+                'comment' => 'rafen-isolir: izin HTTP HTTPS',
             ],
             [
-                'chain'       => 'forward',
+                'chain' => 'forward',
                 'src-address' => $subnet,
-                'action'      => 'drop',
-                'comment'     => 'rafen-isolir: drop semua lainnya',
+                'action' => 'drop',
+                'comment' => 'rafen-isolir: drop semua lainnya',
             ],
         ];
 
         foreach ($rules as $rule) {
-            $comment  = $rule['comment'];
+            $comment = $rule['comment'];
             $existing = $client->command('/ip/firewall/filter/print', [], ['comment' => $comment]);
             if (! empty($existing['data'])) {
                 continue;
@@ -413,7 +598,7 @@ class IsolirSynchronizer
      * Buat NAT dst-nat: redirect HTTP (80) dan HTTPS (443) dari subnet isolir ke server Rafen.
      * HTTPS diredirect ke port 80 HTTP biasa (halaman isolir tidak perlu cert).
      *
-     * @param string $isolirHost Host tujuan (IP atau domain tanpa protocol)
+     * @param  string  $isolirHost  Host tujuan (IP atau domain tanpa protocol)
      */
     private function ensureNatRules(MikrotikApiClient $client, string $subnet, string $isolirHost): void
     {
@@ -434,29 +619,29 @@ class IsolirSynchronizer
 
         $rules = [
             [
-                'chain'        => 'dstnat',
-                'src-address'  => $subnet,
-                'protocol'     => 'tcp',
-                'dst-port'     => '80',
-                'action'       => 'dst-nat',
+                'chain' => 'dstnat',
+                'src-address' => $subnet,
+                'protocol' => 'tcp',
+                'dst-port' => '80',
+                'action' => 'dst-nat',
                 'to-addresses' => $host,
-                'to-ports'     => $port,
-                'comment'      => 'rafen-isolir: redirect HTTP ke halaman isolir',
+                'to-ports' => $port,
+                'comment' => 'rafen-isolir: redirect HTTP ke halaman isolir',
             ],
             [
-                'chain'        => 'dstnat',
-                'src-address'  => $subnet,
-                'protocol'     => 'tcp',
-                'dst-port'     => '443',
-                'action'       => 'dst-nat',
+                'chain' => 'dstnat',
+                'src-address' => $subnet,
+                'protocol' => 'tcp',
+                'dst-port' => '443',
+                'action' => 'dst-nat',
                 'to-addresses' => $host,
-                'to-ports'     => '443',
-                'comment'      => 'rafen-isolir: redirect HTTPS ke halaman isolir',
+                'to-ports' => '443',
+                'comment' => 'rafen-isolir: redirect HTTPS ke halaman isolir',
             ],
         ];
 
         foreach ($rules as $rule) {
-            $comment  = $rule['comment'];
+            $comment = $rule['comment'];
             $existing = $client->command('/ip/firewall/nat/print', [], ['comment' => $comment]);
 
             // Hapus rule lama jika ada agar to-ports dapat diperbarui

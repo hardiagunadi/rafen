@@ -76,15 +76,56 @@
                                 <select name="subscription_plan_id" class="form-control">
                                     <option value="">- Tidak ada (Trial) -</option>
                                     @foreach($plans as $plan)
-                                    <option value="{{ $plan->id }}">{{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }}</option>
+                                    <option value="{{ $plan->id }}" {{ (string) old('subscription_plan_id') === (string) $plan->id ? 'selected' : '' }}>
+                                        {{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }}
+                                    </option>
                                     @endforeach
                                 </select>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
+                                <label>Metode Langganan</label>
+                                <select name="subscription_method" id="subscription_method" class="form-control @error('subscription_method') is-invalid @enderror">
+                                    <option value="monthly" {{ old('subscription_method', 'monthly') === 'monthly' ? 'selected' : '' }}>Bulanan</option>
+                                    <option value="license" {{ old('subscription_method') === 'license' ? 'selected' : '' }}>Lisensi (Tahunan)</option>
+                                </select>
+                                @error('subscription_method')
+                                    <span class="invalid-feedback">{{ $message }}</span>
+                                @enderror
+                                <small class="text-muted">Lisensi otomatis berlaku 1 tahun.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="license_limit_fields" class="row d-none">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Limit Mikrotik (Lisensi)</label>
+                                <input type="number" name="license_max_mikrotik" class="form-control @error('license_max_mikrotik') is-invalid @enderror" value="{{ old('license_max_mikrotik') }}" min="-1">
+                                @error('license_max_mikrotik')
+                                    <span class="invalid-feedback">{{ $message }}</span>
+                                @enderror
+                                <small class="text-muted">Isi <code>-1</code> untuk tanpa batas.</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Limit PPP Users (Lisensi)</label>
+                                <input type="number" name="license_max_ppp_users" class="form-control @error('license_max_ppp_users') is-invalid @enderror" value="{{ old('license_max_ppp_users') }}" min="-1">
+                                @error('license_max_ppp_users')
+                                    <span class="invalid-feedback">{{ $message }}</span>
+                                @enderror
+                                <small class="text-muted">Isi <code>-1</code> untuk tanpa batas.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
                                 <label>Masa Trial (hari)</label>
-                                <input type="number" name="trial_days" class="form-control" value="14" min="0" max="90">
+                                <input type="number" name="trial_days" class="form-control" value="{{ old('trial_days', 14) }}" min="0" max="90">
                                 <small class="text-muted">Berlaku jika tidak memilih paket</small>
                             </div>
                         </div>
@@ -103,3 +144,30 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+function toggleLicenseLimitFields() {
+    var method = document.getElementById('subscription_method');
+    var wrapper = document.getElementById('license_limit_fields');
+    if (!method || !wrapper) {
+        return;
+    }
+
+    if (method.value === 'license') {
+        wrapper.classList.remove('d-none');
+    } else {
+        wrapper.classList.add('d-none');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var method = document.getElementById('subscription_method');
+    if (!method) {
+        return;
+    }
+    method.addEventListener('change', toggleLicenseLimitFields);
+    toggleLicenseLimitFields();
+});
+</script>
+@endpush

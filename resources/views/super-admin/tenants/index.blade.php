@@ -44,6 +44,7 @@
                         <th>Nama</th>
                         <th>Email</th>
                         <th>Perusahaan</th>
+                        <th>Metode</th>
                         <th>Paket</th>
                         <th>Status</th>
                         <th>Berakhir</th>
@@ -61,6 +62,11 @@
                         </td>
                         <td>{{ $tenant->email }}</td>
                         <td>{{ $tenant->company_name ?? '-' }}</td>
+                        <td>
+                            <span class="badge {{ $tenant->subscription_method === 'license' ? 'badge-info' : 'badge-primary' }}">
+                                {{ $tenant->subscription_method === 'license' ? 'Lisensi' : 'Bulanan' }}
+                            </span>
+                        </td>
                         <td>{{ $tenant->subscriptionPlan->name ?? '-' }}</td>
                         <td>
                             @switch($tenant->subscription_status)
@@ -99,7 +105,7 @@
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="8" class="text-center text-muted">Tidak ada data tenant</td>
+                        <td colspan="9" class="text-center text-muted">Tidak ada data tenant</td>
                     </tr>
                     @endforelse
                 </tbody>

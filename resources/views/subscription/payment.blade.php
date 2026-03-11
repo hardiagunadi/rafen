@@ -20,7 +20,7 @@
                             </tr>
                             <tr>
                                 <td>Durasi</td>
-                                <td>{{ $subscription->plan->duration_days }} hari</td>
+                                <td>{{ $subscription->start_date->diffInDays($subscription->end_date) }} hari</td>
                             </tr>
                             <tr>
                                 <td>Mulai</td>

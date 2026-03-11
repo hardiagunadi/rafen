@@ -548,7 +548,7 @@ it('forbids teknisi to auto detect oid mapping', function () {
         ->assertForbidden();
 });
 
-it('forbids teknisi to create and poll olt connection', function () {
+it('forbids teknisi to create olt connection but allows polling now', function () {
     $tenant = User::factory()->create([
         'role' => 'administrator',
         'subscription_status' => 'active',
@@ -566,6 +566,18 @@ it('forbids teknisi to create and poll olt connection', function () {
         'owner_id' => $tenant->id,
     ]);
 
+    app()->instance(HsgqSnmpCollector::class, new class extends HsgqSnmpCollector
+    {
+        /**
+         * @param  callable(int, int, string): void|null  $progressReporter
+         * @return array<int, array<string, mixed>>
+         */
+        public function collect(OltConnection $oltConnection, ?callable $progressReporter = null): array
+        {
+            return [];
+        }
+    });
+
     $this->actingAs($teknisi)
         ->get(route('olt-connections.create'))
         ->assertForbidden();
@@ -576,7 +588,49 @@ it('forbids teknisi to create and poll olt connection', function () {
 
     $this->actingAs($teknisi)
         ->post(route('olt-connections.poll', $connection))
-        ->assertForbidden();
+        ->assertRedirect(route('olt-connections.show', $connection));
+});
+
+it('shows polling button for teknisi and full actions for noc user', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $teknisi = User::factory()->create([
+        'parent_id' => $tenant->id,
+        'role' => 'teknisi',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $noc = User::factory()->create([
+        'parent_id' => $tenant->id,
+        'role' => 'noc',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    $this->actingAs($teknisi)
+        ->get(route('olt-connections.index'))
+        ->assertSuccessful()
+        ->assertSee('title="Polling Sekarang"', false)
+        ->assertDontSee('title="Edit"', false)
+        ->assertDontSee('title="Hapus"', false)
+        ->assertDontSee('Tambah OLT HSGQ');
+
+    $this->actingAs($noc)
+        ->get(route('olt-connections.index'))
+        ->assertSuccessful()
+        ->assertSee('title="Polling Sekarang"', false)
+        ->assertSee('title="Edit"', false)
+        ->assertSee('title="Hapus"', false)
+        ->assertSee('Tambah OLT HSGQ');
 });
 
 it('forbids cross tenant access to olt connection', function () {
@@ -705,7 +759,8 @@ it('renders the onu optics datatable on show page', function () {
         ->assertDontSee('<th>Index</th>', false)
         ->assertDontSee('<th>Rx OLT</th>', false)
         ->assertDontSee('<th>Tx OLT</th>', false)
-        ->assertSee(route('olt-connections.datatable', $connection), false);
+        ->assertSee(route('olt-connections.datatable', $connection), false)
+        ->assertSee(route('olt-connections.polling-status', $connection), false);
 });
 
 it('shows tx olt value per pon card on detail page', function () {
@@ -731,7 +786,74 @@ it('shows tx olt value per pon card on detail page', function () {
     $this->actingAs($tenant)
         ->get(route('olt-connections.show', $connection))
         ->assertSuccessful()
-        ->assertSee('Tx OLT 3.10 dBm');
+        ->assertSee('data-summary-tx-olt', false)
+        ->assertSee('3.10 dBm');
+});
+
+it('returns polling snapshot for olt detail auto refresh', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+        'last_poll_success' => true,
+        'last_poll_message' => 'Polling SNMP berhasil. ONU terdeteksi: 2',
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON1',
+        'onu_number' => '1',
+        'status' => 'online',
+        'tx_olt_dbm' => 2.8,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON2',
+        'onu_number' => '1',
+        'status' => 'offline',
+        'tx_olt_dbm' => 1.9,
+    ]);
+
+    $this->actingAs($tenant)
+        ->getJson(route('olt-connections.polling-status', $connection))
+        ->assertSuccessful()
+        ->assertJsonPath('is_polling', false)
+        ->assertJsonPath('last_poll_success', true)
+        ->assertJsonPath('poll_message', 'Polling SNMP berhasil. ONU terdeteksi: 2')
+        ->assertJsonPath('summary.total_onu_stored', 2)
+        ->assertJsonPath('summary.active', 2)
+        ->assertJsonPath('summary.online', 1)
+        ->assertJsonPath('summary.offline', 1)
+        ->assertJsonPath('summary.rows.0.port_id', 'PON1');
+});
+
+it('forbids cross tenant polling snapshot access', function () {
+    $tenantA = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $tenantB = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenantB->id,
+    ]);
+
+    $this->actingAs($tenantA)
+        ->getJson(route('olt-connections.polling-status', $connection))
+        ->assertForbidden();
 });
 
 it('filters onu optics by selected port id on datatable endpoint', function () {

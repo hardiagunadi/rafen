@@ -31,7 +31,7 @@
                         <h3 class="text-primary">
                             Rp {{ number_format($plan->price, 0, ',', '.') }}
                         </h3>
-                        <p class="text-muted">{{ $plan->duration_days }} hari</p>
+                        <p class="text-muted">{{ $user->resolveSubscriptionDurationDays($plan) }} hari</p>
                         <form action="{{ route('subscription.subscribe', $plan) }}" method="POST">
                             @csrf
                             <button type="submit" class="btn btn-primary btn-block">

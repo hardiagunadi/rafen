@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Throwable;
 
@@ -38,7 +39,7 @@ class OltConnectionController extends Controller
 
     public function create(): View
     {
-        if (auth()->user()->role === 'teknisi') {
+        if (! $this->canManageOltConnections()) {
             abort(403);
         }
 
@@ -49,6 +50,10 @@ class OltConnectionController extends Controller
 
     public function store(StoreOltConnectionRequest $request): RedirectResponse
     {
+        if (! $this->canManageOltConnections()) {
+            abort(403);
+        }
+
         $data = $request->validated();
         $data['owner_id'] = auth()->user()->effectiveOwnerId();
         $data['is_active'] = $request->boolean('is_active', true);
@@ -68,27 +73,7 @@ class OltConnectionController extends Controller
         $selectedPortId = trim((string) $request->input('port_id'));
         $selectedStatus = $this->normalizeSelectedStatus((string) $request->input('status'));
 
-        $summaryRows = $oltConnection->onuOptics()
-            ->whereNotNull('pon_interface')
-            ->get(['pon_interface', 'status', 'tx_olt_dbm'])
-            ->groupBy('pon_interface')
-            ->map(function ($items, string $portId): array {
-                $total = $items->count();
-                $online = $items->filter(fn (OltOnuOptic $item): bool => $this->isOnlineStatus($item->status))->count();
-                $txOltDbm = $items->first(fn (OltOnuOptic $item): bool => $item->tx_olt_dbm !== null)?->tx_olt_dbm;
-
-                return [
-                    'port_id' => $portId,
-                    'total' => $total,
-                    'online' => $online,
-                    'offline' => max(0, $total - $online),
-                    'tx_olt_dbm' => $txOltDbm !== null ? (float) $txOltDbm : null,
-                ];
-            })
-            ->sortBy(function (array $row): int {
-                return (int) preg_replace('/\D+/', '', $row['port_id']);
-            })
-            ->values();
+        $summaryRows = $this->buildSummaryRows($oltConnection);
 
         $availablePortIds = $summaryRows
             ->pluck('port_id')
@@ -111,6 +96,63 @@ class OltConnectionController extends Controller
             'onlineSummary',
             'offlineSummary',
         ));
+    }
+
+    public function pollingStatus(OltConnection $oltConnection): JsonResponse
+    {
+        $this->authorizeAccess($oltConnection);
+
+        $summaryRows = $this->buildSummaryRows($oltConnection);
+        $totalOnuStored = $oltConnection->onuOptics()->count();
+
+        return response()->json([
+            'is_polling' => $oltConnection->isPollingInProgress(),
+            'last_poll_success' => $oltConnection->last_poll_success,
+            'poll_message' => $oltConnection->pollingDisplayMessage(),
+            'poll_progress_percent' => $oltConnection->pollingProgressPercent(),
+            'last_polled_at' => $oltConnection->last_polled_at?->format('Y-m-d H:i:s'),
+            'summary' => [
+                'total_onu_stored' => $totalOnuStored,
+                'active' => $summaryRows->sum('total'),
+                'online' => $summaryRows->sum('online'),
+                'offline' => $summaryRows->sum('offline'),
+                'rows' => $summaryRows->values()->all(),
+            ],
+        ]);
+    }
+
+    /**
+     * @return Collection<int, array{
+     *     port_id: string,
+     *     total: int,
+     *     online: int,
+     *     offline: int,
+     *     tx_olt_dbm: float|null
+     * }>
+     */
+    private function buildSummaryRows(OltConnection $oltConnection): Collection
+    {
+        return $oltConnection->onuOptics()
+            ->whereNotNull('pon_interface')
+            ->get(['pon_interface', 'status', 'tx_olt_dbm'])
+            ->groupBy('pon_interface')
+            ->map(function ($items, string $portId): array {
+                $total = $items->count();
+                $online = $items->filter(fn (OltOnuOptic $item): bool => $this->isOnlineStatus($item->status))->count();
+                $txOltDbm = $items->first(fn (OltOnuOptic $item): bool => $item->tx_olt_dbm !== null)?->tx_olt_dbm;
+
+                return [
+                    'port_id' => $portId,
+                    'total' => $total,
+                    'online' => $online,
+                    'offline' => max(0, $total - $online),
+                    'tx_olt_dbm' => $txOltDbm !== null ? (float) $txOltDbm : null,
+                ];
+            })
+            ->sortBy(function (array $row): int {
+                return (int) preg_replace('/\D+/', '', $row['port_id']);
+            })
+            ->values();
     }
 
     public function datatable(OltConnection $oltConnection, Request $request): JsonResponse
@@ -319,7 +361,7 @@ class OltConnectionController extends Controller
 
     public function edit(OltConnection $oltConnection): View
     {
-        if (auth()->user()->role === 'teknisi') {
+        if (! $this->canManageOltConnections()) {
             abort(403);
         }
 
@@ -333,7 +375,7 @@ class OltConnectionController extends Controller
 
     public function update(UpdateOltConnectionRequest $request, OltConnection $oltConnection): RedirectResponse
     {
-        if (auth()->user()->role === 'teknisi') {
+        if (! $this->canManageOltConnections()) {
             abort(403);
         }
 
@@ -351,7 +393,7 @@ class OltConnectionController extends Controller
 
     public function destroy(OltConnection $oltConnection): RedirectResponse
     {
-        if (auth()->user()->role === 'teknisi') {
+        if (! $this->canManageOltConnections()) {
             abort(403);
         }
 
@@ -365,7 +407,7 @@ class OltConnectionController extends Controller
 
     public function poll(OltConnection $oltConnection): RedirectResponse
     {
-        if (auth()->user()->role === 'teknisi') {
+        if (! $this->canPollOltNow()) {
             abort(403);
         }
 
@@ -404,7 +446,7 @@ class OltConnectionController extends Controller
 
     public function autoDetectOid(DetectOltOidRequest $request): JsonResponse
     {
-        if (auth()->user()->role === 'teknisi') {
+        if (! $this->canManageOltConnections()) {
             abort(403);
         }
 
@@ -425,7 +467,7 @@ class OltConnectionController extends Controller
 
     public function autoDetectModel(DetectOltModelRequest $request): JsonResponse
     {
-        if (auth()->user()->role === 'teknisi') {
+        if (! $this->canManageOltConnections()) {
             abort(403);
         }
 
@@ -456,5 +498,27 @@ class OltConnectionController extends Controller
         if ((int) $oltConnection->owner_id !== (int) $user->effectiveOwnerId()) {
             abort(403);
         }
+    }
+
+    private function canManageOltConnections(): bool
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        return in_array($user->role, ['administrator', 'noc'], true);
+    }
+
+    private function canPollOltNow(): bool
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        return in_array($user->role, ['administrator', 'noc', 'teknisi'], true);
     }
 }
