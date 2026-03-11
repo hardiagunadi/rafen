@@ -20,3 +20,5 @@ public/build/assets/app-IAtzAill.css
 .gitignore
 public/build/manifest.json
 .codex-memory.md
+public/wato/cron.log
+public/wato/wato.db
