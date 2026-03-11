@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 
 class Invoice extends Model
@@ -31,6 +30,7 @@ class Invoice extends Model
         'prorata_applied',
         'due_date',
         'status',
+        'renewed_without_payment',
         'payment_method',
         'payment_channel',
         'payment_reference',
@@ -48,6 +48,7 @@ class Invoice extends Model
         return [
             'promo_applied' => 'boolean',
             'prorata_applied' => 'boolean',
+            'renewed_without_payment' => 'boolean',
             'harga_asli' => 'decimal:2',
             'due_date' => 'date',
             'paid_at' => 'datetime',
@@ -121,12 +122,13 @@ class Invoice extends Model
         if ($user->isSuperAdmin()) {
             return $query;
         }
+
         return $query->where('owner_id', $user->effectiveOwnerId());
     }
 
     public function getFormattedTotalAttribute(): string
     {
-        return 'Rp ' . number_format($this->total, 0, ',', '.');
+        return 'Rp '.number_format($this->total, 0, ',', '.');
     }
 
     /**
@@ -142,7 +144,7 @@ class Invoice extends Model
     {
         return DB::transaction(function () use ($ownerId, $prefix) {
             $yearMonth = now()->format('Ym');
-            $pattern   = $prefix . '-' . $yearMonth . '%';
+            $pattern = $prefix.'-'.$yearMonth.'%';
 
             $last = static::where('owner_id', $ownerId)
                 ->where('invoice_number', 'like', $pattern)
@@ -151,7 +153,7 @@ class Invoice extends Model
 
             $seq = $last ? ((int) substr($last, -4)) + 1 : 1;
 
-            return $prefix . '-' . $yearMonth . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+            return $prefix.'-'.$yearMonth.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
         });
     }
 }

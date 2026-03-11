@@ -273,5 +273,16 @@
         @if (Route::has('login'))
             <div class="h-14.5 hidden lg:block"></div>
         @endif
+
+        @php
+            $serverLoadTimeMs = defined('LARAVEL_START')
+                ? (microtime(true) - LARAVEL_START) * 1000
+                : null;
+        @endphp
+        @if ($serverLoadTimeMs !== null)
+            <div class="fixed bottom-3 left-1/2 z-50 -translate-x-1/2 rounded bg-white/85 px-3 py-1 text-xs text-slate-700 shadow">
+                Load Time: {{ number_format($serverLoadTimeMs, 1, '.', '') }} ms
+            </div>
+        @endif
     </body>
 </html>

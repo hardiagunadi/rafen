@@ -336,8 +336,8 @@ class TenantSettingsController extends Controller
         $selectedTenant = null;
 
         if ($user->isSuperAdmin()) {
-            $tenants = \App\Models\User::whereNull('parent_id')
-                ->where('is_super_admin', false)
+            $tenants = \App\Models\User::query()
+                ->tenants()
                 ->orderBy('name')
                 ->get();
 
@@ -386,9 +386,9 @@ class TenantSettingsController extends Controller
         ]);
 
         if ($user->isSuperAdmin() && ! empty($validated['tenant_id'])) {
-            $tenant = \App\Models\User::where('id', $validated['tenant_id'])
-                ->where('is_super_admin', false)
-                ->whereNull('parent_id')
+            $tenant = \App\Models\User::query()
+                ->tenants()
+                ->where('id', $validated['tenant_id'])
                 ->firstOrFail();
             $settings = \App\Models\TenantSettings::getOrCreate($tenant->id);
         } else {
@@ -443,9 +443,9 @@ class TenantSettingsController extends Controller
             $user = $request->user();
 
             if ($user->isSuperAdmin() && $request->integer('tenant_id')) {
-                $tenant = \App\Models\User::where('id', $request->integer('tenant_id'))
-                    ->where('is_super_admin', false)
-                    ->whereNull('parent_id')
+                $tenant = \App\Models\User::query()
+                    ->tenants()
+                    ->where('id', $request->integer('tenant_id'))
                     ->first();
                 $settings = $tenant ? \App\Models\TenantSettings::getOrCreate($tenant->id) : null;
             } else {

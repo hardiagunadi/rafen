@@ -1,0 +1,71 @@
+<?php
+
+use App\Models\HotspotUser;
+use App\Models\PppUser;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+function createSuperAdminTenantGuardTestUser(): User
+{
+    return User::factory()->create([
+        'role' => 'administrator',
+        'is_super_admin' => true,
+    ]);
+}
+
+function createTenantForDeleteGuardTest(): User
+{
+    return User::factory()->create([
+        'role' => 'administrator',
+        'is_super_admin' => false,
+        'parent_id' => null,
+    ]);
+}
+
+it('prevents deleting tenant when active ppp customers still exist', function () {
+    $superAdmin = createSuperAdminTenantGuardTestUser();
+    $tenant = createTenantForDeleteGuardTest();
+
+    PppUser::query()->create([
+        'owner_id' => $tenant->id,
+        'status_akun' => 'enable',
+    ]);
+
+    $this->actingAs($superAdmin)
+        ->delete(route('super-admin.tenants.delete', $tenant))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+
+    $this->assertDatabaseHas('users', ['id' => $tenant->id]);
+});
+
+it('prevents deleting tenant when active hotspot customers still exist', function () {
+    $superAdmin = createSuperAdminTenantGuardTestUser();
+    $tenant = createTenantForDeleteGuardTest();
+
+    HotspotUser::query()->create([
+        'owner_id' => $tenant->id,
+        'status_akun' => 'enable',
+    ]);
+
+    $this->actingAs($superAdmin)
+        ->delete(route('super-admin.tenants.delete', $tenant))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+
+    $this->assertDatabaseHas('users', ['id' => $tenant->id]);
+});
+
+it('allows deleting tenant when there are no active customers', function () {
+    $superAdmin = createSuperAdminTenantGuardTestUser();
+    $tenant = createTenantForDeleteGuardTest();
+
+    $this->actingAs($superAdmin)
+        ->delete(route('super-admin.tenants.delete', $tenant))
+        ->assertRedirect(route('super-admin.tenants'))
+        ->assertSessionHas('success');
+
+    $this->assertDatabaseMissing('users', ['id' => $tenant->id]);
+});

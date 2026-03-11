@@ -43,6 +43,8 @@ class IsolirSynchronizer
 
     private const GATEWAY_ADDRESS_COMMENT = 'Rafen: gateway isolir';
 
+    private const LOCAL_ISOLIR_SECRET_COMMENT = 'Rafen: isolir fallback';
+
     // Attribute vendor Mikrotik untuk menentukan PPP profile via RADIUS
     private const MIKROTIK_GROUP_ATTR = 'Mikrotik-Group';
 
@@ -69,6 +71,11 @@ class IsolirSynchronizer
         $profileName = $connection?->isolir_profile_name ?: 'isolir-pppoe';
         $poolName = $connection?->isolir_pool_name ?: 'pool-isolir';
         $rateLimit = $connection?->isolir_rate_limit ?: '128k/128k';
+
+        if ($connection) {
+            $this->ensureIsolirProfileParentQueue($connection, $profileName, $poolName, $rateLimit);
+            $this->ensureLocalIsolirSecret($connection, $user, $profileName);
+        }
 
         // 3. Hapus semua radreply lama (IP statis / pool normal)
         DB::table('radreply')
@@ -128,6 +135,7 @@ class IsolirSynchronizer
         $connection = $this->resolveConnection($user);
 
         if ($connection) {
+            $this->removeLocalIsolirSecret($connection, $user->username);
             $this->kickActiveSessions($connection, $user->username);
         }
     }
@@ -160,19 +168,19 @@ class IsolirSynchronizer
             // -- 1. IP Pool --
             $this->ensureIpPool($client, $pool, $range);
 
-            // -- 2. PPP Profile isolir --
-            $this->ensurePppProfile($client, $profile, $gateway, $pool, $rate);
-
-            // -- 3. IP Address gateway isolir pada interface loopback/bridge --
+            // -- 2. IP Address gateway isolir pada interface loopback/bridge --
             $this->ensureGatewayAddress($client, $gateway, $subnet);
 
             // -- 3. Parent Queues (PPPoE, Hotspot, Expired User) --
             $this->ensureParentQueues($client, $connection, $subnet, $rate);
 
-            // -- 4. Firewall filter: DROP semua dari subnet isolir KECUALI DNS + HTTP/HTTPS --
+            // -- 4. PPP Profile isolir --
+            $this->ensurePppProfile($client, $profile, $gateway, $pool, $rate);
+
+            // -- 5. Firewall filter: DROP semua dari subnet isolir KECUALI DNS + HTTP/HTTPS --
             $this->ensureFirewallFilters($client, $subnet);
 
-            // -- 5. NAT DNAT: redirect HTTP + HTTPS dari subnet isolir ke server Rafen --
+            // -- 6. NAT DNAT: redirect HTTP + HTTPS dari subnet isolir ke server Rafen --
             if ($isolirUrl) {
                 $this->ensureNatRules($client, $subnet, $isolirUrl);
             }
@@ -387,6 +395,116 @@ class IsolirSynchronizer
         return ! empty($existing['data']);
     }
 
+    private function ensureIsolirProfileParentQueue(
+        MikrotikConnection $connection,
+        string $profileName,
+        string $poolName,
+        string $rateLimit
+    ): void {
+        $client = new MikrotikApiClient($connection);
+
+        try {
+            $client->connect();
+
+            $gateway = $connection->isolir_gateway ?: '10.99.0.1';
+            $subnet = $this->gatewayToSubnet($gateway);
+
+            if (! $this->queueExists($client, self::EXPIRED_PARENT_QUEUE_NAME)) {
+                $this->ensureSimpleQueue(
+                    $client,
+                    self::EXPIRED_PARENT_QUEUE_NAME,
+                    $subnet,
+                    $rateLimit,
+                    'rafen-isolir: throttle pelanggan jatuh tempo'
+                );
+            }
+
+            $this->ensurePppProfile($client, $profileName, $gateway, $poolName, $rateLimit);
+        } catch (RuntimeException $e) {
+            Log::warning("IsolirSynchronizer: gagal sinkron parent queue profile isolir di {$connection->name}: {$e->getMessage()}");
+        } finally {
+            $client->disconnect();
+        }
+    }
+
+    private function ensureLocalIsolirSecret(MikrotikConnection $connection, PppUser $user, string $profileName): void
+    {
+        if (! $user->username || ! $user->ppp_password) {
+            return;
+        }
+
+        $client = new MikrotikApiClient($connection);
+
+        try {
+            $client->connect();
+
+            $existing = $client->command('/ppp/secret/print', [], ['name' => $user->username]);
+            $payload = [
+                'password' => $user->ppp_password,
+                'profile' => $profileName,
+                'service' => 'pppoe',
+                'comment' => self::LOCAL_ISOLIR_SECRET_COMMENT,
+            ];
+
+            if (! empty($existing['data'])) {
+                $entry = $existing['data'][0];
+                $updatePayload = ['.id' => $entry['.id']];
+                $needsUpdate = false;
+
+                foreach ($payload as $field => $value) {
+                    if (($entry[$field] ?? '') !== $value) {
+                        $updatePayload[$field] = $value;
+                        $needsUpdate = true;
+                    }
+                }
+
+                if ($needsUpdate) {
+                    $client->command('/ppp/secret/set', $updatePayload);
+                }
+
+                return;
+            }
+
+            $client->command('/ppp/secret/add', [
+                'name' => $user->username,
+                ...$payload,
+            ]);
+        } catch (RuntimeException $e) {
+            Log::warning("IsolirSynchronizer: gagal sinkron secret fallback {$user->username} di {$connection->name}: {$e->getMessage()}");
+        } finally {
+            $client->disconnect();
+        }
+    }
+
+    private function removeLocalIsolirSecret(MikrotikConnection $connection, string $username): void
+    {
+        if ($username === '') {
+            return;
+        }
+
+        $client = new MikrotikApiClient($connection);
+
+        try {
+            $client->connect();
+
+            $secrets = $client->command('/ppp/secret/print', [], ['name' => $username]);
+            foreach ($secrets['data'] as $entry) {
+                $comment = (string) ($entry['comment'] ?? '');
+                if ($comment !== self::LOCAL_ISOLIR_SECRET_COMMENT) {
+                    continue;
+                }
+
+                if (isset($entry['.id'])) {
+                    $client->command('/ppp/secret/remove', ['.id' => $entry['.id']]);
+                }
+            }
+        } catch (RuntimeException $e) {
+            Log::warning("IsolirSynchronizer: gagal menghapus secret fallback {$username} di {$connection->name}: {$e->getMessage()}");
+        } finally {
+            $client->disconnect();
+        }
+    }
+
     private function ensureIpPool(MikrotikApiClient $client, string $poolName, string $ranges): void
     {
         $existing = $client->command('/ip/pool/print', [], ['name' => $poolName]);
@@ -409,16 +527,37 @@ class IsolirSynchronizer
         string $rateLimit
     ): void {
         $existing = $client->command('/ppp/profile/print', [], ['name' => $profileName]);
+
+        $payload = [
+            'local-address' => $gateway,
+            'remote-address' => $poolName,
+            'rate-limit' => $rateLimit,
+            'parent-queue' => self::EXPIRED_PARENT_QUEUE_NAME,
+            'comment' => 'Rafen: profile isolir - jangan hapus',
+        ];
+
         if (! empty($existing['data'])) {
-            return; // sudah ada
+            $entry = $existing['data'][0];
+            $updatePayload = ['.id' => $entry['.id']];
+            $needsUpdate = false;
+
+            foreach ($payload as $field => $value) {
+                if (($entry[$field] ?? '') !== $value) {
+                    $updatePayload[$field] = $value;
+                    $needsUpdate = true;
+                }
+            }
+
+            if ($needsUpdate) {
+                $client->command('/ppp/profile/set', $updatePayload);
+            }
+
+            return;
         }
 
         $client->command('/ppp/profile/add', [
             'name' => $profileName,
-            'local-address' => $gateway,
-            'remote-address' => $poolName,
-            'rate-limit' => $rateLimit,
-            'comment' => 'Rafen: profile isolir - jangan hapus',
+            ...$payload,
         ]);
     }
 

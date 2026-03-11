@@ -7,9 +7,11 @@
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:.5rem;">
         <h4 class="mb-0">Rekap Tagihan</h4>
         <div class="d-flex align-items-center" style="gap:.5rem;">
-            <select id="filter-status" class="form-control form-control-sm" style="width:160px;">
+            <select id="filter-status" class="form-control form-control-sm" style="width:220px;">
                 <option value="">Semua Status</option>
-                <option value="unpaid">Belum Bayar</option>
+                <option value="unpaid">Belum Bayar (Semua)</option>
+                <option value="active_unpaid">Aktif - Belum Bayar</option>
+                <option value="isolated_unpaid">Belum Bayar - Terisolir</option>
                 <option value="paid">Lunas</option>
             </select>
             <div class="btn-group btn-group-sm">
@@ -60,16 +62,24 @@
     }
 
     function renderAksi(d, type, row) {
-        var renew = '<button class="btn btn-primary btn-sm mr-1"'
-            + (row.can_renew ? ' data-ajax-post="' + row.renew_url + '" data-confirm="Perpanjang layanan tanpa pembayaran?"' : ' disabled')
-            + '><i class="fas fa-bolt"></i></button>';
+        var renew = row.can_renew
+            ? ('<button class="btn btn-primary btn-sm mr-1"'
+                + ' data-ajax-post="' + row.renew_url + '" data-confirm="Perpanjang layanan tanpa pembayaran?"'
+                + ' title="Perpanjang Layanan"><i class="fas fa-bolt"></i></button>')
+            : '';
         var pay;
         if (row.has_pending) {
             pay = '<a href="{{ route("payments.pending") }}" class="btn btn-warning btn-sm mr-1" title="Menunggu konfirmasi bukti transfer"><i class="fas fa-clock"></i></a>';
+        } else if (row.status === 'paid') {
+            pay = '<button class="btn btn-outline-success btn-sm mr-1" disabled title="Tagihan sudah lunas"><i class="fas fa-money-bill-wave"></i></button>';
+        } else if (row.can_mark_paid) {
+            pay = '<button class="btn btn-success btn-sm mr-1"'
+                + ' data-pay-modal="1" data-pay-url="' + row.pay_url + '" data-invoice-number="' + row.invoice_number + '" data-customer-name="' + row.customer_name + '" data-total="' + row.total + '"'
+                + ' title="Tandai Lunas"><i class="fas fa-money-bill-wave"></i></button>';
         } else {
             pay = '<button class="btn btn-success btn-sm mr-1"'
                 + (row.can_pay ? ' data-pay-modal="1" data-pay-url="' + row.pay_url + '" data-invoice-number="' + row.invoice_number + '" data-customer-name="' + row.customer_name + '" data-total="' + row.total + '"' : ' disabled')
-                + '><i class="fas fa-check"></i></button>';
+                + ' title="Bayar"><i class="fas fa-credit-card"></i></button>';
         }
         var view = '<a href="' + row.show_url + '" class="btn btn-info btn-sm mr-1" title="Lihat Invoice"><i class="fas fa-eye"></i></a>';
         var nota = row.can_nota
@@ -188,7 +198,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-check-circle text-success mr-2"></i>Konfirmasi Pembayaran</h5>
+                <h5 class="modal-title"><i class="fas fa-money-bill-wave text-success mr-2"></i>Konfirmasi Pembayaran</h5>
                 <button type="button" class="close" data-dismiss="modal">&times;</button>
             </div>
             <form id="form-pay" method="POST">
@@ -227,7 +237,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
                     <button type="submit" class="btn btn-success" id="btn-pay-submit">
-                        <i class="fas fa-check mr-1"></i>Konfirmasi Bayar
+                        <i class="fas fa-money-bill-wave mr-1"></i>Tandai Lunas
                     </button>
                 </div>
             </form>

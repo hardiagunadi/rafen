@@ -68,6 +68,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::put('api-dashboard/pppoe-server/{id}', [DashboardController::class, 'pppoeServerUpdate'])->name('dashboard.api.pppoe-server.update');
     Route::delete('api-dashboard/pppoe-server/{id}', [DashboardController::class, 'pppoeServerDestroy'])->name('dashboard.api.pppoe-server.destroy');
     Route::get('reports/income', IncomeReportController::class)->name('reports.income');
+    Route::post('reports/income/expenses', [IncomeReportController::class, 'storeExpense'])->name('reports.expenses.store');
 
     // Log Aplikasi
     Route::prefix('logs')->name('logs.')->group(function () {

@@ -643,3 +643,108 @@
 [2026-03-11 11:01:59] Delay 8 detik...
 [2026-03-11 11:02:22] ERR 6285111209859 → 6285158660803: Connection timed out after 15002 milliseconds
 [2026-03-11 11:02:22] Delay 8 detik...
+[2026-03-11 11:02:45] ERR 6285111209859 → 6285185021233: Connection timed out after 15002 milliseconds
+[2026-03-11 11:02:45] Delay 6 detik...
+[2026-03-11 11:03:06] ERR 6285111209859 → 6282220243698: Connection timed out after 15001 milliseconds
+[2026-03-11 11:03:06] Delay 6 detik...
+[2026-03-11 11:03:12] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 11:03:27] ERR 6285185021233 → 6282220243698: Connection timed out after 15002 milliseconds
+[2026-03-11 11:03:27] Delay 5 detik...
+[2026-03-11 11:03:47] ERR 6285185021233 → 6285158660803: Connection timed out after 15002 milliseconds
+[2026-03-11 11:03:47] Delay 4 detik...
+[2026-03-11 11:04:06] ERR 6285185021233 → 6285111209859: Connection timed out after 15002 milliseconds
+[2026-03-11 11:04:06] Delay 5 detik...
+[2026-03-11 11:04:11] Selesai. Terkirim: 0, Gagal: 9.
+[2026-03-11 11:04:11] Jadwal pengiriman berikutnya: 2026-03-11 11:54:11 (+50 menit)
+[2026-03-11 11:30:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 11:30:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 11:30:16] ERR 6282220243698 → 6285185021233: Connection timed out after 15002 milliseconds
+[2026-03-11 11:30:16] Delay 4 detik...
+[2026-03-11 11:30:35] ERR 6282220243698 → 6285111209859: Connection timed out after 15001 milliseconds
+[2026-03-11 11:30:35] Delay 5 detik...
+[2026-03-11 11:30:55] ERR 6282220243698 → 6285158660803: Connection timed out after 15002 milliseconds
+[2026-03-11 11:30:55] Delay 7 detik...
+[2026-03-11 11:31:17] ERR 6285111209859 → 6285185021233: Connection timed out after 15002 milliseconds
+[2026-03-11 11:31:17] Delay 7 detik...
+[2026-03-11 11:31:39] ERR 6285111209859 → 6282220243698: Connection timed out after 15001 milliseconds
+[2026-03-11 11:31:39] Delay 8 detik...
+[2026-03-11 11:32:02] ERR 6285111209859 → 6285158660803: Connection timed out after 15001 milliseconds
+[2026-03-11 11:32:02] Delay 6 detik...
+[2026-03-11 11:32:23] ERR 6285185021233 → 6285111209859: Connection timed out after 15002 milliseconds
+[2026-03-11 11:32:23] Delay 8 detik...
+[2026-03-11 11:32:46] ERR 6285185021233 → 6282220243698: Connection timed out after 15001 milliseconds
+[2026-03-11 11:32:46] Delay 8 detik...
+[2026-03-11 11:33:09] ERR 6285185021233 → 6285158660803: Operation timed out after 15002 milliseconds with 0 bytes received
+[2026-03-11 11:33:09] Delay 4 detik...
+[2026-03-11 11:33:13] Selesai. Terkirim: 0, Gagal: 9.
+[2026-03-11 11:33:13] Jadwal pengiriman berikutnya: 2026-03-11 15:04:13 (+3.5 jam)
+[2026-03-11 12:00:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 12:00:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 12:00:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 12:00:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 12:00:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 12:00:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 12:00:01] Jadwal pengiriman berikutnya: 2026-03-11 14:17:01 (+2.3 jam)
+[2026-03-11 12:30:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 12:30:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 12:30:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 12:30:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 12:30:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 12:30:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 12:30:01] Jadwal pengiriman berikutnya: 2026-03-11 14:54:01 (+2.4 jam)
+[2026-03-11 13:00:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 13:00:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 13:00:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 13:00:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 13:00:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 13:00:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 13:00:01] Jadwal pengiriman berikutnya: 2026-03-11 13:26:01 (+26 menit)
+[2026-03-11 13:30:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 13:30:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 13:30:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 13:30:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 13:30:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 13:30:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 13:30:01] Jadwal pengiriman berikutnya: 2026-03-11 13:55:01 (+25 menit)
+[2026-03-11 14:00:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 14:00:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 14:00:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 14:00:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 14:00:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 14:00:02] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 14:00:02] Jadwal pengiriman berikutnya: 2026-03-11 14:55:01 (+55 menit)
+[2026-03-11 14:30:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 14:30:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 14:30:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 14:30:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 14:30:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 14:30:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 14:30:01] Jadwal pengiriman berikutnya: 2026-03-11 17:23:01 (+2.9 jam)
+[2026-03-11 15:00:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 15:00:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 15:00:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 15:00:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 15:00:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 15:00:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 15:00:01] Jadwal pengiriman berikutnya: 2026-03-11 15:24:01 (+24 menit)
+[2026-03-11 15:30:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 15:30:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 15:30:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 15:30:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 15:30:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 15:30:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 15:30:01] Jadwal pengiriman berikutnya: 2026-03-11 20:21:01 (+4.9 jam)
+[2026-03-11 16:00:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 16:00:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 16:00:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 16:00:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 16:00:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 16:00:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 16:00:01] Jadwal pengiriman berikutnya: 2026-03-11 16:22:01 (+22 menit)
+[2026-03-11 16:30:01] Mulai pengiriman peer-to-peer untuk 4 nomor.
+[2026-03-11 16:30:01] SKIP 6285111209859 (daily limit tercapai)
+[2026-03-11 16:30:01] SKIP 6282220243698 (daily limit tercapai)
+[2026-03-11 16:30:01] SKIP 6285158660803 (daily limit tercapai)
+[2026-03-11 16:30:01] SKIP 6285185021233 (daily limit tercapai)
+[2026-03-11 16:30:01] Selesai. Terkirim: 0, Gagal: 0.
+[2026-03-11 16:30:01] Jadwal pengiriman berikutnya: 2026-03-11 17:25:01 (+55 menit)

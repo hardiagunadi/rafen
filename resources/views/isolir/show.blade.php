@@ -111,6 +111,11 @@
     </style>
 </head>
 <body>
+    @php
+        $serverLoadTimeMs = defined('LARAVEL_START')
+            ? (microtime(true) - LARAVEL_START) * 1000
+            : null;
+    @endphp
 
     @if(isset($isPreview) && $isPreview)
         <div class="preview-badge">PREVIEW</div>
@@ -136,6 +141,10 @@
 
         @if($settings->business_name)
             <p class="business-name">{{ $settings->business_name }}</p>
+        @endif
+
+        @if($serverLoadTimeMs !== null)
+            <p class="business-name">Load Time: {{ number_format($serverLoadTimeMs, 1, '.', '') }} ms</p>
         @endif
     </div>
 

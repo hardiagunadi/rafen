@@ -100,3 +100,43 @@ it('prevents sub user from updating tenant modules', function () {
         ])
         ->assertForbidden();
 });
+
+it('shows simplified session menu labels for tenant', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    TenantSettings::getOrCreate($tenant->id)->update([
+        'module_hotspot_enabled' => true,
+    ]);
+
+    $this->actingAs($tenant)
+        ->get(route('dashboard'))
+        ->assertSuccessful()
+        ->assertSee('Session User')
+        ->assertSee('PPPoE')
+        ->assertSee('Hotspot')
+        ->assertDontSee('PPPoE Aktif')
+        ->assertDontSee('Hotspot Aktif');
+});
+
+it('hides hotspot session menu when hotspot module is disabled', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    TenantSettings::getOrCreate($tenant->id)->update([
+        'module_hotspot_enabled' => false,
+    ]);
+
+    $this->actingAs($tenant)
+        ->get(route('dashboard'))
+        ->assertSuccessful()
+        ->assertSee('Session User')
+        ->assertSee('PPPoE')
+        ->assertDontSee('Hotspot');
+});

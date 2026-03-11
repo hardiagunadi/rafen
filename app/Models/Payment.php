@@ -108,12 +108,12 @@ class Payment extends Model
 
             // Update PPP user status + lepas isolir jika sebelumnya terisolir
             if ($this->invoice->pppUser) {
-                $pppUser       = $this->invoice->pppUser;
-                $wasIsolir     = $pppUser->status_akun === 'isolir';
+                $pppUser = $this->invoice->pppUser;
+                $wasIsolir = $pppUser->status_akun === 'isolir';
 
                 $pppUser->update([
                     'status_bayar' => 'sudah_bayar',
-                    'status_akun'  => 'enable',
+                    'status_akun' => 'enable',
                 ]);
 
                 $pppUser->refresh();
@@ -139,22 +139,22 @@ class Payment extends Model
 
     public function scopePending($query)
     {
-        return $query->where('status', 'pending');
+        return $query->where($this->qualifyColumn('status'), 'pending');
     }
 
     public function scopePaid($query)
     {
-        return $query->where('status', 'paid');
+        return $query->where($this->qualifyColumn('status'), 'paid');
     }
 
     public function scopeForSubscription($query)
     {
-        return $query->where('payment_type', 'subscription');
+        return $query->where($this->qualifyColumn('payment_type'), 'subscription');
     }
 
     public function scopeForInvoice($query)
     {
-        return $query->where('payment_type', 'invoice');
+        return $query->where($this->qualifyColumn('payment_type'), 'invoice');
     }
 
     public static function generatePaymentNumber(): string
@@ -162,16 +162,17 @@ class Payment extends Model
         $prefix = 'PAY';
         $date = now()->format('Ymd');
         $random = strtoupper(substr(md5(uniqid()), 0, 6));
+
         return "{$prefix}-{$date}-{$random}";
     }
 
     public function getFormattedAmountAttribute(): string
     {
-        return 'Rp ' . number_format($this->amount, 0, ',', '.');
+        return 'Rp '.number_format($this->amount, 0, ',', '.');
     }
 
     public function getFormattedTotalAttribute(): string
     {
-        return 'Rp ' . number_format($this->total_amount, 0, ',', '.');
+        return 'Rp '.number_format($this->total_amount, 0, ',', '.');
     }
 }

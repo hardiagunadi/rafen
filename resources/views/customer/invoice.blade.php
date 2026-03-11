@@ -20,6 +20,11 @@
     </style>
 </head>
 <body>
+@php
+    $serverLoadTimeMs = defined('LARAVEL_START')
+        ? (microtime(true) - LARAVEL_START) * 1000
+        : null;
+@endphp
 
 <div class="portal-card">
 
@@ -274,6 +279,9 @@
                 @endif
                 @if($settings && $settings->business_email)
                     &nbsp;·&nbsp;<i class="fas fa-envelope mr-1"></i>{{ $settings->business_email }}
+                @endif
+                @if($serverLoadTimeMs !== null)
+                    <div class="mt-2">Load Time: {{ number_format($serverLoadTimeMs, 1, '.', '') }} ms</div>
                 @endif
             </div>
 

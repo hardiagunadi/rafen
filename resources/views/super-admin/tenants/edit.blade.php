@@ -61,7 +61,7 @@
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Status Langganan</label>
-                                <select name="subscription_status" class="form-control">
+                                <select name="subscription_status" id="subscription_status" class="form-control">
                                     <option value="trial" {{ old('subscription_status', $tenant->subscription_status) === 'trial' ? 'selected' : '' }}>Trial</option>
                                     <option value="active" {{ old('subscription_status', $tenant->subscription_status) === 'active' ? 'selected' : '' }}>Aktif</option>
                                     <option value="expired" {{ old('subscription_status', $tenant->subscription_status) === 'expired' ? 'selected' : '' }}>Berakhir</option>
@@ -109,15 +109,20 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label>Paket Langganan</label>
-                                <select name="subscription_plan_id" class="form-control">
+                                <label id="subscription_plan_label">Paket Langganan</label>
+                                <select name="subscription_plan_id" id="subscription_plan_id" class="form-control">
                                     <option value="">- Tidak ada -</option>
                                     @foreach($plans as $plan)
-                                    <option value="{{ $plan->id }}" {{ (string) old('subscription_plan_id', $tenant->subscription_plan_id) === (string) $plan->id ? 'selected' : '' }}>
-                                        {{ $plan->name }}
+                                    <option value="{{ $plan->id }}"
+                                        data-plan-name="{{ $plan->name }}"
+                                        data-plan-price="{{ number_format($plan->price, 0, ',', '.') }}"
+                                        data-plan-duration="{{ $plan->duration_days }}"
+                                        {{ (string) old('subscription_plan_id', $tenant->subscription_plan_id) === (string) $plan->id ? 'selected' : '' }}>
+                                        {{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }} - {{ $plan->duration_days }} hari
                                     </option>
                                     @endforeach
                                 </select>
+                                <small class="text-muted">Daftar paket lisensi mengambil data dari menu Kelola Paket Langganan.</small>
                             </div>
                         </div>
                     </div>
@@ -129,7 +134,7 @@
                                 <input type="date" name="subscription_expires_at" class="form-control" value="{{ old('subscription_expires_at', $tenant->subscription_expires_at?->format('Y-m-d')) }}">
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-6" id="trial_days_remaining_field">
                             <div class="form-group">
                                 <label>Sisa Hari Trial</label>
                                 <input type="number" name="trial_days_remaining" class="form-control" value="{{ old('trial_days_remaining', $tenant->trial_days_remaining) }}" min="0">
@@ -187,14 +192,66 @@
 function toggleLicenseLimitFields() {
     var method = document.getElementById('subscription_method');
     var wrapper = document.getElementById('license_limit_fields');
+    var planLabel = document.getElementById('subscription_plan_label');
+    var planSelect = document.getElementById('subscription_plan_id');
+    var status = document.getElementById('subscription_status');
+    var trialOption = status ? status.querySelector('option[value="trial"]') : null;
+    var trialDaysField = document.getElementById('trial_days_remaining_field');
+    var trialDaysInput = document.querySelector('input[name="trial_days_remaining"]');
     if (!method || !wrapper) {
         return;
     }
 
+    if (planSelect) {
+        var isLicensePlan = method.value === 'license';
+        var emptyOption = planSelect.querySelector('option[value=""]');
+        if (emptyOption) {
+            emptyOption.textContent = isLicensePlan
+                ? '- Tidak ada paket lisensi -'
+                : '- Tidak ada -';
+        }
+        Array.from(planSelect.options).forEach(function (option) {
+            var planName = option.getAttribute('data-plan-name');
+            if (!planName) {
+                return;
+            }
+            var planPrice = option.getAttribute('data-plan-price') || '0';
+            var planDuration = option.getAttribute('data-plan-duration') || '30';
+            var durationLabel = isLicensePlan
+                ? '{{ \App\Models\User::LICENSE_DURATION_DAYS }} hari (Lisensi)'
+                : planDuration + ' hari';
+            option.textContent = planName + ' - Rp ' + planPrice + ' - ' + durationLabel;
+        });
+    }
+
     if (method.value === 'license') {
+        if (planLabel) {
+            planLabel.textContent = 'Paket Lisensi';
+        }
         wrapper.classList.remove('d-none');
+        if (trialOption) {
+            trialOption.disabled = true;
+        }
+        if (status && status.value === 'trial') {
+            status.value = 'active';
+        }
+        if (trialDaysField) {
+            trialDaysField.classList.add('d-none');
+        }
+        if (trialDaysInput) {
+            trialDaysInput.value = '0';
+        }
     } else {
+        if (planLabel) {
+            planLabel.textContent = 'Paket Langganan';
+        }
         wrapper.classList.add('d-none');
+        if (trialOption) {
+            trialOption.disabled = false;
+        }
+        if (trialDaysField) {
+            trialDaysField.classList.remove('d-none');
+        }
     }
 }
 

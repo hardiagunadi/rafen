@@ -61,7 +61,72 @@ it('allows super admin to set tenant subscription method to license with custom 
 
     expect($tenant->subscription_method)->toBe(User::SUBSCRIPTION_METHOD_LICENSE)
         ->and($tenant->license_max_mikrotik)->toBe(8)
-        ->and($tenant->license_max_ppp_users)->toBe(250);
+        ->and($tenant->license_max_ppp_users)->toBe(250)
+        ->and($tenant->subscription_status)->toBe('active')
+        ->and($tenant->trial_days_remaining)->toBe(0);
+});
+
+it('creates license tenant as active without trial period', function () {
+    $superAdmin = createSuperAdmin();
+    $plan = createPlan();
+    $email = 'license-tenant-'.fake()->unique()->safeEmail();
+
+    $this->actingAs($superAdmin)
+        ->post(route('super-admin.tenants.store'), [
+            'name' => 'Tenant Lisensi',
+            'email' => $email,
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'subscription_plan_id' => $plan->id,
+            'subscription_method' => User::SUBSCRIPTION_METHOD_LICENSE,
+            'license_max_mikrotik' => 10,
+            'license_max_ppp_users' => 500,
+            'trial_days' => 30,
+        ])
+        ->assertRedirect();
+
+    $tenant = User::query()->where('email', $email)->firstOrFail();
+
+    expect($tenant->subscription_method)->toBe(User::SUBSCRIPTION_METHOD_LICENSE)
+        ->and($tenant->subscription_status)->toBe('active')
+        ->and($tenant->trial_days_remaining)->toBe(0)
+        ->and($tenant->subscription_expires_at?->toDateString())
+        ->toBe(now()->addDays(User::LICENSE_DURATION_DAYS)->toDateString());
+});
+
+it('forces active status when tenant is switched to license even if trial is submitted', function () {
+    $superAdmin = createSuperAdmin();
+    $plan = createPlan();
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'is_super_admin' => false,
+        'subscription_status' => 'trial',
+        'trial_days_remaining' => 14,
+        'subscription_method' => User::SUBSCRIPTION_METHOD_MONTHLY,
+        'subscription_expires_at' => null,
+    ]);
+
+    $this->actingAs($superAdmin)
+        ->put(route('super-admin.tenants.update', $tenant), [
+            'name' => $tenant->name,
+            'email' => $tenant->email,
+            'subscription_status' => 'trial',
+            'subscription_plan_id' => $plan->id,
+            'subscription_method' => User::SUBSCRIPTION_METHOD_LICENSE,
+            'license_max_mikrotik' => 7,
+            'license_max_ppp_users' => 300,
+            'trial_days_remaining' => 21,
+            'vpn_enabled' => false,
+        ])
+        ->assertRedirect(route('super-admin.tenants.show', $tenant));
+
+    $tenant->refresh();
+
+    expect($tenant->subscription_method)->toBe(User::SUBSCRIPTION_METHOD_LICENSE)
+        ->and($tenant->subscription_status)->toBe('active')
+        ->and($tenant->trial_days_remaining)->toBe(0)
+        ->and($tenant->subscription_expires_at?->toDateString())
+        ->toBe(now()->addDays(User::LICENSE_DURATION_DAYS)->toDateString());
 });
 
 it('clears license limits when tenant method switched back to monthly', function () {

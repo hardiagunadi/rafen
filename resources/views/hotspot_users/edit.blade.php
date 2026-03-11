@@ -26,7 +26,9 @@
                         <select name="hotspot_profile_id" class="form-control @error('hotspot_profile_id') is-invalid @enderror" required>
                             <option value="" disabled>- pilih profil -</option>
                             @foreach($profiles as $profile)
-                                <option value="{{ $profile->id }}" @selected(old('hotspot_profile_id', $hotspotUser->hotspot_profile_id) == $profile->id)>{{ $profile->name }}</option>
+                                <option value="{{ $profile->id }}" @selected(old('hotspot_profile_id', $hotspotUser->hotspot_profile_id) == $profile->id)>
+                                    {{ $profile->name }} - Rp {{ number_format((float) $profile->harga_jual, 0, ',', '.') }} - {{ $profile->masa_aktif_value ? ((int) $profile->masa_aktif_value.' '.$profile->masa_aktif_unit) : '-' }}
+                                </option>
                             @endforeach
                         </select>
                         @error('hotspot_profile_id')<div class="invalid-feedback">{{ $message }}</div>@enderror

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\HotspotUser;
 use App\Models\MikrotikConnection;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
@@ -79,9 +80,7 @@ class SuperAdminController extends Controller
 
     public function showTenant(User $tenant)
     {
-        if ($tenant->isSuperAdmin()) {
-            abort(404);
-        }
+        $this->ensureTenantAccount($tenant);
 
         $tenant->load([
             'subscriptionPlan',
@@ -96,24 +95,28 @@ class SuperAdminController extends Controller
             ->where('status', 'pending')
             ->orderByDesc('created_at')
             ->get();
+        $tenantRoles = $this->tenantRoleSummaries($tenant);
 
         $stats = [
             'mikrotik_count' => $tenant->mikrotikConnections()->count(),
             'ppp_users_count' => $tenant->pppUsers()->count(),
             'active_ppp_users' => $tenant->pppUsers()->where('status_akun', 'enable')->count(),
+            'hotspot_users_count' => HotspotUser::query()->where('owner_id', $tenant->id)->count(),
+            'active_hotspot_users' => HotspotUser::query()
+                ->where('owner_id', $tenant->id)
+                ->where('status_akun', 'enable')
+                ->count(),
             'invoices_count' => $tenant->invoices()->count(),
             'unpaid_invoices' => $tenant->invoices()->unpaid()->count(),
             'total_revenue' => $tenant->invoices()->paid()->sum('total'),
         ];
 
-        return view('super-admin.tenants.show', compact('tenant', 'stats', 'pendingSubscriptions'));
+        return view('super-admin.tenants.show', compact('tenant', 'stats', 'pendingSubscriptions', 'tenantRoles'));
     }
 
     public function editTenant(User $tenant)
     {
-        if ($tenant->isSuperAdmin()) {
-            abort(404);
-        }
+        $this->ensureTenantAccount($tenant);
 
         $plans = SubscriptionPlan::active()->orderBy('sort_order')->get();
 
@@ -122,9 +125,7 @@ class SuperAdminController extends Controller
 
     public function updateTenant(Request $request, User $tenant)
     {
-        if ($tenant->isSuperAdmin()) {
-            abort(404);
-        }
+        $this->ensureTenantAccount($tenant);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -148,6 +149,11 @@ class SuperAdminController extends Controller
         if ($validated['subscription_method'] !== User::SUBSCRIPTION_METHOD_LICENSE) {
             $validated['license_max_mikrotik'] = null;
             $validated['license_max_ppp_users'] = null;
+        } else {
+            $validated['subscription_status'] = 'active';
+            $validated['trial_days_remaining'] = 0;
+            $validated['subscription_expires_at'] = $validated['subscription_expires_at']
+                ?? $this->resolveLicenseExpiryDate($tenant);
         }
 
         $validated['vpn_enabled'] = $request->boolean('vpn_enabled');
@@ -160,6 +166,8 @@ class SuperAdminController extends Controller
 
     public function activateTenant(Request $request, User $tenant)
     {
+        $this->ensureTenantAccount($tenant);
+
         $request->validate([
             'plan_id' => 'required|exists:subscription_plans,id',
             'duration_days' => 'nullable|integer|min:1',
@@ -190,6 +198,8 @@ class SuperAdminController extends Controller
 
     public function suspendTenant(Request $request, User $tenant)
     {
+        $this->ensureTenantAccount($tenant);
+
         $request->validate([
             'reason' => 'nullable|string|max:500',
         ]);
@@ -201,6 +211,8 @@ class SuperAdminController extends Controller
 
     public function extendTenant(Request $request, User $tenant)
     {
+        $this->ensureTenantAccount($tenant);
+
         $request->validate([
             'days' => $tenant->isLicenseSubscription()
                 ? 'nullable|integer|min:1|max:3650'
@@ -222,6 +234,8 @@ class SuperAdminController extends Controller
 
     public function changePlanPreview(Request $request, User $tenant)
     {
+        $this->ensureTenantAccount($tenant);
+
         $request->validate(['plan_id' => 'required|exists:subscription_plans,id']);
 
         $plan = SubscriptionPlan::findOrFail($request->plan_id);
@@ -261,9 +275,7 @@ class SuperAdminController extends Controller
 
     public function changePlan(Request $request, User $tenant)
     {
-        if ($tenant->isSuperAdmin()) {
-            abort(404);
-        }
+        $this->ensureTenantAccount($tenant);
 
         $request->validate([
             'plan_id' => 'required|exists:subscription_plans,id',
@@ -338,6 +350,8 @@ class SuperAdminController extends Controller
 
     public function confirmSubscriptionPayment(Request $request, User $tenant, Subscription $subscription)
     {
+        $this->ensureTenantAccount($tenant);
+
         if ($subscription->user_id !== $tenant->id) {
             abort(403);
         }
@@ -399,6 +413,7 @@ class SuperAdminController extends Controller
             $validated['license_max_mikrotik'] = null;
             $validated['license_max_ppp_users'] = null;
         }
+        $isLicenseMethod = $validated['subscription_method'] === User::SUBSCRIPTION_METHOD_LICENSE;
 
         $user = User::create([
             'name' => $validated['name'],
@@ -408,12 +423,13 @@ class SuperAdminController extends Controller
             'company_name' => $validated['company_name'] ?? null,
             'role' => 'administrator',
             'is_super_admin' => false,
-            'subscription_status' => 'trial',
+            'subscription_status' => $isLicenseMethod ? 'active' : 'trial',
             'subscription_plan_id' => $validated['subscription_plan_id'] ?? null,
             'subscription_method' => $validated['subscription_method'],
             'license_max_mikrotik' => $validated['license_max_mikrotik'] ?? null,
             'license_max_ppp_users' => $validated['license_max_ppp_users'] ?? null,
-            'trial_days_remaining' => $validated['trial_days'] ?? 14,
+            'subscription_expires_at' => $isLicenseMethod ? now()->addDays(User::LICENSE_DURATION_DAYS)->toDateString() : null,
+            'trial_days_remaining' => $isLicenseMethod ? 0 : ($validated['trial_days'] ?? 14),
             'registered_at' => now(),
         ]);
 
@@ -426,11 +442,24 @@ class SuperAdminController extends Controller
 
     public function deleteTenant(User $tenant)
     {
-        if ($tenant->isSuperAdmin()) {
-            abort(404);
+        $this->ensureTenantAccount($tenant);
+
+        $activePppUsers = $tenant->pppUsers()
+            ->where('status_akun', 'enable')
+            ->count();
+        $activeHotspotUsers = HotspotUser::query()
+            ->where('owner_id', $tenant->id)
+            ->where('status_akun', 'enable')
+            ->count();
+        $activeCustomerCount = $activePppUsers + $activeHotspotUsers;
+
+        if ($activeCustomerCount > 0) {
+            return back()->with(
+                'error',
+                "Tenant tidak bisa dihapus karena masih ada {$activeCustomerCount} pelanggan aktif (PPPoE: {$activePppUsers}, Hotspot: {$activeHotspotUsers}). Nonaktifkan atau migrasikan pelanggan terlebih dahulu."
+            );
         }
 
-        // This should cascade delete all related data
         $tenant->delete();
 
         return redirect()->route('super-admin.tenants')
@@ -489,20 +518,20 @@ class SuperAdminController extends Controller
 
         $subscriptionRevenue = Payment::paid()
             ->forSubscription()
-            ->whereBetween('paid_at', [$startDate, $endDate])
-            ->sum('amount');
+            ->whereBetween('payments.paid_at', [$startDate, $endDate])
+            ->sum('payments.amount');
 
         $dailyRevenue = Payment::paid()
             ->forSubscription()
-            ->whereBetween('paid_at', [$startDate, $endDate])
-            ->selectRaw('DATE(paid_at) as date, SUM(amount) as total')
+            ->whereBetween('payments.paid_at', [$startDate, $endDate])
+            ->selectRaw('DATE(payments.paid_at) as date, SUM(payments.amount) as total')
             ->groupBy('date')
             ->orderBy('date')
             ->get();
 
         $revenueByPlan = Payment::paid()
             ->forSubscription()
-            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->whereBetween('payments.paid_at', [$startDate, $endDate])
             ->join('subscriptions', 'payments.subscription_id', '=', 'subscriptions.id')
             ->join('subscription_plans', 'subscriptions.subscription_plan_id', '=', 'subscription_plans.id')
             ->selectRaw('subscription_plans.name as plan_name, SUM(payments.amount) as total')
@@ -555,11 +584,15 @@ class SuperAdminController extends Controller
 
     public function vpnSettings(User $tenant)
     {
+        $this->ensureTenantAccount($tenant);
+
         return view('super-admin.tenants.vpn', compact('tenant'));
     }
 
     public function updateVpnSettings(Request $request, User $tenant)
     {
+        $this->ensureTenantAccount($tenant);
+
         $validated = $request->validate([
             'vpn_enabled' => 'boolean',
             'vpn_username' => 'required_if:vpn_enabled,true|nullable|string|max:100',
@@ -576,6 +609,8 @@ class SuperAdminController extends Controller
 
     public function generateVpnCredentials(User $tenant)
     {
+        $this->ensureTenantAccount($tenant);
+
         $username = 'tenant_'.$tenant->id;
         $password = \Str::random(16);
 
@@ -587,5 +622,55 @@ class SuperAdminController extends Controller
         // TODO: Integrate with OpenVPN to create the VPN user
 
         return back()->with('success', 'Kredensial VPN berhasil dibuat.');
+    }
+
+    private function ensureTenantAccount(User $tenant): void
+    {
+        if ($tenant->isSuperAdmin() || $tenant->role !== 'administrator' || $tenant->parent_id !== null) {
+            abort(404);
+        }
+    }
+
+    private function tenantRoleSummaries(User $tenant)
+    {
+        return User::query()
+            ->selectRaw('role, COUNT(*) as total')
+            ->where(function ($query) use ($tenant) {
+                $query->where('id', $tenant->id)
+                    ->orWhere('parent_id', $tenant->id);
+            })
+            ->groupBy('role')
+            ->orderBy('role')
+            ->get()
+            ->map(function (User $roleSummary): array {
+                return [
+                    'role' => (string) $roleSummary->role,
+                    'label' => $this->roleLabel((string) $roleSummary->role),
+                    'total' => (int) $roleSummary->total,
+                ];
+            })
+            ->values();
+    }
+
+    private function resolveLicenseExpiryDate(User $tenant): string
+    {
+        if ($tenant->subscription_expires_at && $tenant->subscription_expires_at->isFuture()) {
+            return $tenant->subscription_expires_at->toDateString();
+        }
+
+        return now()->addDays(User::LICENSE_DURATION_DAYS)->toDateString();
+    }
+
+    private function roleLabel(string $role): string
+    {
+        return match ($role) {
+            'administrator' => 'Administrator',
+            'it_support' => 'IT Support',
+            'noc' => 'NOC',
+            'keuangan' => 'Keuangan',
+            'mitra' => 'Mitra',
+            'teknisi' => 'Teknisi',
+            default => ucwords(str_replace('_', ' ', $role)),
+        };
     }
 }

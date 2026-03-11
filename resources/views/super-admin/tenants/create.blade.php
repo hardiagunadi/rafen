@@ -72,15 +72,20 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label>Paket Langganan</label>
-                                <select name="subscription_plan_id" class="form-control">
+                                <label id="subscription_plan_label">Paket Langganan</label>
+                                <select name="subscription_plan_id" id="subscription_plan_id" class="form-control">
                                     <option value="">- Tidak ada (Trial) -</option>
                                     @foreach($plans as $plan)
-                                    <option value="{{ $plan->id }}" {{ (string) old('subscription_plan_id') === (string) $plan->id ? 'selected' : '' }}>
-                                        {{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }}
+                                    <option value="{{ $plan->id }}"
+                                        data-plan-name="{{ $plan->name }}"
+                                        data-plan-price="{{ number_format($plan->price, 0, ',', '.') }}"
+                                        data-plan-duration="{{ $plan->duration_days }}"
+                                        {{ (string) old('subscription_plan_id') === (string) $plan->id ? 'selected' : '' }}>
+                                        {{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }} - {{ $plan->duration_days }} hari
                                     </option>
                                     @endforeach
                                 </select>
+                                <small class="text-muted">Daftar paket lisensi mengambil data dari menu Kelola Paket Langganan.</small>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -121,7 +126,7 @@
                         </div>
                     </div>
 
-                    <div class="row">
+                    <div class="row" id="trial_days_field">
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label>Masa Trial (hari)</label>
@@ -150,14 +155,55 @@
 function toggleLicenseLimitFields() {
     var method = document.getElementById('subscription_method');
     var wrapper = document.getElementById('license_limit_fields');
+    var planLabel = document.getElementById('subscription_plan_label');
+    var planSelect = document.getElementById('subscription_plan_id');
+    var trialDaysField = document.getElementById('trial_days_field');
+    var trialDaysInput = document.querySelector('input[name="trial_days"]');
     if (!method || !wrapper) {
         return;
     }
 
+    if (planSelect) {
+        var isLicensePlan = method.value === 'license';
+        var emptyOption = planSelect.querySelector('option[value=""]');
+        if (emptyOption) {
+            emptyOption.textContent = isLicensePlan
+                ? '- Tidak ada paket lisensi -'
+                : '- Tidak ada (Trial) -';
+        }
+        Array.from(planSelect.options).forEach(function (option) {
+            var planName = option.getAttribute('data-plan-name');
+            if (!planName) {
+                return;
+            }
+            var planPrice = option.getAttribute('data-plan-price') || '0';
+            var planDuration = option.getAttribute('data-plan-duration') || '30';
+            var durationLabel = isLicensePlan
+                ? '{{ \App\Models\User::LICENSE_DURATION_DAYS }} hari (Lisensi)'
+                : planDuration + ' hari';
+            option.textContent = planName + ' - Rp ' + planPrice + ' - ' + durationLabel;
+        });
+    }
+
     if (method.value === 'license') {
+        if (planLabel) {
+            planLabel.textContent = 'Paket Lisensi';
+        }
         wrapper.classList.remove('d-none');
+        if (trialDaysField) {
+            trialDaysField.classList.add('d-none');
+        }
+        if (trialDaysInput) {
+            trialDaysInput.value = '0';
+        }
     } else {
+        if (planLabel) {
+            planLabel.textContent = 'Paket Langganan';
+        }
         wrapper.classList.add('d-none');
+        if (trialDaysField) {
+            trialDaysField.classList.remove('d-none');
+        }
     }
 }
 

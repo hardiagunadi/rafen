@@ -8,6 +8,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
 </head>
 <body class="hold-transition login-page">
+@php
+    $serverLoadTimeMs = defined('LARAVEL_START')
+        ? (microtime(true) - LARAVEL_START) * 1000
+        : null;
+@endphp
 <div class="login-box">
     <div class="login-logo">
         <b>Radius</b>Admin
@@ -53,6 +58,9 @@
         </div>
     </div>
 </div>
+@if($serverLoadTimeMs !== null)
+    <div class="text-center text-muted small mt-2">Load Time: {{ number_format($serverLoadTimeMs, 1, '.', '') }} ms</div>
+@endif
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>

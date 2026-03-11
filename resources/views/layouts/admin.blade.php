@@ -24,11 +24,18 @@
             }
         }
     @endphp
+    @php
+        $serverLoadTimeMs = defined('LARAVEL_START')
+            ? (microtime(true) - LARAVEL_START) * 1000
+            : null;
+    @endphp
     <title>{{ $tenantTitle }}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs4@1.13.8/css/dataTables.bootstrap4.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-responsive-bs4@2.5.0/css/responsive.bootstrap4.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@ttskch/select2-bootstrap4-theme@1.5.2/dist/select2-bootstrap4.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>
         :root {
@@ -99,6 +106,25 @@
         .content-wrapper .custom-select:focus {
             border-color: #8fb5df;
             box-shadow: 0 0 0 0.2rem rgba(19, 103, 164, 0.15);
+        }
+
+        .content-wrapper .select2-container--bootstrap4 .select2-selection {
+            border-color: #d4deea;
+            border-radius: 8px;
+            min-height: calc(2.25rem + 2px);
+        }
+
+        .content-wrapper .select2-container--bootstrap4.select2-container--focus .select2-selection {
+            border-color: #8fb5df;
+            box-shadow: 0 0 0 0.2rem rgba(19, 103, 164, 0.15);
+        }
+
+        .content-wrapper .select2-container--bootstrap4 .select2-selection--single .select2-selection__rendered {
+            line-height: calc(2.25rem - 2px);
+        }
+
+        .content-wrapper .select2-container--bootstrap4 .select2-selection--single .select2-selection__arrow {
+            height: calc(2.25rem - 2px);
         }
 
         .content-wrapper .table thead th {
@@ -392,28 +418,16 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="{{ route('sessions.pppoe') }}" class="nav-link {{ request()->routeIs('sessions.pppoe') || request()->routeIs('sessions.pppoe.datatable') ? 'active' : '' }}">
+                                <a href="{{ route('sessions.pppoe') }}" class="nav-link {{ request()->routeIs('sessions.pppoe*') || request()->routeIs('sessions.pppoe-inactive*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>PPPoE Aktif</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('sessions.pppoe-inactive') }}" class="nav-link {{ request()->routeIs('sessions.pppoe-inactive*') ? 'active' : '' }}">
-                                    <i class="far fa-dot-circle nav-icon text-danger"></i>
-                                    <p>PPPoE Tidak Aktif</p>
+                                    <p>PPPoE</p>
                                 </a>
                             </li>
                             @if($hotspotModuleEnabled)
                                 <li class="nav-item">
-                                    <a href="{{ route('sessions.hotspot') }}" class="nav-link {{ request()->routeIs('sessions.hotspot') || request()->routeIs('sessions.hotspot.datatable') ? 'active' : '' }}">
+                                    <a href="{{ route('sessions.hotspot') }}" class="nav-link {{ request()->routeIs('sessions.hotspot*') || request()->routeIs('sessions.hotspot-inactive*') ? 'active' : '' }}">
                                         <i class="far fa-circle nav-icon"></i>
-                                        <p>Hotspot Aktif</p>
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a href="{{ route('sessions.hotspot-inactive') }}" class="nav-link {{ request()->routeIs('sessions.hotspot-inactive*') ? 'active' : '' }}">
-                                        <i class="far fa-dot-circle nav-icon text-danger"></i>
-                                        <p>Hotspot Tidak Aktif</p>
+                                        <p>Hotspot</p>
                                     </a>
                                 </li>
                             @endif
@@ -554,9 +568,9 @@
                         </a>
                     </li>
                     @endif
-                    @if(auth()->user()->role !== 'teknisi')
-                    <li class="nav-item has-treeview">
-                        <a href="#" class="nav-link">
+                    @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'keuangan'], true))
+                    <li class="nav-item has-treeview {{ request()->routeIs('reports.income') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('reports.income') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-dollar-sign"></i>
                             <p>
                                 Data Keuangan
@@ -565,31 +579,31 @@
                         </a>
                         <ul class="nav nav-treeview">
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('reports.income', ['report' => 'daily']) }}" class="nav-link {{ request()->routeIs('reports.income') && request()->query('report', 'daily') === 'daily' ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Income Harian</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('reports.income', ['report' => 'period']) }}" class="nav-link {{ request()->routeIs('reports.income') && request()->query('report') === 'period' ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Income Periode</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('reports.income', ['report' => 'expense']) }}" class="nav-link {{ request()->routeIs('reports.income') && request()->query('report') === 'expense' ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Pengeluaran</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('reports.income', ['report' => 'profit_loss']) }}" class="nav-link {{ request()->routeIs('reports.income') && request()->query('report') === 'profit_loss' ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Laba Rugi</p>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="{{ route('reports.income', ['report' => 'bhp_uso']) }}" class="nav-link {{ request()->routeIs('reports.income') && request()->query('report') === 'bhp_uso' ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
                                     <p>Hitung BHP | USO</p>
                                 </a>
@@ -876,6 +890,9 @@
         <strong>FreeRADIUS Mikrotik Manager.</strong>
         <div class="float-right d-none d-sm-inline-block">
             Support ROS 7.x / 6.x
+            @if($serverLoadTimeMs !== null)
+                <span class="text-muted ml-2">| Load Time: {{ number_format($serverLoadTimeMs, 1, '.', '') }} ms</span>
+            @endif
         </div>
     </footer>
 </div>
@@ -1021,6 +1038,101 @@
 <script src="https://cdn.jsdelivr.net/npm/datatables.net-bs4@1.13.8/js/dataTables.bootstrap4.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/datatables.net-responsive@2.5.0/js/dataTables.responsive.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/datatables.net-responsive-bs4@2.5.0/js/responsive.bootstrap4.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.full.min.js"></script>
+<script>
+window.AppSelect = (function () {
+    function canUseSelect2() {
+        return typeof window.jQuery !== 'undefined'
+            && typeof window.jQuery.fn !== 'undefined'
+            && typeof window.jQuery.fn.select2 === 'function';
+    }
+
+    function shouldEnhance(selectElement) {
+        if (!selectElement) {
+            return false;
+        }
+        if (selectElement.dataset.nativeSelect === 'true') {
+            return false;
+        }
+        if (selectElement.classList.contains('select2-hidden-accessible')) {
+            return false;
+        }
+        if (selectElement.closest('.dataTables_wrapper')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    function buildConfig(selectElement) {
+        var totalOptions = selectElement.options ? selectElement.options.length : 0;
+        var parentModal = selectElement.closest('.modal');
+        var config = {
+            theme: 'bootstrap4',
+            width: '100%',
+            minimumResultsForSearch: totalOptions > 8 ? 0 : Infinity,
+        };
+
+        if (parentModal) {
+            config.dropdownParent = window.jQuery(parentModal);
+        }
+
+        return config;
+    }
+
+    function initSelect(selectElement) {
+        if (!canUseSelect2() || !shouldEnhance(selectElement)) {
+            return;
+        }
+
+        window.jQuery(selectElement).select2(buildConfig(selectElement));
+    }
+
+    function initAll(context) {
+        if (!canUseSelect2()) {
+            return;
+        }
+
+        var root = context || document;
+        root.querySelectorAll('select').forEach(function (selectElement) {
+            initSelect(selectElement);
+        });
+    }
+
+    function refresh(selectElement) {
+        if (!canUseSelect2() || !selectElement) {
+            return;
+        }
+
+        var $select = window.jQuery(selectElement);
+        if ($select.hasClass('select2-hidden-accessible')) {
+            $select.select2('destroy');
+        }
+        initSelect(selectElement);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initAll(document);
+    });
+
+    document.addEventListener('shown.bs.modal', function (event) {
+        initAll(event.target);
+    });
+
+    document.addEventListener('rafen:select-refresh', function (event) {
+        if (event.detail && event.detail.element) {
+            refresh(event.detail.element);
+            return;
+        }
+        initAll(event.detail && event.detail.root ? event.detail.root : document);
+    });
+
+    return {
+        initAll: initAll,
+        refresh: refresh,
+    };
+})();
+</script>
 <script>
 // ── Global AJAX helpers ────────────────────────────────────────────────────
 window.AppAjax = (function () {

@@ -349,24 +349,32 @@ class User extends Authenticatable
 
     public function scopeTenants($query)
     {
-        return $query->where('is_super_admin', false);
+        return $query
+            ->where('is_super_admin', false)
+            ->whereNull('parent_id')
+            ->where('role', 'administrator');
     }
 
     public function scopeActiveSubscribers($query)
     {
-        return $query->where('subscription_status', 'active')
+        return $query->tenants()
+            ->where('subscription_status', 'active')
             ->where('subscription_expires_at', '>', now());
     }
 
     public function scopeExpiredSubscribers($query)
     {
-        return $query->where('subscription_status', 'expired')
-            ->orWhere('subscription_expires_at', '<', now());
+        return $query->tenants()
+            ->where(function ($subscriptionQuery) {
+                $subscriptionQuery->where('subscription_status', 'expired')
+                    ->orWhere('subscription_expires_at', '<', now());
+            });
     }
 
     public function scopeTrialUsers($query)
     {
-        return $query->where('subscription_status', 'trial')
+        return $query->tenants()
+            ->where('subscription_status', 'trial')
             ->where('trial_days_remaining', '>', 0);
     }
 }

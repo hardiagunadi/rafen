@@ -103,6 +103,14 @@
                         <strong>{{ $stats['active_ppp_users'] }}</strong>
                     </li>
                     <li class="list-group-item d-flex justify-content-between">
+                        <span>Hotspot Users</span>
+                        <strong>{{ $stats['hotspot_users_count'] }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Hotspot Aktif</span>
+                        <strong>{{ $stats['active_hotspot_users'] }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
                         <span>Invoice</span>
                         <strong>{{ $stats['invoices_count'] }}</strong>
                     </li>
@@ -123,16 +131,26 @@
             <div class="card-header">
                 <h3 class="card-title">Aksi Cepat</h3>
             </div>
+            @php
+                $isLicenseMethod = $tenant->isLicenseSubscription();
+                $activateActionLabel = $isLicenseMethod ? 'Aktifkan Lisensi' : 'Aktifkan Langganan';
+                $extendActionLabel = $isLicenseMethod ? 'Perpanjang Lisensi' : 'Perpanjang';
+                $activateModalTitle = $isLicenseMethod ? 'Aktifkan Lisensi Tahunan' : 'Aktifkan Langganan';
+                $extendModalTitle = $isLicenseMethod ? 'Perpanjang Lisensi Tahunan' : 'Perpanjang Langganan';
+                $activePppUsers = (int) ($stats['active_ppp_users'] ?? 0);
+                $activeHotspotUsers = (int) ($stats['active_hotspot_users'] ?? 0);
+                $activeCustomerCount = $activePppUsers + $activeHotspotUsers;
+            @endphp
             <div class="card-body">
                 @if($tenant->subscription_status !== 'active')
                 <button type="button" class="btn btn-success btn-block mb-2" data-toggle="modal" data-target="#activateModal">
-                    <i class="fas fa-check"></i> Aktifkan Langganan
+                    <i class="fas fa-check"></i> {{ $activateActionLabel }}
                 </button>
                 @endif
 
                 @if($tenant->subscription_status === 'active')
                 <button type="button" class="btn btn-info btn-block mb-2" data-toggle="modal" data-target="#extendModal">
-                    <i class="fas fa-plus"></i> Perpanjang
+                    <i class="fas fa-plus"></i> {{ $extendActionLabel }}
                 </button>
                 @endif
 
@@ -149,10 +167,17 @@
                 </form>
                 @endif
 
-                <form action="{{ route('super-admin.tenants.delete', $tenant) }}" method="POST" onsubmit="return confirm('HAPUS tenant ini? Semua data akan hilang!')">
+                @if($activeCustomerCount > 0)
+                <div class="alert alert-warning py-2 small mb-2">
+                    Tenant tidak bisa dihapus karena masih ada {{ $activeCustomerCount }} pelanggan aktif
+                    (PPPoE: {{ $activePppUsers }}, Hotspot: {{ $activeHotspotUsers }}).
+                </div>
+                @endif
+
+                <form action="{{ route('super-admin.tenants.delete', $tenant) }}" method="POST" onsubmit="return confirm('HAPUS tenant ini? Semua data tenant akan hilang permanen!')">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="btn btn-danger btn-block">
+                    <button type="submit" class="btn btn-danger btn-block" {{ $activeCustomerCount > 0 ? 'disabled' : '' }}>
                         <i class="fas fa-trash"></i> Hapus Tenant
                     </button>
                 </form>
@@ -276,6 +301,24 @@
             </div>
         </div>
 
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Daftar Role Tenant</h3>
+            </div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap" style="gap:.5rem;">
+                    @forelse($tenantRoles as $tenantRole)
+                        <span class="badge badge-info p-2">
+                            {{ $tenantRole['label'] }}
+                            <span class="badge badge-light ml-1">{{ $tenantRole['total'] }}</span>
+                        </span>
+                    @empty
+                        <span class="text-muted small">Belum ada role terdaftar.</span>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+
         <!-- VPN Info -->
         @if($tenant->vpn_enabled)
         <div class="card">
@@ -355,7 +398,7 @@
                         <select name="plan_id" id="changePlanSelect" class="form-control" required>
                             @foreach(\App\Models\SubscriptionPlan::active()->orderBy('sort_order')->get() as $plan)
                             <option value="{{ $plan->id }}" {{ $tenant->subscription_plan_id == $plan->id ? 'selected' : '' }}>
-                                {{ $plan->name }} — Rp {{ number_format($plan->price, 0, ',', '.') }} / {{ $tenant->resolveSubscriptionDurationDays($plan) }} hari
+                                {{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }} - {{ $tenant->resolveSubscriptionDurationDays($plan) }} hari{{ $tenant->isLicenseSubscription() ? ' (Lisensi)' : '' }}
                             </option>
                             @endforeach
                         </select>
@@ -422,7 +465,7 @@
             <form action="{{ route('super-admin.tenants.activate', $tenant) }}" method="POST">
                 @csrf
                 <div class="modal-header">
-                    <h5 class="modal-title">Aktifkan Langganan</h5>
+                    <h5 class="modal-title">{{ $activateModalTitle }}</h5>
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -430,7 +473,7 @@
                         <label>Pilih Paket</label>
                         <select name="plan_id" class="form-control" required>
                             @foreach(\App\Models\SubscriptionPlan::active()->get() as $plan)
-                            <option value="{{ $plan->id }}">{{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }}</option>
+                            <option value="{{ $plan->id }}">{{ $plan->name }} - Rp {{ number_format($plan->price, 0, ',', '.') }} - {{ $tenant->resolveSubscriptionDurationDays($plan) }} hari{{ $tenant->isLicenseSubscription() ? ' (Lisensi)' : '' }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -447,7 +490,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-success">Aktifkan</button>
+                    <button type="submit" class="btn btn-success">{{ $activateActionLabel }}</button>
                 </div>
             </form>
         </div>
@@ -461,7 +504,7 @@
             <form action="{{ route('super-admin.tenants.extend', $tenant) }}" method="POST">
                 @csrf
                 <div class="modal-header">
-                    <h5 class="modal-title">Perpanjang Langganan</h5>
+                    <h5 class="modal-title">{{ $extendModalTitle }}</h5>
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -479,7 +522,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-info">Perpanjang</button>
+                    <button type="submit" class="btn btn-info">{{ $extendActionLabel }}</button>
                 </div>
             </form>
         </div>

@@ -206,12 +206,13 @@
                             <div class="alert alert-warning alert-sm py-2 mb-0">
                                 <i class="fas fa-info-circle mr-1"></i>
                                 Jika mengubah konfigurasi di atas, klik <strong>Update</strong> lalu setup akan dijalankan ulang saat user berikutnya diisolir.
-                                <form action="{{ route('mikrotik-connections.isolir-reset', $mikrotikConnection) }}" method="POST" class="d-inline ml-2">
-                                    @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-warning" onclick="return confirm('Reset status setup isolir? Mikrotik akan di-setup ulang saat user berikutnya diisolir.')">
-                                        <i class="fas fa-redo mr-1"></i> Reset Setup
-                                    </button>
-                                </form>
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-warning ml-2"
+                                    onclick="if (confirm('Reset status setup isolir? Mikrotik akan di-setup ulang saat user berikutnya diisolir.')) { document.getElementById('isolir-reset-form').submit(); }"
+                                >
+                                    <i class="fas fa-redo mr-1"></i> Reset Setup
+                                </button>
                             </div>
                         @endif
                     </div>
@@ -243,6 +244,12 @@
             </div>
         </form>
     </div>
+
+    @if($mikrotikConnection->isolir_setup_done)
+        <form action="{{ route('mikrotik-connections.isolir-reset', $mikrotikConnection) }}" method="POST" id="isolir-reset-form" class="d-none">
+            @csrf
+        </form>
+    @endif
 
     {{-- ── Tombol buat WireGuard — hanya tampil jika belum punya tunnel --}}
     @if(! $mikrotikConnection->wgPeer)

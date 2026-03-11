@@ -28,10 +28,11 @@ class AppServiceProvider extends ServiceProvider
             $authUser = auth()->user();
             if (! $authUser) {
                 $view->with('sidebarOwners', collect());
+
                 return;
             }
             $owners = $authUser->isSuperAdmin()
-                ? User::query()->where('is_super_admin', false)->whereNull('parent_id')->orderBy('name')->get()
+                ? User::query()->tenants()->orderBy('name')->get()
                 : collect();
             $view->with('sidebarOwners', $owners);
         });

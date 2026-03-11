@@ -4,8 +4,12 @@
 
 @section('content')
     <div class="card">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <h3 class="card-title mb-0">Session PPPoE Tidak Aktif</h3>
+            <div class="btn-group btn-group-sm">
+                <a href="{{ route('sessions.pppoe') }}" class="btn btn-outline-success">Aktif</a>
+                <a href="{{ route('sessions.pppoe-inactive') }}" class="btn btn-outline-danger active">Tidak Aktif</a>
+            </div>
         </div>
 
         <div class="card-body">
@@ -74,6 +78,8 @@
     (function () {
         var dtTable = null;
         var dtUrl = '{{ route("sessions.pppoe-inactive.datatable") }}';
+        var refreshAllUrl = '{{ route("sessions.refresh-all") }}';
+        var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
         function init() {
             if (!document.getElementById('dt-pppoe-inactive')) return;
@@ -107,6 +113,29 @@
             $('#filter-router').off('change.pppoe-inactive').on('change.pppoe-inactive', function () {
                 if (dtTable) dtTable.ajax.reload(null, false);
             });
+
+            // Auto sync saat halaman dibuka agar data status terbaru.
+            syncOnOpen();
+        }
+
+        function syncOnOpen() {
+            fetch(refreshAllUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ service: 'pppoe' })
+            })
+                .then(function () {
+                    if (dtTable) {
+                        dtTable.ajax.reload(null, false);
+                    }
+                })
+                .catch(function () {
+                    // Silent fail: user tetap bisa manual buka ulang/filter tabel.
+                });
         }
 
         document.addEventListener('DOMContentLoaded', init);

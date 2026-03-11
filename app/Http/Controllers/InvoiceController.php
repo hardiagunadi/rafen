@@ -11,10 +11,12 @@ use App\Services\RadiusReplySynchronizer;
 use App\Services\WaNotificationService;
 use App\Traits\LogsActivity;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class InvoiceController extends Controller
@@ -31,12 +33,15 @@ class InvoiceController extends Controller
         $user = $request->user();
         $isTeknisi = $user->role === 'teknisi';
         $search = $request->input('search.value', '');
+        $statusFilter = (string) $request->input('status', '');
 
-        $query = Invoice::query()
-            ->with(['pppUser.profile', 'owner'])
-            ->withCount(['payments as pending_count' => fn ($q) => $q->where('status', 'pending')])
-            ->accessibleBy($user)
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+        $query = $this->applyDatatableStatusFilter(
+            Invoice::query()
+                ->with(['pppUser.profile', 'owner'])
+                ->withCount(['payments as pending_count' => fn ($q) => $q->where('status', 'pending')])
+                ->accessibleBy($user),
+            $statusFilter
+        )
             ->when($search !== '', fn ($q) => $q->where(function ($q2) use ($search) {
                 $q2->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('customer_name', 'like', "%{$search}%")
@@ -58,6 +63,8 @@ class InvoiceController extends Controller
             'recordsFiltered' => $filtered,
             'data' => $rows->map(function (Invoice $r) use ($isTeknisi): array {
                 [$statusLabel, $statusVariant] = $this->resolveInvoiceStatusDisplay($r);
+                $isRenewedWithoutPayment = $r->status === 'unpaid' && (bool) $r->renewed_without_payment;
+                $canMarkAsPaid = $r->status === 'unpaid' && ($r->pending_count ?? 0) === 0 && $isRenewedWithoutPayment;
 
                 return [
                     'id' => $r->id,
@@ -67,14 +74,15 @@ class InvoiceController extends Controller
                     'tipe_service' => strtoupper(str_replace('_', '/', $r->tipe_service ?? '')),
                     'paket_langganan' => $r->paket_langganan ?? '-',
                     'total' => number_format($r->total, 0, ',', '.'),
-                    'due_date' => $r->due_date ? \Carbon\Carbon::parse($r->due_date)->format('Y-m-d') : '-',
+                    'due_date' => $r->due_date?->format('d-m-Y') ?? '-',
                     'owner_name' => $r->owner?->name ?? '-',
                     'status' => $r->status,
                     'status_label' => $statusLabel,
                     'status_variant' => $statusVariant,
                     'has_pending' => ($r->pending_count ?? 0) > 0,
-                    'can_pay' => $r->status === 'unpaid' && ($r->pending_count ?? 0) === 0,
-                    'can_renew' => $r->status === 'unpaid' && abs($r->created_at->diffInSeconds($r->updated_at)) < 5,
+                    'can_pay' => $r->status === 'unpaid' && ($r->pending_count ?? 0) === 0 && ! $isRenewedWithoutPayment,
+                    'can_mark_paid' => $canMarkAsPaid,
+                    'can_renew' => $r->status === 'unpaid' && ! $isRenewedWithoutPayment,
                     'can_nota' => ! $isTeknisi,
                     'can_delete' => ! $isTeknisi,
                     'pay_url' => route('invoices.pay', $r->id),
@@ -86,6 +94,19 @@ class InvoiceController extends Controller
                 ];
             }),
         ]);
+    }
+
+    private function applyDatatableStatusFilter(Builder $query, string $statusFilter): Builder
+    {
+        return match ($statusFilter) {
+            'paid' => $query->where('status', 'paid'),
+            'unpaid' => $query->where('status', 'unpaid'),
+            'active_unpaid' => $query->where('status', 'unpaid')
+                ->whereHas('pppUser', fn (Builder $pppUserQuery) => $pppUserQuery->where('status_akun', 'enable')),
+            'isolated_unpaid' => $query->where('status', 'unpaid')
+                ->whereHas('pppUser', fn (Builder $pppUserQuery) => $pppUserQuery->where('status_akun', 'isolir')),
+            default => $query,
+        };
     }
 
     public function show(Invoice $invoice): View
@@ -181,6 +202,7 @@ class InvoiceController extends Controller
 
         $invoice->update([
             'status' => 'paid',
+            'renewed_without_payment' => false,
             'paid_at' => $paidAt,
             'paid_by' => $user->id,
             'cash_received' => $request->input('cash_received') ?: null,
@@ -240,7 +262,7 @@ class InvoiceController extends Controller
             return redirect()->back()->with('status', 'Invoice sudah dibayar.');
         }
 
-        if (abs($invoice->created_at->diffInSeconds($invoice->updated_at)) >= 5) {
+        if ($invoice->renewed_without_payment) {
             if (request()->wantsJson()) {
                 return response()->json(['error' => 'Layanan sudah diperpanjang untuk periode ini.'], 422);
             }
@@ -252,13 +274,34 @@ class InvoiceController extends Controller
         $invoice->update([
             'due_date' => $newDue,
             'status' => 'unpaid',
+            'renewed_without_payment' => true,
         ]);
 
         if ($invoice->pppUser) {
-            $invoice->pppUser->update([
+            $pppUser = $invoice->pppUser;
+            $wasIsolir = $pppUser->status_akun === 'isolir';
+
+            $pppUser->update([
                 'jatuh_tempo' => $newDue,
                 'status_bayar' => 'belum_bayar',
+                'status_akun' => 'enable',
             ]);
+
+            try {
+                $pppUser->refresh();
+                app(RadiusReplySynchronizer::class)->syncSingleUser($pppUser);
+
+                if ($wasIsolir) {
+                    app(IsolirSynchronizer::class)->deisolate($pppUser);
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Invoice renew side effects failed', [
+                    'invoice_id' => $invoice->id,
+                    'ppp_user_id' => $pppUser->id,
+                    'was_isolir' => $wasIsolir,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
         }
 
         $this->logActivity('renewed', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
@@ -270,10 +313,10 @@ class InvoiceController extends Controller
         }
 
         if (request()->wantsJson()) {
-            return response()->json(['status' => 'Layanan diperpanjang, status bayar tetap BELUM BAYAR.']);
+            return response()->json(['status' => 'Layanan diperpanjang. Status: Aktif - Belum Bayar.']);
         }
 
-        return redirect()->back()->with('status', 'Layanan diperpanjang, status bayar tetap BELUM BAYAR.');
+        return redirect()->back()->with('status', 'Layanan diperpanjang. Status: Aktif - Belum Bayar.');
     }
 
     public function destroy(Invoice $invoice): JsonResponse|RedirectResponse
@@ -490,6 +533,10 @@ class InvoiceController extends Controller
 
         if ($invoice->pppUser?->status_akun === 'isolir') {
             return ['Belum Bayar - Terisolir', 'danger'];
+        }
+
+        if ($invoice->status === 'unpaid' && $invoice->pppUser?->status_akun === 'enable') {
+            return ['Aktif - Belum Bayar', 'warning'];
         }
 
         return ['Belum Bayar', 'warning'];

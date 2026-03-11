@@ -6,9 +6,15 @@
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h3 class="card-title mb-0">Session Hotspot Aktif</h3>
-            <button type="button" id="btn-refresh-all" class="btn btn-sm btn-outline-secondary">
-                <i class="fas fa-sync-alt" id="refresh-icon"></i> Refresh
-            </button>
+            <div class="d-flex align-items-center" style="gap:.5rem;">
+                <div class="btn-group btn-group-sm">
+                    <a href="{{ route('sessions.hotspot') }}" class="btn btn-outline-success active">Aktif</a>
+                    <a href="{{ route('sessions.hotspot-inactive') }}" class="btn btn-outline-danger">Tidak Aktif</a>
+                </div>
+                <button type="button" id="btn-refresh-all" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-sync-alt" id="refresh-icon"></i> Refresh
+                </button>
+            </div>
         </div>
 
         <div class="card-body">
@@ -164,25 +170,67 @@
             });
 
             startCountdown();
+
+            // Auto sync saat halaman dibuka agar data terbaru tanpa klik manual.
+            syncAllSessions({
+                withLoading: false,
+                showSuccess: false,
+                showError: false
+            });
         }
 
-        // Refresh semua router
-        document.getElementById('btn-refresh-all').addEventListener('click', function () {
-            var btn = this;
+        function syncAllSessions(options) {
+            var opts = options || {};
+            var withLoading = opts.withLoading === true;
+            var showSuccess = opts.showSuccess === true;
+            var showError = opts.showError !== false;
+            var btn = document.getElementById('btn-refresh-all');
             var icon = document.getElementById('refresh-icon');
-            btn.disabled = true;
-            icon.classList.add('fa-spin');
-            fetch(refreshAllUrl, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' } })
+
+            if (withLoading && btn && icon) {
+                btn.disabled = true;
+                icon.classList.add('fa-spin');
+            }
+
+            return fetch(refreshAllUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ service: 'hotspot' })
+            })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     if (dtTable) dtTable.ajax.reload(function (json) { updateTotal(json.recordsTotal); }, false);
                     countdown = 60;
-                    var msg = 'Hotspot: <strong>' + data.hotspot_online + '</strong> sesi aktif';
-                    if (data.errors && data.errors.length) msg += ' &mdash; <span class="text-warning">' + data.errors.join(', ') + '</span>';
-                    showAlert('success', msg);
+                    if (showSuccess) {
+                        var msg = 'Hotspot: <strong>' + data.hotspot_online + '</strong> sesi aktif';
+                        if (data.errors && data.errors.length) msg += ' &mdash; <span class="text-warning">' + data.errors.join(', ') + '</span>';
+                        showAlert('success', msg);
+                    }
                 })
-                .catch(function () { showAlert('danger', 'Gagal menghubungi server.'); })
-                .finally(function () { btn.disabled = false; icon.classList.remove('fa-spin'); });
+                .catch(function () {
+                    if (showError) {
+                        showAlert('danger', 'Gagal menghubungi server.');
+                    }
+                })
+                .finally(function () {
+                    if (withLoading && btn && icon) {
+                        btn.disabled = false;
+                        icon.classList.remove('fa-spin');
+                    }
+                });
+        }
+
+        // Refresh semua router (manual)
+        document.getElementById('btn-refresh-all').addEventListener('click', function () {
+            syncAllSessions({
+                withLoading: true,
+                showSuccess: true,
+                showError: true
+            });
         });
 
         // Refresh per-router

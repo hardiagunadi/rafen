@@ -44,7 +44,9 @@
                                 <select name="ppp_profile_id" class="form-control @error('ppp_profile_id') is-invalid @enderror" required>
                                     <option value="" disabled @selected(! old('ppp_profile_id'))>- pilih paket -</option>
                                     @foreach($profiles as $profile)
-                                        <option value="{{ $profile->id }}" @selected(old('ppp_profile_id') == $profile->id)>{{ $profile->name }}</option>
+                                        <option value="{{ $profile->id }}" @selected(old('ppp_profile_id') == $profile->id)>
+                                            {{ $profile->name }} - Rp {{ number_format((float) $profile->harga_modal, 0, ',', '.') }} - {{ (int) $profile->masa_aktif }} {{ $profile->satuan }}
+                                        </option>
                                     @endforeach
                                 </select>
                                 @error('ppp_profile_id')<div class="invalid-feedback">{{ $message }}</div>@enderror

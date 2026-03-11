@@ -91,7 +91,9 @@ class DashboardController extends Controller
         ]);
 
         // Daftar owner hanya untuk super admin (untuk filter switcher)
-        $owners = $user->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect();
+        $owners = $user->isSuperAdmin()
+            ? User::query()->tenants()->orderBy('name')->get()
+            : collect();
 
         return view('dashboard', compact('stats', 'serviceInfo', 'owners', 'systemInfo', 'hotspotModuleEnabled'));
     }
