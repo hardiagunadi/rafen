@@ -32,38 +32,42 @@ class ProfileGroupController extends Controller
 
     public function datatable(Request $request): JsonResponse
     {
-        $user   = auth()->user();
+        $user = auth()->user();
         $search = $request->input('search.value', '');
+        $typeFilter = $request->input('filter_type');
+        $validTypes = ['pppoe', 'hotspot'];
+        $normalizedTypeFilter = in_array($typeFilter, $validTypes, true) ? $typeFilter : null;
 
         $query = ProfileGroup::query()
             ->accessibleBy($user)
             ->with('mikrotikConnection')
-            ->when($search !== '', fn($q) => $q->where('name', 'like', "%{$search}%"))
+            ->when($normalizedTypeFilter !== null, fn ($q) => $q->where('type', $normalizedTypeFilter))
+            ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"))
             ->latest();
 
-        $total    = ProfileGroup::query()->accessibleBy($user)->count();
+        $total = ProfileGroup::query()->accessibleBy($user)->count();
         $filtered = $query->count();
-        $rows     = $query->offset($request->integer('start'))
+        $rows = $query->offset($request->integer('start'))
             ->limit(max(1, $request->integer('length', 20)))
             ->get();
 
         return response()->json([
-            'draw'            => $request->integer('draw'),
-            'recordsTotal'    => $total,
+            'draw' => $request->integer('draw'),
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $rows->map(fn($r) => [
-                'id'           => $r->id,
-                'name'         => $r->name,
-                'owner'        => $r->owner ?? '-',
-                'router'       => $r->mikrotikConnection?->name ?? 'Semua Router',
-                'type'         => strtoupper($r->type),
+            'data' => $rows->map(fn ($r) => [
+                'id' => $r->id,
+                'name' => $r->name,
+                'owner' => $r->owner ?? '-',
+                'router' => $r->mikrotikConnection?->name ?? 'Semua Router',
+                'type' => strtoupper($r->type),
                 'ip_pool_mode' => $r->ip_pool_mode === 'sql' ? 'SQL IP Pool' : 'Group Only',
-                'pool_info'    => $r->ip_pool_mode === 'group_only'
+                'pool_info' => $r->ip_pool_mode === 'group_only'
                     ? ($r->ip_pool_name ?? '-')
                     : ($r->ip_address ? $r->ip_address.'/'.$r->netmask : '-'),
-                'edit_url'     => route('profile-groups.edit', $r->id),
-                'destroy_url'  => route('profile-groups.destroy', $r->id),
-                'export_url'   => route('profile-groups.export', $r->id),
+                'edit_url' => route('profile-groups.edit', $r->id),
+                'destroy_url' => route('profile-groups.destroy', $r->id),
+                'export_url' => route('profile-groups.export', $r->id),
             ]),
         ]);
     }
@@ -204,7 +208,7 @@ class ProfileGroupController extends Controller
             ProfileGroup::query()->whereIn('id', $ids)->accessibleBy($user)->delete();
         }
 
-                if ($request->wantsJson()) {
+        if ($request->wantsJson()) {
             return response()->json(['status' => 'Profil group terpilih dihapus.']);
         }
 

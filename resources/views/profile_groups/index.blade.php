@@ -16,6 +16,18 @@
         </div>
     </div>
     <div class="card-body p-0">
+        <div class="p-3 border-bottom">
+            <div class="form-row">
+                <div class="form-group col-md-3 mb-0">
+                    <label for="filter-group-type" class="mb-1">Filter Tipe Group</label>
+                    <select id="filter-group-type" class="form-control form-control-sm">
+                        <option value="">Semua Tipe</option>
+                        <option value="pppoe">PPPoE</option>
+                        <option value="hotspot">Hotspot</option>
+                    </select>
+                </div>
+            </div>
+        </div>
         <div class="table-responsive">
             <table id="profile-group-table" class="table table-hover table-sm mb-0">
                 <thead class="thead-light">
@@ -82,7 +94,12 @@
 
         dtTable = $('#profile-group-table').DataTable({
             processing: true, serverSide: true,
-            ajax: { url: '{{ route("profile-groups.datatable") }}' },
+            ajax: {
+                url: '{{ route("profile-groups.datatable") }}',
+                data: function (d) {
+                    d.filter_type = document.getElementById('filter-group-type').value || '';
+                }
+            },
             columns: [
                 { data: null, orderable: false, render: function(d, t, row) {
                     return '<input type="checkbox" class="row-check" value="' + row.id + '">';
@@ -102,6 +119,12 @@
                 }},
             ],
             pageLength: 20, stateSave: false,
+        });
+
+        document.getElementById('filter-group-type').addEventListener('change', function () {
+            if (dtTable) {
+                dtTable.ajax.reload();
+            }
         });
 
         document.getElementById('select-all').addEventListener('change', function () {
