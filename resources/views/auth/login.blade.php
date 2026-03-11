@@ -3,9 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Radius Admin</title>
+    <title>Login - RAFEN Manager</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{{ asset('branding/rafen-favicon.svg') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('branding/favicon-32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('branding/favicon-180.png') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
+    <style>
+        .auth-wordmark {
+            width: min(280px, 88%);
+            margin: 0 auto;
+            filter: drop-shadow(0 8px 18px rgba(11, 42, 74, .2));
+        }
+    </style>
 </head>
 <body class="hold-transition login-page">
 @php
@@ -15,7 +26,7 @@
 @endphp
 <div class="login-box">
     <div class="login-logo">
-        <b>Radius</b>Admin
+        <img src="{{ asset('branding/rafen-wordmark.svg') }}" alt="Rafen Wordmark" class="auth-wordmark">
     </div>
     <div class="card">
         <div class="card-body login-card-body">

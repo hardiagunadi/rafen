@@ -6,7 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('redirects captive requests from mikrotik host to tenant isolir page', function () {
+it('redirects captive probe requests from mikrotik host to tenant isolir page', function () {
     $owner = User::factory()->create([
         'role' => 'administrator',
         'subscription_status' => 'active',
@@ -23,7 +23,7 @@ it('redirects captive requests from mikrotik host to tenant isolir page', functi
     $response = $this->withServerVariables([
         'REMOTE_ADDR' => '203.0.113.10',
         'HTTP_HOST' => 'example.org',
-    ])->get('/login');
+    ])->get('/generate_204');
 
     $response->assertRedirect(route('isolir.show', ['userId' => $owner->id]));
 });
@@ -47,4 +47,27 @@ it('does not redirect webhook endpoint even when request comes from mikrotik hos
     ])->get('/webhook/wa');
 
     $response->assertSuccessful();
+});
+
+it('does not force isolir redirect on app root path for normal host access', function () {
+    $owner = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addMonth(),
+    ]);
+
+    MikrotikConnection::factory()->create([
+        'owner_id' => $owner->id,
+        'host' => '203.0.113.12',
+        'is_active' => true,
+    ]);
+
+    $appHost = (string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost');
+
+    $response = $this->withServerVariables([
+        'REMOTE_ADDR' => '203.0.113.12',
+        'HTTP_HOST' => $appHost,
+    ])->get('/');
+
+    $response->assertRedirect(route('login'));
 });

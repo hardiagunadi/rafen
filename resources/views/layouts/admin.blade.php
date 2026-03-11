@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @php
-        $tenantTitle = 'Radius Manager';
+        $tenantTitle = 'RAFEN Manager';
         $subscriptionExpired = false;
         $subscriptionDaysLeft = null;
         $hotspotModuleEnabled = true;
@@ -30,6 +30,10 @@
             : null;
     @endphp
     <title>{{ $tenantTitle }}</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{{ asset('branding/rafen-favicon.svg') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('branding/favicon-32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('branding/favicon-180.png') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/datatables.net-bs4@1.13.8/css/dataTables.bootstrap4.min.css">
@@ -188,13 +192,25 @@
             background: linear-gradient(110deg, rgba(15, 118, 168, 0.35), rgba(14, 165, 233, 0.14));
             padding-top: 0.95rem;
             padding-bottom: 0.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.55rem;
         }
 
         .sidebar-modern .brand-text {
             color: #f8fbff;
             font-weight: 700;
-            letter-spacing: 0.01em;
+            letter-spacing: 0.015em;
             text-shadow: 0 2px 10px rgba(15, 23, 42, 0.35);
+        }
+
+        .sidebar-modern .brand-logo-mark {
+            width: 1.95rem;
+            height: 1.95rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 8px 16px rgba(8, 23, 39, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.24);
         }
 
         .sidebar-modern .sidebar {
@@ -377,6 +393,7 @@
 
     <aside class="main-sidebar sidebar-dark-primary elevation-4 sidebar-modern">
         <a href="{{ route('dashboard') }}" class="brand-link text-center">
+            <img src="{{ asset('branding/rafen-mark.svg') }}" alt="Rafen Logo" class="brand-logo-mark">
             <span class="brand-text font-weight-light">{{ $tenantTitle }}</span>
         </a>
         <div class="sidebar">

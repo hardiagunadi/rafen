@@ -101,10 +101,6 @@ class RedirectIsolatedCaptivePortal
         $appHost = strtolower((string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: ''));
 
         $captivePaths = [
-            '',
-            'login',
-            'logout',
-            'register',
             'generate_204',
             'gen_204',
             'connecttest.txt',

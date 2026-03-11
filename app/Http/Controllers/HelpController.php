@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class HelpController extends Controller
@@ -15,15 +14,18 @@ class HelpController extends Controller
     public function topic(string $slug): View
     {
         $topics = [
-            'freeradius'     => 'help.topics.freeradius',
-            'hotspot'        => 'help.topics.hotspot',
-            'pppoe'          => 'help.topics.pppoe',
-            'wireguard'      => 'help.topics.wireguard',
-            'voucher'        => 'help.topics.voucher',
-            'profil-paket'   => 'help.topics.profil-paket',
-            'session'        => 'help.topics.session',
-            'invoice'        => 'help.topics.invoice',
-            'troubleshoot'   => 'help.topics.troubleshoot',
+            'freeradius' => 'help.topics.freeradius',
+            'hotspot' => 'help.topics.hotspot',
+            'pppoe' => 'help.topics.pppoe',
+            'wireguard' => 'help.topics.wireguard',
+            'voucher' => 'help.topics.voucher',
+            'profil-paket' => 'help.topics.profil-paket',
+            'session' => 'help.topics.session',
+            'invoice' => 'help.topics.invoice',
+            'troubleshoot' => 'help.topics.troubleshoot',
+            'panduan-role' => 'help.topics.panduan-role',
+            'fitur-operasional' => 'help.topics.fitur-operasional',
+            'faq' => 'help.topics.faq',
         ];
 
         abort_unless(isset($topics[$slug]), 404);

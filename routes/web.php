@@ -177,6 +177,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::resource('vouchers', VoucherController::class);
     Route::get('help', [HelpController::class, 'index'])->name('help.index');
     Route::get('help/{slug}', [HelpController::class, 'topic'])->name('help.topic');
+    Route::view('branding-preview', 'branding.preview')->name('branding.preview');
 
     Route::get('sessions/pppoe', [ActiveSessionController::class, 'pppoe'])->name('sessions.pppoe');
     Route::get('sessions/pppoe/datatable', [ActiveSessionController::class, 'pppoeDatatable'])->name('sessions.pppoe.datatable');

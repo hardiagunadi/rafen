@@ -245,13 +245,7 @@ inject_captive_block() {
     RewriteCond %{REQUEST_URI} ^/${CAPTIVE_REGEX}$ [NC]
     RewriteRule ^ - [R=204,L]
 
-    RewriteCond %{REMOTE_ADDR} ^(?:${ROUTER_IP_REGEX})$
-    RewriteCond %{REQUEST_URI} !^${isolir_regex}/?$ [NC]
-    RewriteCond %{REQUEST_URI} !^/webhook(?:/|$) [NC]
-    RewriteRule ^ ${ISOLIR_PATH} [R=302,L]
-
     SetEnvIfNoCase Request_URI "^/${CAPTIVE_REGEX}$" skip_access_log=1
-    SetEnvIf Remote_Addr "^(?:${ROUTER_IP_REGEX})$" skip_access_log=1
     # END CAPTIVE_HARDENING
 EOF
 )"
