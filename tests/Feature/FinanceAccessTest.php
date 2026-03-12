@@ -30,6 +30,38 @@ it('shows data keuangan menu for administrator and keuangan', function () {
         ->assertSeeText('Data Keuangan');
 });
 
+it('hides informasi layanan card for teknisi and keuangan', function () {
+    $tenantAdmin = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $keuangan = User::factory()->create([
+        'parent_id' => $tenantAdmin->id,
+        'role' => 'keuangan',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $teknisi = User::factory()->create([
+        'parent_id' => $tenantAdmin->id,
+        'role' => 'teknisi',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $this->actingAs($keuangan)
+        ->get(route('dashboard'))
+        ->assertSuccessful()
+        ->assertDontSeeText('Informasi Layanan');
+
+    $this->actingAs($teknisi)
+        ->get(route('dashboard'))
+        ->assertSuccessful()
+        ->assertDontSeeText('Informasi Layanan');
+});
+
 it('shows data keuangan menu for teknisi and hides it for unrelated roles', function () {
     $tenantAdmin = User::factory()->create([
         'role' => 'administrator',

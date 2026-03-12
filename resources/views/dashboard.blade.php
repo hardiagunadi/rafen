@@ -631,34 +631,36 @@
                 </div>
             </div>
 
-            <div class="col-xl-4 mb-3">
-                <div class="card dashboard-panel">
-                    <div class="card-header">
-                        <h5 class="panel-title">Informasi Layanan</h5>
-                        <p class="panel-subtitle">Kontrol cepat layanan inti sistem.</p>
-                    </div>
-                    <div class="card-body pt-2">
-                        @foreach($serviceInfo as $service)
-                            <div class="service-item">
-                                <div class="service-header">
-                                    <p class="service-label">{{ $service['label'] }}</p>
-                                    <span class="badge badge-{{ $service['color'] }}">{{ $service['status'] }}</span>
+            @if(! in_array(auth()->user()->role, ['teknisi', 'keuangan'], true))
+                <div class="col-xl-4 mb-3">
+                    <div class="card dashboard-panel">
+                        <div class="card-header">
+                            <h5 class="panel-title">Informasi Layanan</h5>
+                            <p class="panel-subtitle">Kontrol cepat layanan inti sistem.</p>
+                        </div>
+                        <div class="card-body pt-2">
+                            @foreach($serviceInfo as $service)
+                                <div class="service-item">
+                                    <div class="service-header">
+                                        <p class="service-label">{{ $service['label'] }}</p>
+                                        <span class="badge badge-{{ $service['color'] }}">{{ $service['status'] }}</span>
+                                    </div>
+                                    <p class="service-status">{{ $service['status'] }}</p>
+                                    <div class="text-right mt-2">
+                                        @if(!empty($service['action_route']))
+                                            <button type="button" class="btn btn-sm btn-outline-secondary service-action-btn" data-url="{{ $service['action_route'] }}">
+                                                {{ $service['action'] }}
+                                            </button>
+                                        @elseif($service['action'])
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled>{{ $service['action'] }}</button>
+                                        @endif
+                                    </div>
                                 </div>
-                                <p class="service-status">{{ $service['status'] }}</p>
-                                <div class="text-right mt-2">
-                                    @if(!empty($service['action_route']))
-                                        <button type="button" class="btn btn-sm btn-outline-secondary service-action-btn" data-url="{{ $service['action_route'] }}">
-                                            {{ $service['action'] }}
-                                        </button>
-                                    @elseif($service['action'])
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled>{{ $service['action'] }}</button>
-                                    @endif
-                                </div>
-                            </div>
-                        @endforeach
+                            @endforeach
+                        </div>
                     </div>
                 </div>
-            </div>
+            @endif
         </div>
     </div>
 

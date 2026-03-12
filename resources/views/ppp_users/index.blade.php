@@ -164,6 +164,10 @@
                 },
             });
 
+            document.addEventListener('rafen:ajax-success', function () {
+                table.ajax.reload(null, false);
+            });
+
             $('#select-all').on('change', function () {
                 $('#ppp-users-table tbody input[type="checkbox"]').prop('checked', this.checked);
             });
