@@ -7,6 +7,7 @@
         $hotspotModuleEnabled = auth()->user()?->isHotspotModuleEnabled() ?? true;
         $isDailyReport = ($reportType ?? 'daily') === 'daily';
         $showBhpUsoInputs = ($reportType ?? 'daily') === 'bhp_uso';
+        $canManageExpense = auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'keuangan'], true);
         $summary = $report['summary'] ?? [];
     @endphp
 
@@ -151,80 +152,82 @@
                     </table>
                 </div>
             @elseif($reportType === 'expense')
-                <div class="card card-outline card-primary mb-3">
-                    <div class="card-header py-2">
-                        <h6 class="mb-0">Tambah Pengeluaran Manual</h6>
-                    </div>
-                    <div class="card-body">
-                        @if ($errors->any())
-                            <div class="alert alert-danger">
-                                <ul class="mb-0 pl-3">
-                                    @foreach ($errors->all() as $error)
-                                        <li>{{ $error }}</li>
-                                    @endforeach
-                                </ul>
-                            </div>
-                        @endif
-                        <form method="POST" action="{{ route('reports.expenses.store') }}">
-                            @csrf
-                            <div class="form-row">
-                                @if(auth()->user()->isSuperAdmin())
-                                    <div class="form-group col-md-3">
-                                        <label for="expense-owner-id">Owner</label>
-                                        <select class="form-control" id="expense-owner-id" name="owner_id" required>
-                                            <option value="">- Pilih Owner -</option>
-                                            @foreach($owners as $owner)
-                                                <option value="{{ $owner->id }}" @selected((string) old('owner_id', (string) ($filters['owner_id'] ?? '')) === (string) $owner->id)>{{ $owner->name }}</option>
-                                            @endforeach
+                @if($canManageExpense)
+                    <div class="card card-outline card-primary mb-3">
+                        <div class="card-header py-2">
+                            <h6 class="mb-0">Tambah Pengeluaran Manual</h6>
+                        </div>
+                        <div class="card-body">
+                            @if ($errors->any())
+                                <div class="alert alert-danger">
+                                    <ul class="mb-0 pl-3">
+                                        @foreach ($errors->all() as $error)
+                                            <li>{{ $error }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endif
+                            <form method="POST" action="{{ route('reports.expenses.store') }}">
+                                @csrf
+                                <div class="form-row">
+                                    @if(auth()->user()->isSuperAdmin())
+                                        <div class="form-group col-md-3">
+                                            <label for="expense-owner-id">Owner</label>
+                                            <select class="form-control" id="expense-owner-id" name="owner_id" required>
+                                                <option value="">- Pilih Owner -</option>
+                                                @foreach($owners as $owner)
+                                                    <option value="{{ $owner->id }}" @selected((string) old('owner_id', (string) ($filters['owner_id'] ?? '')) === (string) $owner->id)>{{ $owner->name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    @endif
+                                    <div class="form-group col-md-{{ auth()->user()->isSuperAdmin() ? '3' : '4' }}">
+                                        <label for="expense-date">Tanggal</label>
+                                        <input type="date" class="form-control" id="expense-date" name="expense_date" value="{{ old('expense_date', now()->toDateString()) }}" required>
+                                    </div>
+                                    <div class="form-group col-md-{{ auth()->user()->isSuperAdmin() ? '3' : '4' }}">
+                                        <label for="expense-category">Kategori</label>
+                                        <input type="text" class="form-control" id="expense-category" name="category" value="{{ old('category') }}" placeholder="Contoh: Gaji Teknisi" required>
+                                    </div>
+                                    <div class="form-group col-md-{{ auth()->user()->isSuperAdmin() ? '3' : '4' }}">
+                                        <label for="expense-amount">Nominal (IDR)</label>
+                                        <input type="number" class="form-control" id="expense-amount" name="amount" step="0.01" min="1" value="{{ old('amount') }}" required>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="expense-service">Alokasi Service</label>
+                                        <select class="form-control" id="expense-service" name="service_type" required>
+                                            <option value="general" @selected(old('service_type', 'general') === 'general')>General</option>
+                                            <option value="pppoe" @selected(old('service_type') === 'pppoe')>PPPoE</option>
+                                            @if($hotspotModuleEnabled)
+                                                <option value="hotspot" @selected(old('service_type') === 'hotspot')>Hotspot</option>
+                                            @endif
+                                            <option value="voucher" @selected(old('service_type') === 'voucher')>Voucher</option>
                                         </select>
                                     </div>
-                                @endif
-                                <div class="form-group col-md-{{ auth()->user()->isSuperAdmin() ? '3' : '4' }}">
-                                    <label for="expense-date">Tanggal</label>
-                                    <input type="date" class="form-control" id="expense-date" name="expense_date" value="{{ old('expense_date', now()->toDateString()) }}" required>
+                                    <div class="form-group col-md-4">
+                                        <label for="expense-payment-method">Metode Pembayaran</label>
+                                        <input type="text" class="form-control" id="expense-payment-method" name="payment_method" value="{{ old('payment_method') }}" placeholder="Contoh: transfer / cash">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="expense-reference">Referensi</label>
+                                        <input type="text" class="form-control" id="expense-reference" name="reference" value="{{ old('reference') }}" placeholder="Nomor nota / bukti">
+                                    </div>
                                 </div>
-                                <div class="form-group col-md-{{ auth()->user()->isSuperAdmin() ? '3' : '4' }}">
-                                    <label for="expense-category">Kategori</label>
-                                    <input type="text" class="form-control" id="expense-category" name="category" value="{{ old('category') }}" placeholder="Contoh: Gaji Teknisi" required>
+                                <div class="form-group">
+                                    <label for="expense-description">Keterangan</label>
+                                    <textarea class="form-control" id="expense-description" name="description" rows="2" placeholder="Catatan tambahan">{{ old('description') }}</textarea>
                                 </div>
-                                <div class="form-group col-md-{{ auth()->user()->isSuperAdmin() ? '3' : '4' }}">
-                                    <label for="expense-amount">Nominal (IDR)</label>
-                                    <input type="number" class="form-control" id="expense-amount" name="amount" step="0.01" min="1" value="{{ old('amount') }}" required>
+                                <div class="text-right">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-plus-circle mr-1"></i>Simpan Pengeluaran
+                                    </button>
                                 </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group col-md-4">
-                                    <label for="expense-service">Alokasi Service</label>
-                                    <select class="form-control" id="expense-service" name="service_type" required>
-                                        <option value="general" @selected(old('service_type', 'general') === 'general')>General</option>
-                                        <option value="pppoe" @selected(old('service_type') === 'pppoe')>PPPoE</option>
-                                        @if($hotspotModuleEnabled)
-                                            <option value="hotspot" @selected(old('service_type') === 'hotspot')>Hotspot</option>
-                                        @endif
-                                        <option value="voucher" @selected(old('service_type') === 'voucher')>Voucher</option>
-                                    </select>
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="expense-payment-method">Metode Pembayaran</label>
-                                    <input type="text" class="form-control" id="expense-payment-method" name="payment_method" value="{{ old('payment_method') }}" placeholder="Contoh: transfer / cash">
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="expense-reference">Referensi</label>
-                                    <input type="text" class="form-control" id="expense-reference" name="reference" value="{{ old('reference') }}" placeholder="Nomor nota / bukti">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="expense-description">Keterangan</label>
-                                <textarea class="form-control" id="expense-description" name="description" rows="2" placeholder="Catatan tambahan">{{ old('description') }}</textarea>
-                            </div>
-                            <div class="text-right">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-plus-circle mr-1"></i>Simpan Pengeluaran
-                                </button>
-                            </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                @endif
 
                 <div class="alert alert-warning">
                     Total Pengeluaran:

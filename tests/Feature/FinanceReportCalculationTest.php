@@ -152,3 +152,71 @@ it('calculates profit loss with gateway expense and bhp uso expense components',
                 && (float) ($report['summary']['net_profit'] ?? 0) === 776000.0;
         });
 });
+
+it('limits teknisi income report to invoices paid by the same teknisi only', function () {
+    $admin = financeAdmin();
+    $teknisiA = User::factory()->create([
+        'parent_id' => $admin->id,
+        'role' => 'teknisi',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+    $teknisiB = User::factory()->create([
+        'parent_id' => $admin->id,
+        'role' => 'teknisi',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+    $pppUser = financePppUser($admin);
+
+    Invoice::query()->create([
+        'invoice_number' => 'INV-TEK-A-001',
+        'ppp_user_id' => $pppUser->id,
+        'owner_id' => $admin->id,
+        'customer_id' => $pppUser->customer_id,
+        'customer_name' => $pppUser->customer_name,
+        'tipe_service' => 'pppoe',
+        'paket_langganan' => 'Paket Teknisi A',
+        'total' => 100000,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'paid_by' => $teknisiA->id,
+    ]);
+
+    Invoice::query()->create([
+        'invoice_number' => 'INV-TEK-B-001',
+        'ppp_user_id' => $pppUser->id,
+        'owner_id' => $admin->id,
+        'customer_id' => $pppUser->customer_id,
+        'customer_name' => $pppUser->customer_name,
+        'tipe_service' => 'pppoe',
+        'paket_langganan' => 'Paket Teknisi B',
+        'total' => 200000,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'paid_by' => $teknisiB->id,
+    ]);
+
+    Transaction::query()->create([
+        'owner_id' => $admin->id,
+        'type' => 'voucher',
+        'total' => 50000,
+        'status' => 'paid',
+        'paid_at' => now(),
+    ]);
+
+    $this->actingAs($teknisiA)
+        ->get(route('reports.income', [
+            'report' => 'daily',
+            'date' => now()->toDateString(),
+            'tipe_user' => 'semua',
+        ]))
+        ->assertSuccessful()
+        ->assertViewHas('report', function (array $report): bool {
+            return (float) ($report['summary']['total_income'] ?? 0) === 100000.0
+                && (float) ($report['summary']['customer_income'] ?? 0) === 100000.0
+                && (float) ($report['summary']['voucher_income'] ?? 0) === 0.0
+                && $report['items']->count() === 1
+                && ($report['items']->first()['reference'] ?? null) === 'INV-TEK-A-001';
+        });
+});

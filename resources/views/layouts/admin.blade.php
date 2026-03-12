@@ -164,6 +164,32 @@
             overflow: hidden;
         }
 
+        .main-header.navbar {
+            border-bottom: 1px solid rgba(9, 39, 68, 0.22);
+            background:
+                linear-gradient(105deg, rgba(10, 62, 104, 0.98), rgba(15, 107, 149, 0.95) 45%, rgba(12, 138, 143, 0.94)) !important;
+            box-shadow: 0 8px 20px rgba(9, 39, 68, 0.22);
+        }
+
+        .main-header.navbar .navbar-nav > .nav-item > .nav-link:not(.text-danger):not(.text-warning) {
+            color: #e7f5ff;
+            border-radius: 9px;
+            transition: background-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+        }
+
+        .main-header.navbar .navbar-nav > .nav-item > .nav-link:not(.text-danger):not(.text-warning):hover,
+        .main-header.navbar .navbar-nav > .nav-item > .nav-link:not(.text-danger):not(.text-warning):focus {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.16);
+            transform: translateY(-1px);
+        }
+
+        .main-header.navbar .navbar-nav > .nav-item > .nav-link.text-danger,
+        .main-header.navbar .navbar-nav > .nav-item > .nav-link.text-warning {
+            font-weight: 700;
+            text-shadow: 0 1px 8px rgba(7, 20, 35, 0.35);
+        }
+
         .main-sidebar.sidebar-modern {
             position: relative;
             border-right: 1px solid rgba(148, 163, 184, 0.24);
@@ -508,43 +534,45 @@
                         </a>
                     </li>
                     @endif
-                    <li class="nav-item has-treeview {{ request()->routeIs(...$profilePaketRoutes) ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs(...$profilePaketRoutes) ? 'active' : '' }}">
-                            <i class="nav-icon fas fa-box"></i>
-                            <p>
-                                Profil Paket
-                                <i class="right fas fa-angle-left"></i>
-                            </p>
-                        </a>
-                        <ul class="nav nav-treeview">
-                            <li class="nav-item">
-                                <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link {{ request()->routeIs('bandwidth-profiles.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Bandwidth</p>
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('profile-groups.index') }}" class="nav-link {{ request()->routeIs('profile-groups.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil Group</p>
-                                </a>
-                            </li>
-                            @if($hotspotModuleEnabled)
+                    @if(auth()->user()->role !== 'teknisi')
+                        <li class="nav-item has-treeview {{ request()->routeIs(...$profilePaketRoutes) ? 'menu-open' : '' }}">
+                            <a href="#" class="nav-link {{ request()->routeIs(...$profilePaketRoutes) ? 'active' : '' }}">
+                                <i class="nav-icon fas fa-box"></i>
+                                <p>
+                                    Profil Paket
+                                    <i class="right fas fa-angle-left"></i>
+                                </p>
+                            </a>
+                            <ul class="nav nav-treeview">
                                 <li class="nav-item">
-                                    <a href="{{ route('hotspot-profiles.index') }}" class="nav-link {{ request()->routeIs('hotspot-profiles.*') ? 'active' : '' }}">
+                                    <a href="{{ route('bandwidth-profiles.index') }}" class="nav-link {{ request()->routeIs('bandwidth-profiles.*') ? 'active' : '' }}">
                                         <i class="far fa-circle nav-icon"></i>
-                                        <p>Profil Hotspot</p>
+                                        <p>Bandwidth</p>
                                     </a>
                                 </li>
-                            @endif
-                            <li class="nav-item">
-                                <a href="{{ route('ppp-profiles.index') }}" class="nav-link {{ request()->routeIs('ppp-profiles.*') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Profil PPP</p>
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
+                                <li class="nav-item">
+                                    <a href="{{ route('profile-groups.index') }}" class="nav-link {{ request()->routeIs('profile-groups.*') ? 'active' : '' }}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Profil Group</p>
+                                    </a>
+                                </li>
+                                @if($hotspotModuleEnabled)
+                                    <li class="nav-item">
+                                        <a href="{{ route('hotspot-profiles.index') }}" class="nav-link {{ request()->routeIs('hotspot-profiles.*') ? 'active' : '' }}">
+                                            <i class="far fa-circle nav-icon"></i>
+                                            <p>Profil Hotspot</p>
+                                        </a>
+                                    </li>
+                                @endif
+                                <li class="nav-item">
+                                    <a href="{{ route('ppp-profiles.index') }}" class="nav-link {{ request()->routeIs('ppp-profiles.*') ? 'active' : '' }}">
+                                        <i class="far fa-circle nav-icon"></i>
+                                        <p>Profil PPP</p>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                    @endif
                     
                     <li class="nav-item has-treeview {{ request()->routeIs('payments.pending*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('payments.pending*') ? 'active' : '' }}">
@@ -585,7 +613,7 @@
                         </a>
                     </li>
                     @endif
-                    @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'keuangan'], true))
+                    @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'keuangan', 'teknisi'], true))
                     <li class="nav-item has-treeview {{ request()->routeIs('reports.income') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('reports.income') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-dollar-sign"></i>

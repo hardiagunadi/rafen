@@ -98,7 +98,7 @@
         </a>
     </div>
 
-    <div class="col-md-4 col-sm-6 mb-4 help-topic-card" data-help-topic data-help-keywords="faq pertanyaan umum wa timeout snmp isolir invoice pembayaran session">
+    <div class="col-md-4 col-sm-6 mb-4 help-topic-card" data-help-topic data-help-keywords="faq pertanyaan umum wa whatsapp wizard onboarding qr device blast multi device timeout snmp isolir invoice pembayaran session">
         <a href="{{ route('help.topic', 'faq') }}" class="text-decoration-none">
             <div class="card card-outline card-warning h-100 help-card">
                 <div class="card-body text-center py-4">
@@ -108,6 +108,21 @@
                 </div>
                 <div class="card-footer text-right py-2">
                     <small class="text-muted">Baca FAQ <i class="fas fa-arrow-right"></i></small>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-4 col-sm-6 mb-4 help-topic-card" data-help-topic data-help-keywords="whatsapp gateway wa wizard onboarding device scan qr blast multi device template anti spam">
+        <a href="{{ route('help.topic', 'whatsapp-gateway') }}" class="text-decoration-none">
+            <div class="card card-outline card-success h-100 help-card">
+                <div class="card-body text-center py-4">
+                    <i class="fab fa-whatsapp fa-2x text-success mb-3"></i>
+                    <h5 class="card-title mb-1">WhatsApp Gateway</h5>
+                    <p class="text-muted small mb-0">Panduan khusus setup wizard, manajemen device, scan QR, dan optimasi WA Blast.</p>
+                </div>
+                <div class="card-footer text-right py-2">
+                    <small class="text-muted">Baca panduan <i class="fas fa-arrow-right"></i></small>
                 </div>
             </div>
         </a>

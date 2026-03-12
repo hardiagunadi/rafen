@@ -215,7 +215,7 @@
                 </div>
             </div>
 
-            <div class="card card-outline card-primary mb-0">
+            <div class="card card-outline card-primary mb-2">
                 <div class="card-header py-2">
                     <button class="btn btn-link text-left p-0 collapsed" type="button" data-toggle="collapse" data-target="#faq-15">
                         15) Bagaimana strategi pesan WA agar terasa natural, bukan bot?
@@ -225,6 +225,21 @@
                     <div class="card-body">
                         Pakai rotasi template, variasi sapaan, jeda pengiriman antar pelanggan, dan antrean bertahap.
                         Hindari blast serentak agar delivery lebih stabil dan percakapan lebih manusiawi.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-outline card-primary mb-0">
+                <div class="card-header py-2">
+                    <button class="btn btn-link text-left p-0 collapsed" type="button" data-toggle="collapse" data-target="#faq-16">
+                        16) Apa alur cepat setup fitur WhatsApp terbaru?
+                    </button>
+                </div>
+                <div id="faq-16" class="collapse" data-parent="#help-faq-accordion">
+                    <div class="card-body">
+                        Buka <strong>Pengaturan → WhatsApp → Gateway &amp; Template</strong>, lalu ikuti Wizard Onboarding:
+                        (1) test koneksi, (2) tambah device, (3) scan QR di modal popup, (4) aktifkan otomasi/blast, (5) test template dan simpan.
+                        Pada tab <strong>Manajemen Device</strong>, status tiap device ditampilkan real-time: <em>Connected</em>, <em>Belum Scan</em>, <em>Proses Login</em>, atau <em>Disconnected</em>.
                     </div>
                 </div>
             </div>

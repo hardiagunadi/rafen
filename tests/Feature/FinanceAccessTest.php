@@ -30,7 +30,7 @@ it('shows data keuangan menu for administrator and keuangan', function () {
         ->assertSeeText('Data Keuangan');
 });
 
-it('hides data keuangan menu for roles other than administrator and keuangan', function () {
+it('shows data keuangan menu for teknisi and hides it for unrelated roles', function () {
     $tenantAdmin = User::factory()->create([
         'role' => 'administrator',
         'subscription_status' => 'active',
@@ -59,7 +59,8 @@ it('hides data keuangan menu for roles other than administrator and keuangan', f
     $this->actingAs($teknisi)
         ->get(route('dashboard'))
         ->assertSuccessful()
-        ->assertDontSeeText('Data Keuangan');
+        ->assertSeeText('Data Keuangan')
+        ->assertDontSeeText('Profil Paket');
 });
 
 it('allows administrator and keuangan roles to access income report', function () {
@@ -85,7 +86,7 @@ it('allows administrator and keuangan roles to access income report', function (
         ->assertSuccessful();
 });
 
-it('forbids noc and teknisi roles from accessing income report', function () {
+it('forbids noc role and allows teknisi role to access income report', function () {
     $tenantAdmin = User::factory()->create([
         'role' => 'administrator',
         'subscription_status' => 'active',
@@ -112,5 +113,5 @@ it('forbids noc and teknisi roles from accessing income report', function () {
 
     $this->actingAs($teknisi)
         ->get(route('reports.income'))
-        ->assertForbidden();
+        ->assertSuccessful();
 });

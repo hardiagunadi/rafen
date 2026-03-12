@@ -144,8 +144,8 @@
                     </tr>
                     <tr>
                         <td><strong>Pengaturan</strong></td>
-                        <td>Tenant settings, WA Gateway, FreeRADIUS, WireGuard, manajemen pengguna.</td>
-                        <td>Konfigurasi tenant terstandarisasi dan aman.</td>
+                        <td>Tenant settings, WA Gateway (wizard onboarding, manajemen device, scan QR modal, status koneksi live, optimasi blast multi-device), FreeRADIUS, WireGuard, manajemen pengguna.</td>
+                        <td>Konfigurasi tenant terstandarisasi, onboarding lebih cepat, dan operasional WA lebih stabil.</td>
                     </tr>
                     <tr>
                         <td><strong>Langganan</strong></td>
@@ -169,7 +169,8 @@
                 <li>Tambahkan router/validasi koneksi di <strong>Router (NAS)</strong>.</li>
                 <li>Registrasi pelanggan di <strong>List Pelanggan</strong> dan pilih paket yang tepat.</li>
                 <li>Sistem membuat invoice sesuai periode/billing cycle.</li>
-                <li>Kirim pengingat melalui WA (manual/otomatis sesuai aturan tenant).</li>
+                <li>Di <strong>Pengaturan → WhatsApp</strong>, ikuti wizard onboarding: validasi koneksi, tambah device, scan QR, lalu aktifkan otomasi.</li>
+                <li>Kirim pengingat melalui WA (manual/otomatis sesuai aturan tenant), gunakan multi-device blast untuk membagi beban kirim.</li>
                 <li>Jika belum lunas melewati jatuh tempo, status bisa masuk mekanisme isolir.</li>
                 <li>Jika bayar, konfirmasi pembayaran dan status layanan kembali normal/lunas.</li>
                 <li>Akhiri hari dengan rekonsiliasi setoran dan review laporan keuangan.</li>

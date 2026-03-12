@@ -7,6 +7,7 @@
     $currentUser = auth()->user();
     $canManageOlt = $currentUser->isSuperAdmin() || in_array($currentUser->role, ['administrator', 'noc'], true);
     $canPollOlt = $canManageOlt || $currentUser->role === 'teknisi';
+    $showNocOnlyOidFields = $currentUser->role === 'noc';
     $isPollingInProgress = $oltConnection->isPollingInProgress();
     $pollingProgressPercent = $oltConnection->pollingProgressPercent();
     $pollingMessage = $oltConnection->pollingDisplayMessage();
@@ -88,12 +89,14 @@
                 </div>
                 <div><strong>Total ONU tersimpan:</strong> <span id="total-onu-stored">{{ number_format($totalOnuStored) }}</span></div>
             </div>
-            <div class="col-lg-4">
-                <div><strong>OID MAC / Identifier:</strong> <code>{{ $oltConnection->oid_serial ?: '-' }}</code></div>
-                <div><strong>OID Rx ONU:</strong> <code>{{ $oltConnection->oid_rx_onu ?: '-' }}</code></div>
-                <div><strong>OID Distance:</strong> <code>{{ $oltConnection->oid_distance ?: '-' }}</code></div>
-                <div><strong>OID Status:</strong> <code>{{ $oltConnection->oid_status ?: '-' }}</code></div>
-            </div>
+            @if($showNocOnlyOidFields)
+                <div class="col-lg-4">
+                    <div><strong>OID MAC / Identifier:</strong> <code>{{ $oltConnection->oid_serial ?: '-' }}</code></div>
+                    <div><strong>OID Rx ONU:</strong> <code>{{ $oltConnection->oid_rx_onu ?: '-' }}</code></div>
+                    <div><strong>OID Distance:</strong> <code>{{ $oltConnection->oid_distance ?: '-' }}</code></div>
+                    <div><strong>OID Status:</strong> <code>{{ $oltConnection->oid_status ?: '-' }}</code></div>
+                </div>
+            @endif
         </div>
         <div id="polling-message-alert" class="alert {{ $pollingAlertClass }} mt-3 mb-0 {{ $pollingMessage ? '' : 'd-none' }}">
             {{ $pollingMessage ?? '' }}

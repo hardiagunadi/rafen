@@ -23,7 +23,8 @@ it('shows new help center cards on index page', function () {
         ->assertSuccessful()
         ->assertSee('Panduan Per Role')
         ->assertSee('Peta Fitur Operasional')
-        ->assertSee('FAQ Operasional');
+        ->assertSee('FAQ Operasional')
+        ->assertSee('WhatsApp Gateway');
 });
 
 it('shows role summary based on current user role', function () {
@@ -49,6 +50,7 @@ it('opens each new help topic page', function (string $slug, string $expectedHea
     ['panduan-role', 'Panduan Per Role'],
     ['fitur-operasional', 'Peta Fitur Operasional RAFEN'],
     ['faq', 'FAQ Operasional RAFEN'],
+    ['whatsapp-gateway', 'WhatsApp Gateway — Panduan Praktis'],
 ]);
 
 it('returns not found for unknown help topic slug', function () {

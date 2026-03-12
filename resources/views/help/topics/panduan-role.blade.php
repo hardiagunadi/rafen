@@ -194,7 +194,7 @@
                             <li>Setup Router (NAS), profil paket, dan data pelanggan.</li>
                             <li>Pantau dashboard, session user, dan Monitoring OLT setiap hari.</li>
                             <li>Kelola invoice, konfirmasi pembayaran, dan isolir jatuh tempo.</li>
-                            <li>Atur WA Gateway, template notifikasi, dan pengaturan tenant.</li>
+                            <li>Atur WA Gateway lewat wizard onboarding (koneksi, device, scan QR), template notifikasi, dan pengaturan tenant.</li>
                             <li>Review laporan keuangan harian/periode sebagai kontrol bisnis.</li>
                         </ol>
                     </div>

@@ -26,6 +26,7 @@ class HelpController extends Controller
             'panduan-role' => 'help.topics.panduan-role',
             'fitur-operasional' => 'help.topics.fitur-operasional',
             'faq' => 'help.topics.faq',
+            'whatsapp-gateway' => 'help.topics.whatsapp-gateway',
         ];
 
         abort_unless(isset($topics[$slug]), 404);

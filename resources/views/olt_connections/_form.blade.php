@@ -1,3 +1,7 @@
+@php
+    $showNocOnlyOidFields = auth()->user()->role === 'noc';
+@endphp
+
 <div class="form-row">
     <div class="form-group col-md-3">
         <label>Vendor OLT</label>
@@ -385,12 +389,14 @@
 </p>
 
 <div class="form-row">
-    <div class="form-group col-md-6">
-        <label>OID MAC / Identifier ONU</label>
-        <input type="text" name="oid_serial" id="oid-serial" class="form-control @error('oid_serial') is-invalid @enderror"
-            value="{{ old('oid_serial', $oltConnection->oid_serial ?? '') }}" placeholder="1.3.6.x.x.x">
-        @error('oid_serial')<div class="invalid-feedback">{{ $message }}</div>@enderror
-    </div>
+    @if($showNocOnlyOidFields)
+        <div class="form-group col-md-6">
+            <label>OID MAC / Identifier ONU</label>
+            <input type="text" name="oid_serial" id="oid-serial" class="form-control @error('oid_serial') is-invalid @enderror"
+                value="{{ old('oid_serial', $oltConnection->oid_serial ?? '') }}" placeholder="1.3.6.x.x.x">
+            @error('oid_serial')<div class="invalid-feedback">{{ $message }}</div>@enderror
+        </div>
+    @endif
     <div class="form-group col-md-6">
         <label>OID Nama ONU</label>
         <input type="text" name="oid_onu_name" id="oid-onu-name" class="form-control @error('oid_onu_name') is-invalid @enderror"
@@ -400,12 +406,14 @@
 </div>
 
 <div class="form-row">
-    <div class="form-group col-md-6">
-        <label>OID Rx ONU (dBm)</label>
-        <input type="text" name="oid_rx_onu" id="oid-rx-onu" class="form-control @error('oid_rx_onu') is-invalid @enderror"
-            value="{{ old('oid_rx_onu', $oltConnection->oid_rx_onu ?? '') }}" placeholder="1.3.6.x.x.x">
-        @error('oid_rx_onu')<div class="invalid-feedback">{{ $message }}</div>@enderror
-    </div>
+    @if($showNocOnlyOidFields)
+        <div class="form-group col-md-6">
+            <label>OID Rx ONU (dBm)</label>
+            <input type="text" name="oid_rx_onu" id="oid-rx-onu" class="form-control @error('oid_rx_onu') is-invalid @enderror"
+                value="{{ old('oid_rx_onu', $oltConnection->oid_rx_onu ?? '') }}" placeholder="1.3.6.x.x.x">
+            @error('oid_rx_onu')<div class="invalid-feedback">{{ $message }}</div>@enderror
+        </div>
+    @endif
     <div class="form-group col-md-6">
         <label>OID Tx ONU (dBm)</label>
         <input type="text" name="oid_tx_onu" id="oid-tx-onu" class="form-control @error('oid_tx_onu') is-invalid @enderror"
@@ -429,17 +437,19 @@
     </div>
 </div>
 
-<div class="form-row">
-    <div class="form-group col-md-6">
-        <label>OID Distance (m)</label>
-        <input type="text" name="oid_distance" id="oid-distance" class="form-control @error('oid_distance') is-invalid @enderror"
-            value="{{ old('oid_distance', $oltConnection->oid_distance ?? '') }}" placeholder="1.3.6.x.x.x">
-        @error('oid_distance')<div class="invalid-feedback">{{ $message }}</div>@enderror
+@if($showNocOnlyOidFields)
+    <div class="form-row">
+        <div class="form-group col-md-6">
+            <label>OID Distance (m)</label>
+            <input type="text" name="oid_distance" id="oid-distance" class="form-control @error('oid_distance') is-invalid @enderror"
+                value="{{ old('oid_distance', $oltConnection->oid_distance ?? '') }}" placeholder="1.3.6.x.x.x">
+            @error('oid_distance')<div class="invalid-feedback">{{ $message }}</div>@enderror
+        </div>
+        <div class="form-group col-md-6">
+            <label>OID Status ONU</label>
+            <input type="text" name="oid_status" id="oid-status" class="form-control @error('oid_status') is-invalid @enderror"
+                value="{{ old('oid_status', $oltConnection->oid_status ?? '') }}" placeholder="1.3.6.x.x.x">
+            @error('oid_status')<div class="invalid-feedback">{{ $message }}</div>@enderror
+        </div>
     </div>
-    <div class="form-group col-md-6">
-        <label>OID Status ONU</label>
-        <input type="text" name="oid_status" id="oid-status" class="form-control @error('oid_status') is-invalid @enderror"
-            value="{{ old('oid_status', $oltConnection->oid_status ?? '') }}" placeholder="1.3.6.x.x.x">
-        @error('oid_status')<div class="invalid-feedback">{{ $message }}</div>@enderror
-    </div>
-</div>
+@endif

@@ -24,6 +24,8 @@ class DashboardController extends Controller
         $now = now();
         $monthStart = $now->copy()->startOfMonth();
         $monthEnd = $now->copy()->endOfMonth();
+        $todayStart = $now->copy()->startOfDay();
+        $todayEnd = $now->copy()->endOfDay();
 
         $routers = MikrotikConnection::query()
             ->accessibleBy($user)
@@ -44,7 +46,18 @@ class DashboardController extends Controller
             ->accessibleBy($user)
             ->whereBetween('created_at', [$monthStart, $monthEnd])
             ->get();
-        $incomeToday = $invoicesMonth->where('status', 'paid')->whereBetween('updated_at', [$now->copy()->startOfDay(), $now->copy()->endOfDay()])->sum('total');
+        $incomeTodayQuery = Invoice::query()
+            ->accessibleBy($user)
+            ->where('status', 'paid')
+            ->whereBetween('paid_at', [$todayStart, $todayEnd]);
+
+        if ($user->role === 'teknisi') {
+            $incomeTodayQuery
+                ->where('paid_by', $user->id)
+                ->where('cash_received', '>', 0);
+        }
+
+        $incomeToday = (float) $incomeTodayQuery->sum('total');
         $invoiceCountMonth = $invoicesMonth->where('status', 'unpaid')->count();
 
         $stats = [

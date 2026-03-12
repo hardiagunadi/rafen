@@ -77,8 +77,8 @@ it('renders olt pages for tenant admin', function () {
         ->assertSee('Model OLT HSGQ')
         ->assertSee('SNMP Read Community')
         ->assertSee('SNMP Write Community')
-        ->assertSee('OID MAC / Identifier ONU')
-        ->assertSee('OID Distance (m)');
+        ->assertDontSee('OID MAC / Identifier ONU')
+        ->assertDontSee('OID Distance (m)');
 
     $this->actingAs($tenant)
         ->get(route('olt-connections.show', $connection))
@@ -92,8 +92,56 @@ it('renders olt pages for tenant admin', function () {
         ->assertSee('Model OLT HSGQ')
         ->assertSee('SNMP Read Community')
         ->assertSee('SNMP Write Community')
+        ->assertDontSee('OID MAC / Identifier ONU')
+        ->assertDontSee('OID Distance (m)');
+});
+
+it('shows noc-only oid fields on olt forms and detail', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $noc = User::factory()->create([
+        'parent_id' => $tenant->id,
+        'role' => 'noc',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+        'name' => 'OLT NOC VIEW',
+        'oid_serial' => '1.3.6.1.4.1.50224.3.3.2.1.7',
+        'oid_rx_onu' => '1.3.6.1.4.1.50224.3.3.3.1.4',
+        'oid_distance' => '1.3.6.1.4.1.50224.3.3.2.1.15',
+        'oid_status' => '1.3.6.1.4.1.50224.3.3.2.1.8',
+    ]);
+
+    $this->actingAs($noc)
+        ->get(route('olt-connections.create'))
+        ->assertSuccessful()
         ->assertSee('OID MAC / Identifier ONU')
-        ->assertSee('OID Distance (m)');
+        ->assertSee('OID Rx ONU (dBm)')
+        ->assertSee('OID Distance (m)')
+        ->assertSee('OID Status ONU');
+
+    $this->actingAs($noc)
+        ->get(route('olt-connections.edit', $connection))
+        ->assertSuccessful()
+        ->assertSee('OID MAC / Identifier ONU')
+        ->assertSee('OID Rx ONU (dBm)')
+        ->assertSee('OID Distance (m)')
+        ->assertSee('OID Status ONU');
+
+    $this->actingAs($noc)
+        ->get(route('olt-connections.show', $connection))
+        ->assertSuccessful()
+        ->assertSee('OID MAC / Identifier:')
+        ->assertSee('OID Rx ONU:')
+        ->assertSee('OID Distance:')
+        ->assertSee('OID Status:');
 });
 
 it('parses polling progress from running poll message', function () {

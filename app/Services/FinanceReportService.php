@@ -23,6 +23,7 @@ class FinanceReportService
      *     tipe_user:string,
      *     service_type:string,
      *     owner_id:int|null,
+     *     teknisi_id:int|null,
      *     date:string,
      *     start_date:string,
      *     end_date:string,
@@ -48,6 +49,7 @@ class FinanceReportService
         $incomeItems = $this->collectIncomeItems(
             authUser: $authUser,
             ownerId: $ownerId,
+            teknisiId: $filters['teknisi_id'] ?? null,
             tipeUser: $filters['tipe_user'],
             serviceType: $filters['service_type'],
             periodStart: $periodStart,
@@ -68,6 +70,7 @@ class FinanceReportService
             ? $this->collectExpenseItems(
                 authUser: $authUser,
                 ownerId: $ownerId,
+                teknisiId: $filters['teknisi_id'] ?? null,
                 serviceType: $filters['service_type'],
                 periodStart: $periodStart,
                 periodEnd: $periodEnd,
@@ -184,6 +187,7 @@ class FinanceReportService
     private function collectIncomeItems(
         User $authUser,
         ?int $ownerId,
+        ?int $teknisiId,
         string $tipeUser,
         string $serviceType,
         Carbon $periodStart,
@@ -198,6 +202,7 @@ class FinanceReportService
             $invoiceItems = $this->collectInvoiceIncomeItems(
                 authUser: $authUser,
                 ownerId: $ownerId,
+                teknisiId: $teknisiId,
                 serviceType: $serviceType,
                 periodStart: $periodStart,
                 periodEnd: $periodEnd
@@ -209,6 +214,7 @@ class FinanceReportService
             $voucherItems = $this->collectVoucherIncomeItems(
                 authUser: $authUser,
                 ownerId: $ownerId,
+                teknisiId: $teknisiId,
                 periodStart: $periodStart,
                 periodEnd: $periodEnd
             );
@@ -228,6 +234,7 @@ class FinanceReportService
     private function collectInvoiceIncomeItems(
         User $authUser,
         ?int $ownerId,
+        ?int $teknisiId,
         string $serviceType,
         Carbon $periodStart,
         Carbon $periodEnd,
@@ -244,6 +251,9 @@ class FinanceReportService
 
         if (in_array($serviceType, ['pppoe', 'hotspot'], true)) {
             $query->where('tipe_service', $serviceType);
+        }
+        if ($teknisiId !== null) {
+            $query->where('paid_by', $teknisiId);
         }
 
         $this->applyPaidDateRange(
@@ -272,9 +282,14 @@ class FinanceReportService
     private function collectVoucherIncomeItems(
         User $authUser,
         ?int $ownerId,
+        ?int $teknisiId,
         Carbon $periodStart,
         Carbon $periodEnd,
     ): Collection {
+        if ($teknisiId !== null) {
+            return collect();
+        }
+
         $query = Transaction::query()
             ->with('owner:id,name')
             ->where('status', 'paid')
@@ -315,6 +330,7 @@ class FinanceReportService
     private function collectExpenseItems(
         User $authUser,
         ?int $ownerId,
+        ?int $teknisiId,
         string $serviceType,
         Carbon $periodStart,
         Carbon $periodEnd,
@@ -334,6 +350,9 @@ class FinanceReportService
 
         if (in_array($serviceType, ['pppoe', 'hotspot'], true)) {
             $query->whereHas('invoice', fn (Builder $invoiceQuery) => $invoiceQuery->where('tipe_service', $serviceType));
+        }
+        if ($teknisiId !== null) {
+            $query->whereHas('invoice', fn (Builder $invoiceQuery) => $invoiceQuery->where('paid_by', $teknisiId));
         }
 
         $this->applyPaidDateRange(
@@ -363,6 +382,7 @@ class FinanceReportService
         $manualItems = $this->collectManualExpenseItems(
             authUser: $authUser,
             ownerId: $ownerId,
+            teknisiId: $teknisiId,
             serviceType: $serviceType,
             periodStart: $periodStart,
             periodEnd: $periodEnd
@@ -408,10 +428,15 @@ class FinanceReportService
     private function collectManualExpenseItems(
         User $authUser,
         ?int $ownerId,
+        ?int $teknisiId,
         string $serviceType,
         Carbon $periodStart,
         Carbon $periodEnd,
     ): Collection {
+        if ($teknisiId !== null) {
+            return collect();
+        }
+
         $query = FinanceExpense::query()
             ->with('owner:id,name')
             ->accessibleBy($authUser)

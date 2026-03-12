@@ -15,7 +15,7 @@ class IncomeReportController extends Controller
     public function __invoke(FinanceReportRequest $request, FinanceReportService $financeReportService): View
     {
         $authUser = $request->user();
-        if (! $authUser->isSuperAdmin() && ! in_array($authUser->role, ['administrator', 'keuangan'], true)) {
+        if (! $authUser->isSuperAdmin() && ! in_array($authUser->role, ['administrator', 'keuangan', 'teknisi'], true)) {
             abort(403);
         }
 
@@ -36,6 +36,7 @@ class IncomeReportController extends Controller
             'owner_id' => $authUser->isSuperAdmin()
                 ? ($validated['owner_id'] ?? null)
                 : $authUser->effectiveOwnerId(),
+            'teknisi_id' => $authUser->role === 'teknisi' ? $authUser->id : null,
             'report' => $reportType,
             'date' => (string) ($validated['date'] ?? now()->toDateString()),
             'start_date' => (string) ($validated['start_date'] ?? now()->startOfMonth()->toDateString()),
