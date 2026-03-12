@@ -55,9 +55,9 @@ Schedule::command('vouchers:mark-used')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Hapus voucher expired dari DB dan RADIUS (setiap hari jam 07:05)
+// Hapus voucher expired dari DB dan RADIUS (setiap menit agar tidak menumpuk)
 Schedule::command('vouchers:expire')
-    ->dailyAt('07:05')
+    ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 
