@@ -242,9 +242,6 @@ inject_captive_block() {
     block="$(cat <<EOF
     # BEGIN CAPTIVE_HARDENING (managed by install-captive-hardening.sh)
     RewriteEngine on
-    RewriteCond %{REQUEST_URI} ^/${CAPTIVE_REGEX}$ [NC]
-    RewriteRule ^ - [R=204,L]
-
     SetEnvIfNoCase Request_URI "^/${CAPTIVE_REGEX}$" skip_access_log=1
     # END CAPTIVE_HARDENING
 EOF
