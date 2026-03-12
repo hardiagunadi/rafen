@@ -25,7 +25,7 @@ it('redirects captive probe requests from mikrotik host to tenant isolir page', 
         'HTTP_HOST' => 'example.org',
     ])->get('/generate_204');
 
-    $response->assertRedirect(route('isolir.show', ['userId' => $owner->id]));
+    $response->assertRedirect('/isolir/'.$owner->id);
 });
 
 it('does not redirect webhook endpoint even when request comes from mikrotik host', function () {
@@ -70,4 +70,49 @@ it('does not force isolir redirect on app root path for normal host access', fun
     ])->get('/');
 
     $response->assertRedirect(route('login'));
+});
+
+it('redirects captive probe requests from isolated pool ip when source is not mikrotik host', function () {
+    $owner = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addMonth(),
+    ]);
+
+    MikrotikConnection::factory()->create([
+        'owner_id' => $owner->id,
+        'host' => '203.0.113.20',
+        'is_active' => true,
+        'is_online' => true,
+        'isolir_pool_range' => '10.99.0.2-10.99.0.254',
+    ]);
+
+    $response = $this->withServerVariables([
+        'REMOTE_ADDR' => '10.99.0.88',
+        'HTTP_HOST' => 'example.org',
+    ])->get('/generate_204');
+
+    $response->assertRedirect('/isolir/'.$owner->id);
+});
+
+it('redirects generate204 wildcard captive path to isolir page', function () {
+    $owner = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addMonth(),
+    ]);
+
+    MikrotikConnection::factory()->create([
+        'owner_id' => $owner->id,
+        'host' => '203.0.113.30',
+        'is_active' => true,
+        'is_online' => true,
+    ]);
+
+    $response = $this->withServerVariables([
+        'REMOTE_ADDR' => '203.0.113.30',
+        'HTTP_HOST' => 'example.org',
+    ])->get('/generate204_abcdef');
+
+    $response->assertRedirect('/isolir/'.$owner->id);
 });

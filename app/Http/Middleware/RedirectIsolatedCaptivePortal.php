@@ -30,11 +30,17 @@ class RedirectIsolatedCaptivePortal
         }
 
         $ownerId = (int) Cache::remember("isolir:nas-owner:{$clientIp}", now()->addMinute(), function () use ($clientIp): int {
-            return (int) (MikrotikConnection::query()
+            $ownerFromHost = (int) (MikrotikConnection::query()
                 ->where('is_active', true)
                 ->where('host', $clientIp)
                 ->orderByDesc('is_online')
                 ->value('owner_id') ?? 0);
+
+            if ($ownerFromHost > 0) {
+                return $ownerFromHost;
+            }
+
+            return $this->resolveOwnerIdByIsolirPoolRange($clientIp);
         });
 
         if ($ownerId <= 0) {
@@ -45,7 +51,64 @@ class RedirectIsolatedCaptivePortal
             return $next($request);
         }
 
-        return redirect()->route('isolir.show', ['userId' => $ownerId]);
+        return redirect()->to(route('isolir.show', ['userId' => $ownerId], false));
+    }
+
+    private function resolveOwnerIdByIsolirPoolRange(string $clientIp): int
+    {
+        $ipLong = ip2long($clientIp);
+
+        if ($ipLong === false) {
+            return 0;
+        }
+
+        $connections = MikrotikConnection::query()
+            ->where('is_active', true)
+            ->whereNotNull('isolir_pool_range')
+            ->orderByDesc('is_online')
+            ->get(['owner_id', 'isolir_pool_range']);
+
+        foreach ($connections as $connection) {
+            $range = $this->parseIpRange((string) $connection->isolir_pool_range);
+            if ($range === null) {
+                continue;
+            }
+
+            if ($ipLong >= $range['start'] && $ipLong <= $range['end']) {
+                return (int) $connection->owner_id;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @return array{start:int, end:int}|null
+     */
+    private function parseIpRange(string $range): ?array
+    {
+        $normalized = trim($range);
+        if ($normalized === '' || ! str_contains($normalized, '-')) {
+            return null;
+        }
+
+        [$startIp, $endIp] = array_map('trim', explode('-', $normalized, 2));
+        if ($startIp === '' || $endIp === '') {
+            return null;
+        }
+
+        $startLong = ip2long($startIp);
+        $endLong = ip2long($endIp);
+
+        if ($startLong === false || $endLong === false) {
+            return null;
+        }
+
+        if ($startLong > $endLong) {
+            return null;
+        }
+
+        return ['start' => $startLong, 'end' => $endLong];
     }
 
     private function hasMikrotikConnectionsTable(): bool
@@ -97,6 +160,7 @@ class RedirectIsolatedCaptivePortal
     private function isCaptiveRequest(Request $request): bool
     {
         $path = ltrim($request->path(), '/');
+        $normalizedPath = strtolower($path);
         $host = strtolower((string) $request->getHost());
         $appHost = strtolower((string) (parse_url((string) config('app.url'), PHP_URL_HOST) ?: ''));
 
@@ -112,7 +176,11 @@ class RedirectIsolatedCaptivePortal
             'route/mac/v1',
         ];
 
-        if (in_array($path, $captivePaths, true)) {
+        if (in_array($normalizedPath, $captivePaths, true)) {
+            return true;
+        }
+
+        if (str_starts_with($normalizedPath, 'generate204')) {
             return true;
         }
 

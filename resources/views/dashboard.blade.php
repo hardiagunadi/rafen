@@ -15,6 +15,7 @@
         $hotspotMixPercent = $hotspotModuleEnabled && $totalActiveSessions > 0 ? (int) round(($hotspotOnline / $totalActiveSessions) * 100) : 0;
         $invoiceStateClass = $stats['invoice_count'] > 0 ? 'badge-warning' : 'badge-success';
         $invoiceStateLabel = $stats['invoice_count'] > 0 ? 'Perlu tindak lanjut' : 'Tagihan aman';
+        $hideOperationalSummaryCard = in_array(auth()->user()->role, ['teknisi', 'keuangan'], true);
     @endphp
 
     <style>
@@ -412,61 +413,63 @@
     </style>
 
     <div class="dashboard-shell">
-        <div class="card dashboard-hero mb-4">
-            <div class="card-body p-4 p-md-5">
-                <div class="row align-items-end">
-                    <div class="col-lg-8">
-                        <p class="hero-kicker">Ringkasan Operasional</p>
-                        <h2 class="hero-title">Dashboard Operasional ISP</h2>
-                        <p class="hero-subtitle">
-                            Monitor kesehatan jaringan, sesi aktif pelanggan, dan performa billing harian dalam layout yang lebih cepat dibaca.
-                        </p>
+        @if(! $hideOperationalSummaryCard)
+            <div class="card dashboard-hero mb-4">
+                <div class="card-body p-4 p-md-5">
+                    <div class="row align-items-end">
+                        <div class="col-lg-8">
+                            <p class="hero-kicker">Ringkasan Operasional</p>
+                            <h2 class="hero-title">Dashboard Operasional ISP</h2>
+                            <p class="hero-subtitle">
+                                Monitor kesehatan jaringan, sesi aktif pelanggan, dan performa billing harian dalam layout yang lebih cepat dibaca.
+                            </p>
 
-                        <div class="hero-inline-grid">
-                            <div class="hero-inline-item">
-                                <span class="hero-inline-label">Health Router</span>
-                                <span class="hero-inline-value">{{ $routerOnlinePercent }}%</span>
-                            </div>
-                            <div class="hero-inline-item">
-                                <span class="hero-inline-label">Sesi Aktif</span>
-                                <span class="hero-inline-value">{{ $totalActiveSessions }} akun</span>
-                            </div>
-                            <div class="hero-inline-item">
-                                <span class="hero-inline-label">Tagihan Unpaid</span>
-                                <span class="hero-inline-value">{{ $stats['invoice_count'] }} invoice</span>
+                            <div class="hero-inline-grid">
+                                <div class="hero-inline-item">
+                                    <span class="hero-inline-label">Health Router</span>
+                                    <span class="hero-inline-value">{{ $routerOnlinePercent }}%</span>
+                                </div>
+                                <div class="hero-inline-item">
+                                    <span class="hero-inline-label">Sesi Aktif</span>
+                                    <span class="hero-inline-value">{{ $totalActiveSessions }} akun</span>
+                                </div>
+                                <div class="hero-inline-item">
+                                    <span class="hero-inline-label">Tagihan Unpaid</span>
+                                    <span class="hero-inline-value">{{ $stats['invoice_count'] }} invoice</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="col-lg-4 mt-4 mt-lg-0">
-                        <div class="hero-clock-panel">
-                            <p class="hero-clock-label">Waktu Server</p>
-                            <div class="hero-clock" id="dashboard-live-clock">{{ now()->format('H:i:s') }}</div>
-                            <div class="hero-date">{{ now()->format('d M Y') }}</div>
+                        <div class="col-lg-4 mt-4 mt-lg-0">
+                            <div class="hero-clock-panel">
+                                <p class="hero-clock-label">Waktu Server</p>
+                                <div class="hero-clock" id="dashboard-live-clock">{{ now()->format('H:i:s') }}</div>
+                                <div class="hero-date">{{ now()->format('d M Y') }}</div>
 
-                            <div class="hero-system-grid">
-                                <div class="hero-system-item">
-                                    <span class="hero-system-label">Uptime</span>
-                                    <span class="hero-system-value">{{ $systemInfo['uptime'] }}</span>
-                                </div>
-                                <div class="hero-system-item">
-                                    <span class="hero-system-label">RAM Total</span>
-                                    <span class="hero-system-value">{{ $systemInfo['ram_total'] }}</span>
-                                </div>
-                                <div class="hero-system-item">
-                                    <span class="hero-system-label">RAM Tersedia</span>
-                                    <span class="hero-system-value">{{ $systemInfo['ram_free'] }}</span>
-                                </div>
-                                <div class="hero-system-item">
-                                    <span class="hero-system-label">Disk Free</span>
-                                    <span class="hero-system-value">{{ $systemInfo['disk_free'] }}</span>
+                                <div class="hero-system-grid">
+                                    <div class="hero-system-item">
+                                        <span class="hero-system-label">Uptime</span>
+                                        <span class="hero-system-value">{{ $systemInfo['uptime'] }}</span>
+                                    </div>
+                                    <div class="hero-system-item">
+                                        <span class="hero-system-label">RAM Total</span>
+                                        <span class="hero-system-value">{{ $systemInfo['ram_total'] }}</span>
+                                    </div>
+                                    <div class="hero-system-item">
+                                        <span class="hero-system-label">RAM Tersedia</span>
+                                        <span class="hero-system-value">{{ $systemInfo['ram_free'] }}</span>
+                                    </div>
+                                    <div class="hero-system-item">
+                                        <span class="hero-system-label">Disk Free</span>
+                                        <span class="hero-system-value">{{ $systemInfo['disk_free'] }}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        @endif
 
         <div class="row">
             <div class="col-lg-3 col-sm-6 mb-3">

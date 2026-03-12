@@ -92,6 +92,8 @@
 
     <script>
     (function () {
+        var initialSearchQuery = @json((string) request('search', ''));
+
         function init() {
             if (!document.getElementById('hotspot-users-table')) return;
             if ($.fn.DataTable.isDataTable('#hotspot-users-table')) {
@@ -107,6 +109,9 @@
                     data: function (d) {
                         d.filter_on_process = $('#filter-on-process').is(':checked') ? '1' : '';
                     }
+                },
+                search: {
+                    search: initialSearchQuery
                 },
                 columns: [
                     { data: 'checkbox',    orderable: false, searchable: false, width: '40px' },

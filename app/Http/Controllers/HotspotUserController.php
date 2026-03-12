@@ -22,14 +22,15 @@ class HotspotUserController extends Controller
     public function generateCustomerId(Request $request): JsonResponse
     {
         $ownerId = $request->input('owner_id') ? (int) $request->input('owner_id') : $request->user()->effectiveOwnerId();
+
         return response()->json(['customer_id' => HotspotUser::generateCustomerId($ownerId)]);
     }
 
     public function datatable(Request $request): JsonResponse
     {
         $currentUser = $request->user();
-        $draw   = (int) $request->input('draw', 1);
-        $start  = (int) $request->input('start', 0);
+        $draw = (int) $request->input('draw', 1);
+        $start = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
         $search = $request->input('search.value', '');
         $filterOnProcess = $request->input('filter_on_process', '');
@@ -58,10 +59,10 @@ class HotspotUserController extends Controller
 
         $data = $users->map(function (HotspotUser $user) {
             $statusColor = match ($user->status_akun) {
-                'enable'  => 'success',
+                'enable' => 'success',
                 'disable' => 'danger',
-                'isolir'  => 'warning',
-                default   => 'secondary',
+                'isolir' => 'warning',
+                default => 'secondary',
             };
             $statusBadge = '<span class="badge badge-'.$statusColor.'">'.strtoupper((string) $user->status_akun).'</span>';
 
@@ -83,25 +84,61 @@ class HotspotUserController extends Controller
                 '</div>';
 
             return [
-                'checkbox'    => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
+                'checkbox' => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
                 'customer_id' => '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('hotspot-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>',
-                'nama'        => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div>',
-                'username'    => $user->username ?? '-',
-                'profil'      => $user->hotspotProfile?->name ?? '-',
-                'status'      => $statusBadge,
+                'nama' => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div>',
+                'username' => $user->username ?? '-',
+                'profil' => $user->hotspotProfile?->name ?? '-',
+                'status' => $statusBadge,
                 'jatuh_tempo' => $due,
-                'owner'       => $user->owner?->name ?? '-',
-                'perpanjang'  => $perpanjang,
-                'aksi'        => '<div class="text-right">'.$aksi.'</div>',
+                'owner' => $user->owner?->name ?? '-',
+                'perpanjang' => $perpanjang,
+                'aksi' => '<div class="text-right">'.$aksi.'</div>',
             ];
         });
 
         return response()->json([
-            'draw'            => $draw,
-            'recordsTotal'    => $total,
+            'draw' => $draw,
+            'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
-            'data'            => $data,
+            'data' => $data,
         ]);
+    }
+
+    public function autocomplete(Request $request): JsonResponse
+    {
+        $keyword = trim((string) $request->input('q', ''));
+
+        if (mb_strlen($keyword) < 2) {
+            return response()->json(['data' => []]);
+        }
+
+        $users = HotspotUser::query()
+            ->accessibleBy($request->user())
+            ->where(function ($query) use ($keyword): void {
+                $query->where('customer_name', 'like', "%{$keyword}%")
+                    ->orWhere('customer_id', 'like', "%{$keyword}%")
+                    ->orWhere('username', 'like', "%{$keyword}%");
+            })
+            ->latest()
+            ->limit(8)
+            ->get(['id', 'customer_name', 'customer_id', 'username']);
+
+        $data = $users->map(function (HotspotUser $user): array {
+            $displayName = trim((string) ($user->customer_name ?: $user->username ?: $user->customer_id));
+
+            return [
+                'value' => $displayName,
+                'label' => sprintf(
+                    '%s | %s | %s',
+                    $user->customer_id ?? '-',
+                    $user->username ?? '-',
+                    $user->customer_name ?? '-',
+                ),
+            ];
+        })->values()->all();
+
+        return response()->json(['data' => $data]);
     }
 
     public function index(Request $request): View
@@ -128,9 +165,9 @@ class HotspotUserController extends Controller
         $now = now();
         $stats = [
             'registrasi_bulan_ini' => HotspotUser::query()->accessibleBy($currentUser)->whereMonth('created_at', $now->month)->whereYear('created_at', $now->year)->count(),
-            'pelanggan_isolir'      => HotspotUser::query()->accessibleBy($currentUser)->where('status_akun', 'isolir')->count(),
-            'akun_disable'          => HotspotUser::query()->accessibleBy($currentUser)->where('status_akun', 'disable')->count(),
-            'total'                 => HotspotUser::query()->accessibleBy($currentUser)->count(),
+            'pelanggan_isolir' => HotspotUser::query()->accessibleBy($currentUser)->where('status_akun', 'isolir')->count(),
+            'akun_disable' => HotspotUser::query()->accessibleBy($currentUser)->where('status_akun', 'disable')->count(),
+            'total' => HotspotUser::query()->accessibleBy($currentUser)->count(),
         ];
 
         return view('hotspot_users.index', compact('users', 'stats', 'perPage', 'search'));
@@ -141,8 +178,8 @@ class HotspotUserController extends Controller
         $currentUser = auth()->user();
 
         return view('hotspot_users.create', [
-            'owners'   => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
-            'groups'   => ProfileGroup::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'owners' => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups' => ProfileGroup::query()->accessibleBy($currentUser)->orderBy('name')->get(),
             'profiles' => HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
         ]);
     }
@@ -180,9 +217,9 @@ class HotspotUserController extends Controller
 
         return view('hotspot_users.edit', [
             'hotspotUser' => $hotspotUser,
-            'owners'      => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
-            'groups'      => ProfileGroup::query()->accessibleBy($currentUser)->orderBy('name')->get(),
-            'profiles'    => HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'owners' => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
+            'groups' => ProfileGroup::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'profiles' => HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
         ]);
     }
 
@@ -247,8 +284,8 @@ class HotspotUserController extends Controller
         }
 
         $hotspotUser->update([
-            'jatuh_tempo'  => $newDue,
-            'status_akun'  => 'enable',
+            'jatuh_tempo' => $newDue,
+            'status_akun' => 'enable',
             'status_bayar' => 'belum_bayar',
         ]);
 

@@ -158,6 +158,42 @@ class PppUserController extends Controller
         ]);
     }
 
+    public function autocomplete(Request $request): JsonResponse
+    {
+        $keyword = trim((string) $request->input('q', ''));
+
+        if (mb_strlen($keyword) < 2) {
+            return response()->json(['data' => []]);
+        }
+
+        $users = PppUser::query()
+            ->accessibleBy($request->user())
+            ->where(function ($query) use ($keyword): void {
+                $query->where('customer_name', 'like', "%{$keyword}%")
+                    ->orWhere('customer_id', 'like', "%{$keyword}%")
+                    ->orWhere('username', 'like', "%{$keyword}%");
+            })
+            ->latest()
+            ->limit(8)
+            ->get(['id', 'customer_name', 'customer_id', 'username']);
+
+        $data = $users->map(function (PppUser $user): array {
+            $displayName = trim((string) ($user->customer_name ?: $user->username ?: $user->customer_id));
+
+            return [
+                'value' => $displayName,
+                'label' => sprintf(
+                    '%s | %s | %s',
+                    $user->customer_id ?? '-',
+                    $user->username ?? '-',
+                    $user->customer_name ?? '-',
+                ),
+            ];
+        })->values()->all();
+
+        return response()->json(['data' => $data]);
+    }
+
     /**
      * Display a listing of the resource.
      */

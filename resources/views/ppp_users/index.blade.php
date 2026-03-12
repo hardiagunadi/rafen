@@ -98,6 +98,21 @@
 
     <script>
     (function () {
+        var initialFilterIsolir = @json(request()->boolean('filter_isolir'));
+        var initialFilterTagihan = @json(request()->boolean('filter_tagihan'));
+        var initialFilterOnProcess = @json(request()->boolean('filter_on_process'));
+        var initialSearchQuery = @json((string) request('search', ''));
+
+        function isFilterEnabled(selector, fallback) {
+            var $element = $(selector);
+
+            if (! $element.length) {
+                return fallback;
+            }
+
+            return $element.is(':checked');
+        }
+
         function init() {
             if (!document.getElementById('ppp-users-table')) return;
             if ($.fn.DataTable.isDataTable('#ppp-users-table')) {
@@ -111,10 +126,13 @@
                     url: '{{ route('ppp-users.datatable') }}',
                     type: 'GET',
                     data: function (d) {
-                        d.filter_isolir     = $('#filter-isolir').is(':checked') ? '1' : '';
-                        d.filter_tagihan    = $('#filter-tagihan').is(':checked') ? '1' : '';
-                        d.filter_on_process = $('#filter-on-process').is(':checked') ? '1' : '';
+                        d.filter_isolir = isFilterEnabled('#filter-isolir', initialFilterIsolir) ? '1' : '';
+                        d.filter_tagihan = isFilterEnabled('#filter-tagihan', initialFilterTagihan) ? '1' : '';
+                        d.filter_on_process = isFilterEnabled('#filter-on-process', initialFilterOnProcess) ? '1' : '';
                     }
+                },
+                search: {
+                    search: initialSearchQuery
                 },
                 columns: [
                     { data: 'checkbox',    orderable: false, searchable: false, width: '40px' },
@@ -158,6 +176,11 @@
                         + '</div>'
                         + '</div>';
                     $('#ppp-users-table_filter').css('display','flex').css('align-items','center').prepend(filters);
+
+                    $('#filter-isolir').prop('checked', initialFilterIsolir);
+                    $('#filter-tagihan').prop('checked', initialFilterTagihan);
+                    $('#filter-on-process').prop('checked', initialFilterOnProcess);
+
                     $('#filter-isolir, #filter-tagihan, #filter-on-process').on('change', function () {
                         table.ajax.reload();
                     });

@@ -9,6 +9,9 @@
         $subscriptionExpired = false;
         $subscriptionDaysLeft = null;
         $hotspotModuleEnabled = true;
+        $isolatedUsersCount = 0;
+        $monthlyRegistrationsCount = 0;
+        $notificationTotal = 0;
         if (auth()->check()) {
             $tenantSettings = \App\Models\TenantSettings::getOrCreate(auth()->user()->effectiveOwnerId());
             if ($tenantSettings?->business_name) {
@@ -22,6 +25,25 @@
             if (!$authUser->isSuperAdmin() && !$subscriptionExpired && $authUser->subscription_expires_at) {
                 $subscriptionDaysLeft = now()->diffInDays($authUser->subscription_expires_at, false);
             }
+
+            $now = now();
+            $pppUserQuery = \App\Models\PppUser::query()->accessibleBy($authUser);
+            $isolatedUsersCount = (clone $pppUserQuery)->where('status_akun', 'isolir')->count();
+            $monthlyRegistrationsCount = (clone $pppUserQuery)
+                ->whereMonth('created_at', $now->month)
+                ->whereYear('created_at', $now->year)
+                ->count();
+
+            if ($hotspotModuleEnabled) {
+                $hotspotUserQuery = \App\Models\HotspotUser::query()->accessibleBy($authUser);
+                $isolatedUsersCount += (clone $hotspotUserQuery)->where('status_akun', 'isolir')->count();
+                $monthlyRegistrationsCount += (clone $hotspotUserQuery)
+                    ->whereMonth('created_at', $now->month)
+                    ->whereYear('created_at', $now->year)
+                    ->count();
+            }
+
+            $notificationTotal = $isolatedUsersCount + $monthlyRegistrationsCount;
         }
     @endphp
     @php
@@ -188,6 +210,118 @@
         .main-header.navbar .navbar-nav > .nav-item > .nav-link.text-warning {
             font-weight: 700;
             text-shadow: 0 1px 8px rgba(7, 20, 35, 0.35);
+        }
+
+        .main-header.navbar .user-dropdown-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-weight: 600;
+        }
+
+        .main-header.navbar .user-dropdown-toggle::after {
+            border-top-color: currentColor;
+        }
+
+        .main-header.navbar .user-dropdown-menu {
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 12px 24px rgba(2, 8, 23, 0.18);
+            min-width: 220px;
+        }
+
+        .main-header.navbar .user-dropdown-menu .dropdown-item {
+            font-weight: 500;
+        }
+
+        .main-header.navbar .user-dropdown-menu .user-dropdown-profile {
+            padding: 0.6rem 1rem 0.5rem;
+            color: #1f2937;
+            line-height: 1.35;
+        }
+
+        .main-header.navbar .user-dropdown-menu .user-dropdown-name {
+            display: block;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .main-header.navbar .user-dropdown-menu .user-dropdown-meta {
+            display: block;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        .main-header.navbar .user-dropdown-menu .dropdown-item:active {
+            background-color: #0f6b95;
+        }
+
+        .main-header.navbar .nav-link-icon {
+            width: 2.3rem;
+            height: 2.3rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .main-header.navbar .nav-icon-badge {
+            position: absolute;
+            top: 0.12rem;
+            right: 0.12rem;
+            min-width: 1.1rem;
+            height: 1.1rem;
+            border-radius: 999px;
+            font-size: 0.65rem;
+            line-height: 1.1rem;
+            text-align: center;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .main-header.navbar .nav-icon-badge.badge-danger {
+            background-color: #dc3545;
+        }
+
+        .main-header.navbar .nav-icon-badge.badge-warning {
+            background-color: #f4b000;
+        }
+
+        .main-header.navbar .navbar-icon-dropdown {
+            min-width: 280px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 12px 24px rgba(2, 8, 23, 0.18);
+        }
+
+        .main-header.navbar .navbar-icon-dropdown .dropdown-item-text {
+            white-space: normal;
+        }
+
+        .main-header.navbar .navbar-search-block {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+
+        .main-header.navbar .navbar-search-block .form-control-navbar,
+        .main-header.navbar .navbar-search-block .btn-navbar,
+        .main-header.navbar .navbar-search-block .custom-select {
+            height: calc(2rem + 2px);
+        }
+
+        .main-header.navbar .navbar-search-block .search-target-select {
+            min-width: 145px;
+            border: 1px solid #d0d8e4;
+            border-right: 0;
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+            font-size: 0.9rem;
+        }
+
+        .main-header.navbar .navbar-search-block .form-control-navbar {
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            border-left: 1px solid #d0d8e4;
         }
 
         .main-sidebar.sidebar-modern {
@@ -402,16 +536,95 @@
                 </li>
                 @endif
                 <li class="nav-item">
-                    <span class="nav-link">{{ auth()->user()->name }} ({{ strtoupper(str_replace('_', ' ', auth()->user()->role)) }})</span>
+                    <a class="nav-link nav-link-icon" href="#" role="button" data-widget="navbar-search" title="Pencarian">
+                        <i class="fas fa-search"></i>
+                    </a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link nav-link-icon" href="#" id="navbar-notification-dropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Notifikasi">
+                        <i class="far fa-bell"></i>
+                        @if($notificationTotal > 0)
+                            <span class="nav-icon-badge badge-warning">{{ $notificationTotal }}</span>
+                        @endif
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-right navbar-icon-dropdown" aria-labelledby="navbar-notification-dropdown">
+                        <span class="dropdown-item-text font-weight-bold">Ringkasan Notifikasi</span>
+                        <div class="dropdown-divider"></div>
+                        <a href="{{ route('ppp-users.index', ['filter_isolir' => 1]) }}" class="dropdown-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-user-slash text-danger mr-2"></i>User Terisolir</span>
+                            <span class="badge badge-danger">{{ $isolatedUsersCount }}</span>
+                        </a>
+                        <a href="{{ route('ppp-users.index') }}" class="dropdown-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-user-plus text-info mr-2"></i>Registrasi Bulan Ini</span>
+                            <span class="badge badge-info">{{ $monthlyRegistrationsCount }}</span>
+                        </a>
+                    </div>
                 </li>
                 <li class="nav-item">
-                    <a href="#" class="nav-link" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
+                    <a class="nav-link nav-link-icon" href="#" data-widget="fullscreen" role="button" title="Fullscreen">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle user-dropdown-toggle" href="#" id="navbar-user-dropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        {{ auth()->user()->name }}
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-right user-dropdown-menu" aria-labelledby="navbar-user-dropdown">
+                        <div class="dropdown-item-text user-dropdown-profile">
+                            <span class="user-dropdown-name">{{ auth()->user()->name }}</span>
+                            <span class="user-dropdown-meta">(Role: {{ ucwords(str_replace('_', ' ', auth()->user()->role)) }})</span>
+                            <span class="user-dropdown-meta">({{ $tenantTitle }})</span>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <a href="#" class="dropdown-item" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </a>
+                    </div>
                 </li>
             @else
                 <li class="nav-item"><a href="{{ route('login') }}" class="nav-link">Login</a></li>
                 <li class="nav-item"><a href="{{ route('register') }}" class="nav-link">Register</a></li>
             @endauth
         </ul>
+        @auth
+            <div class="navbar-search-block">
+                <form
+                    class="form-inline"
+                    id="navbar-global-search-form"
+                    action="{{ route('ppp-users.index') }}"
+                    method="GET"
+                    data-pppoe-action="{{ route('ppp-users.index') }}"
+                    data-pppoe-autocomplete="{{ route('ppp-users.autocomplete') }}"
+                    @if($hotspotModuleEnabled)
+                        data-hotspot-action="{{ route('hotspot-users.index') }}"
+                        data-hotspot-autocomplete="{{ route('hotspot-users.autocomplete') }}"
+                    @endif
+                >
+                    <div class="input-group input-group-sm w-100">
+                        @if($hotspotModuleEnabled)
+                            <div class="input-group-prepend">
+                                <select class="custom-select search-target-select" id="navbar-search-target" name="target" data-native-select="true">
+                                    <option value="pppoe" @selected(request('target', 'pppoe') === 'pppoe')>PPPoE</option>
+                                    <option value="hotspot" @selected(request('target') === 'hotspot')>Hotspot</option>
+                                </select>
+                            </div>
+                        @else
+                            <input type="hidden" name="target" value="pppoe">
+                        @endif
+                        <input class="form-control form-control-navbar" name="search" id="navbar-search-keyword" type="search" value="{{ request('search') }}" placeholder="Cari pelanggan, ID, username..." aria-label="Search" list="navbar-search-suggestions" autocomplete="off">
+                        <datalist id="navbar-search-suggestions"></datalist>
+                        <div class="input-group-append">
+                            <button class="btn btn-navbar" type="submit" title="Cari">
+                                <i class="fas fa-search"></i>
+                            </button>
+                            <button class="btn btn-navbar" type="button" data-widget="navbar-search" title="Tutup">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        @endauth
     </nav>
     @auth
         @include('auth.logout')
@@ -1312,9 +1525,128 @@ window.AppAjax = (function () {
         });
     }
 
+    function initNavbarGlobalSearch() {
+        var searchForm = document.getElementById('navbar-global-search-form');
+        if (!searchForm) {
+            return;
+        }
+
+        var searchInput = document.getElementById('navbar-search-keyword');
+        var targetSelect = document.getElementById('navbar-search-target');
+        var suggestionsList = document.getElementById('navbar-search-suggestions');
+        var autocompleteTimer = null;
+
+        function selectedTarget() {
+            return targetSelect ? targetSelect.value : 'pppoe';
+        }
+
+        function autocompleteUrlByTarget() {
+            if (selectedTarget() === 'hotspot' && searchForm.dataset.hotspotAutocomplete) {
+                return searchForm.dataset.hotspotAutocomplete;
+            }
+
+            return searchForm.dataset.pppoeAutocomplete || '';
+        }
+
+        function clearAutocompleteOptions() {
+            if (!suggestionsList) {
+                return;
+            }
+
+            suggestionsList.innerHTML = '';
+        }
+
+        function renderAutocompleteOptions(items) {
+            if (!suggestionsList) {
+                return;
+            }
+
+            clearAutocompleteOptions();
+
+            items.forEach(function (item) {
+                var option = document.createElement('option');
+                option.value = item.value || '';
+
+                if (item.label) {
+                    option.label = item.label;
+                }
+
+                suggestionsList.appendChild(option);
+            });
+        }
+
+        function fetchAutocomplete() {
+            if (!searchInput) {
+                return;
+            }
+
+            var keyword = searchInput.value.trim();
+            if (keyword.length < 2) {
+                clearAutocompleteOptions();
+
+                return;
+            }
+
+            var endpoint = autocompleteUrlByTarget();
+            if (!endpoint) {
+                return;
+            }
+
+            window.fetch(endpoint + '?q=' + encodeURIComponent(keyword), {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+                .then(function (response) { return response.ok ? response.json() : { data: [] }; })
+                .then(function (payload) {
+                    renderAutocompleteOptions(Array.isArray(payload.data) ? payload.data : []);
+                })
+                .catch(function () {
+                    clearAutocompleteOptions();
+                });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                if (autocompleteTimer) {
+                    window.clearTimeout(autocompleteTimer);
+                }
+
+                autocompleteTimer = window.setTimeout(fetchAutocomplete, 180);
+            });
+        }
+
+        if (targetSelect) {
+            targetSelect.addEventListener('change', function () {
+                clearAutocompleteOptions();
+                fetchAutocomplete();
+            });
+        }
+
+        searchForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            var pppoeAction = searchForm.dataset.pppoeAction || searchForm.getAttribute('action');
+            var hotspotAction = searchForm.dataset.hotspotAction || pppoeAction;
+            var target = selectedTarget();
+            var action = target === 'hotspot' ? hotspotAction : pppoeAction;
+            var keyword = searchInput ? searchInput.value.trim() : '';
+            var targetUrl = new URL(action, window.location.origin);
+
+            if (keyword !== '') {
+                targetUrl.searchParams.set('search', keyword);
+            }
+            targetUrl.searchParams.set('target', target);
+
+            window.location.href = targetUrl.toString();
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         initDeleteButtons();
         initPostButtons();
+        initNavbarGlobalSearch();
         if (window.__flashStatus) { showToast(window.__flashStatus, 'success'); window.__flashStatus = null; }
         if (window.__flashError)  { showToast(window.__flashError,  'danger');  window.__flashError  = null; }
     });
