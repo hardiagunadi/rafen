@@ -733,8 +733,8 @@
                     </li>
                     @endif
                     @if(!$isTeknisi)
-                    <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*') ? 'active' : '' }}">
+                    <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*', 'wa-blast.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*', 'wa-blast.*') ? 'active' : '' }}">
                             <i class="nav-icon fas fa-cog"></i>
                             <p>
                                 Pengaturan
@@ -756,11 +756,39 @@
                                     <p>Pengaturan</p>
                                 </a>
                             </li>
-                            <li class="nav-item">
-                                <a href="{{ route('wa-gateway.index') }}" class="nav-link {{ request()->routeIs('wa-gateway.*') ? 'active' : '' }}">
+                            <li class="nav-item has-treeview {{ request()->routeIs('wa-gateway.*', 'wa-blast.*') ? 'menu-open' : '' }}">
+                                <a href="#" class="nav-link {{ request()->routeIs('wa-gateway.*', 'wa-blast.*') ? 'active' : '' }}">
                                     <i class="fab fa-whatsapp nav-icon text-success"></i>
-                                    <p>WA Gateway</p>
+                                    <p>
+                                        WhatsApp
+                                        <i class="right fas fa-angle-left"></i>
+                                    </p>
                                 </a>
+                                <ul class="nav nav-treeview">
+                                    <li class="nav-item">
+                                        <a href="{{ route('wa-gateway.index') }}" class="nav-link {{ request()->routeIs('wa-gateway.*') && request()->query('tab', 'overview') !== 'devices' ? 'active' : '' }}">
+                                            <i class="far fa-circle nav-icon"></i>
+                                            <p>Gateway & Template</p>
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="{{ route('wa-gateway.index', array_filter([
+                                            'tab' => 'devices',
+                                            'tenant_id' => request()->query('tenant_id'),
+                                        ])) }}" class="nav-link {{ request()->routeIs('wa-gateway.*') && request()->query('tab') === 'devices' ? 'active' : '' }}">
+                                            <i class="far fa-circle nav-icon"></i>
+                                            <p>Manajemen Device</p>
+                                        </a>
+                                    </li>
+                                    @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'], true))
+                                    <li class="nav-item">
+                                        <a href="{{ route('wa-blast.index') }}" class="nav-link {{ request()->routeIs('wa-blast.*') ? 'active' : '' }}">
+                                            <i class="far fa-circle nav-icon"></i>
+                                            <p>WA Blast</p>
+                                        </a>
+                                    </li>
+                                    @endif
+                                </ul>
                             </li>
                             <li class="nav-item">
                                 <a href="{{ route('settings.freeradius') }}" class="nav-link {{ request()->routeIs('settings.freeradius') ? 'active' : '' }}">

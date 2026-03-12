@@ -115,6 +115,11 @@ class User extends Authenticatable
         return $this->hasOne(TenantSettings::class);
     }
 
+    public function waMultiSessionDevices(): HasMany
+    {
+        return $this->hasMany(WaMultiSessionDevice::class);
+    }
+
     public function parent(): BelongsTo
     {
         return $this->belongsTo(User::class, 'parent_id');

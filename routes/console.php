@@ -66,3 +66,9 @@ Schedule::command('subscription:send-reminders')
     ->dailyAt('09:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Pastikan service WA Gateway lokal selalu aktif di background
+Schedule::command('wa-gateway:ensure-running')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

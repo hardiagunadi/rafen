@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Http\Requests\UpdateTenantMapCacheRequest;
 use App\Http\Requests\UpdateTenantModuleSettingsRequest;
 use App\Models\BankAccount;
+use App\Models\User;
+use App\Models\WaMultiSessionDevice;
 use App\Services\DuitkuService;
 use App\Services\MidtransService;
 use App\Services\TripayService;
 use App\Services\WaGatewayService;
+use App\Services\WaMultiSessionManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -353,7 +356,13 @@ class TenantSettingsController extends Controller
             $settings = $user->getSettings();
         }
 
-        return view('wa-gateway.index', compact('settings', 'tenants', 'selectedTenant'));
+        if ($settings) {
+            $this->ensureLocalWaGatewayParameters($settings);
+        }
+
+        $waServiceStatus = null;
+
+        return view('wa-gateway.index', compact('settings', 'tenants', 'selectedTenant', 'waServiceStatus'));
     }
 
     public function updateWa(Request $request)
@@ -365,14 +374,14 @@ class TenantSettingsController extends Controller
         }
 
         $validated = $request->validate([
-            'wa_gateway_url' => 'nullable|url|max:255',
-            'wa_gateway_token' => 'nullable|string|max:500|required_with:wa_gateway_url',
-            'wa_gateway_key' => 'nullable|string|max:500',
-            'wa_webhook_secret' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9_-]+$/'],
             'wa_notify_registration' => 'boolean',
             'wa_notify_invoice' => 'boolean',
             'wa_notify_payment' => 'boolean',
             'wa_broadcast_enabled' => 'boolean',
+            'wa_blast_multi_device' => 'boolean',
+            'wa_blast_message_variation' => 'boolean',
+            'wa_blast_delay_min_ms' => 'integer|min:300|max:15000',
+            'wa_blast_delay_max_ms' => 'integer|min:300|max:20000',
             'wa_antispam_enabled' => 'boolean',
             'wa_antispam_delay_ms' => 'integer|min:500|max:10000',
             'wa_antispam_max_per_minute' => 'integer|min:1|max:20',
@@ -385,6 +394,21 @@ class TenantSettingsController extends Controller
             'tenant_id' => 'nullable|integer',
         ]);
 
+        $waBooleanFields = [
+            'wa_notify_registration',
+            'wa_notify_invoice',
+            'wa_notify_payment',
+            'wa_broadcast_enabled',
+            'wa_blast_multi_device',
+            'wa_blast_message_variation',
+            'wa_antispam_enabled',
+            'wa_msg_randomize',
+            'wa_notify_on_process',
+        ];
+        foreach ($waBooleanFields as $field) {
+            $validated[$field] = $request->boolean($field);
+        }
+
         if ($user->isSuperAdmin() && ! empty($validated['tenant_id'])) {
             $tenant = \App\Models\User::query()
                 ->tenants()
@@ -396,13 +420,23 @@ class TenantSettingsController extends Controller
         }
 
         unset($validated['tenant_id']);
-
-        $gatewayUrl = trim((string) ($validated['wa_gateway_url'] ?? ''));
-        $webhookSecret = trim((string) ($validated['wa_webhook_secret'] ?? ''));
-
-        if ($gatewayUrl !== '' && $webhookSecret === '') {
-            $validated['wa_webhook_secret'] = Str::random(40);
+        if (! empty($validated['wa_blast_delay_min_ms']) && ! empty($validated['wa_blast_delay_max_ms'])) {
+            $validated['wa_blast_delay_max_ms'] = max(
+                (int) $validated['wa_blast_delay_min_ms'],
+                (int) $validated['wa_blast_delay_max_ms']
+            );
         }
+
+        $gatewayUrl = trim((string) config('wa.multi_session.public_url', ''));
+        $configuredToken = trim((string) config('wa.multi_session.auth_token', ''));
+        $configuredKey = trim((string) config('wa.multi_session.master_key', ''));
+
+        $validated['wa_gateway_url'] = $gatewayUrl;
+        $validated['wa_gateway_token'] = $configuredToken !== '' ? $configuredToken : (string) ($settings->wa_gateway_token ?? '');
+        $validated['wa_gateway_key'] = $configuredKey !== '' ? $configuredKey : (string) ($settings->wa_gateway_key ?? '');
+        $validated['wa_webhook_secret'] = trim((string) ($settings->wa_webhook_secret ?? '')) !== ''
+            ? $settings->wa_webhook_secret
+            : 'tenant-'.$settings->user_id;
 
         $settings->update($validated);
 
@@ -413,53 +447,21 @@ class TenantSettingsController extends Controller
     {
         $request->validate([
             'phone' => 'nullable|string|max:20',
-            'wa_gateway_url' => 'nullable|url|max:255',
-            'wa_gateway_token' => 'nullable|string|max:500',
-            'wa_gateway_key' => 'nullable|string|max:500',
         ]);
+        $settings = $this->resolveWaSettingsForRequest($request);
+        if (! $settings) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant tidak ditemukan.',
+            ], 422);
+        }
 
-        // Use values from request if provided (form not yet saved), else fall back to DB
-        $url = trim((string) $request->input('wa_gateway_url', ''));
-        $token = trim((string) $request->input('wa_gateway_token', ''));
-        $key = trim((string) $request->input('wa_gateway_key', ''));
-
-        if ($url !== '' || $token !== '' || $key !== '') {
-            if ($url === '') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'URL Gateway wajib diisi.',
-                ]);
-            }
-
-            if ($token === '') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token perangkat WA wajib diisi agar nomor pengirim tidak kosong.',
-                ]);
-            }
-
-            $service = new WaGatewayService(rtrim($url, '/'), $token, $key);
-        } else {
-            $user = $request->user();
-
-            if ($user->isSuperAdmin() && $request->integer('tenant_id')) {
-                $tenant = \App\Models\User::query()
-                    ->tenants()
-                    ->where('id', $request->integer('tenant_id'))
-                    ->first();
-                $settings = $tenant ? \App\Models\TenantSettings::getOrCreate($tenant->id) : null;
-            } else {
-                $settings = $user->getSettings();
-            }
-
-            if (! $settings || ! $settings->hasWaConfigured()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'URL Gateway dan Token perangkat WA belum dikonfigurasi.',
-                ]);
-            }
-
-            $service = WaGatewayService::forTenant($settings);
+        $service = WaGatewayService::forTenant($settings);
+        if (! $service) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Konfigurasi wa-multi-session belum lengkap. Periksa WA_MULTI_SESSION_PUBLIC_URL dan WA_MULTI_SESSION_AUTH_TOKEN.',
+            ], 422);
         }
 
         $result = $service->testConnection();
@@ -475,14 +477,224 @@ class TenantSettingsController extends Controller
         ]);
     }
 
-    public function testTemplate(Request $request)
+    public function serviceControl(Request $request, WaMultiSessionManager $manager, string $action)
     {
-        $request->validate([
-            'type' => 'required|in:registration,invoice,payment',
+        if (! $request->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        if (! in_array($action, ['status', 'restart'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Aksi service tidak valid.',
+            ], 422);
+        }
+
+        $result = match ($action) {
+            'status' => [
+                'success' => true,
+                'message' => 'Status service berhasil diambil.',
+                'data' => $manager->status(),
+            ],
+            'restart' => $manager->restart(),
+        };
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 500);
+    }
+
+    public function sessionControl(Request $request, string $action)
+    {
+        $user = $request->user();
+
+        if ($user->isSubUser()) {
+            abort(403);
+        }
+
+        if (! in_array($action, ['status', 'restart'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Aksi sesi tidak valid.',
+            ], 422);
+        }
+
+        $settings = $this->resolveWaSettingsForRequest($request);
+
+        if (! $settings || ! $settings->hasWaConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'WA Gateway belum dikonfigurasi untuk tenant ini.',
+            ], 422);
+        }
+
+        $service = WaGatewayService::forTenant($settings);
+
+        if (! $service) {
+            return response()->json([
+                'success' => false,
+                'message' => 'WA Gateway tidak dapat diinisialisasi.',
+            ], 422);
+        }
+
+        $sessionId = $this->resolveSessionForRequest($request, (int) $settings->user_id);
+        if ($sessionId !== null) {
+            $service->setSessionId($sessionId);
+        }
+
+        $result = match ($action) {
+            'status' => $service->sessionStatus(),
+            'restart' => $service->restartSession(),
+        };
+
+        return response()->json([
+            'success' => $result['status'] ?? false,
+            'message' => $result['message'] ?? 'Tidak ada respons.',
+            'data' => $result['data'] ?? null,
+            'http_status' => $result['http_status'] ?? null,
+            'network_error' => $result['network_error'] ?? false,
+        ], ($result['status'] ?? false) ? 200 : 500);
+    }
+
+    public function waDevices(Request $request)
+    {
+        $settings = $this->resolveWaSettingsForRequest($request);
+        if (! $settings) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant tidak ditemukan.',
+            ], 422);
+        }
+
+        $devices = WaMultiSessionDevice::query()
+            ->forOwner((int) $settings->user_id)
+            ->orderByDesc('is_default')
+            ->orderBy('device_name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $devices,
+        ]);
+    }
+
+    public function storeWaDevice(Request $request)
+    {
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'tenant_id' => 'nullable|integer',
+            'device_name' => 'required|string|max:120',
+            'session_id' => 'nullable|string|max:150|regex:/^[a-zA-Z0-9._-]+$/',
         ]);
 
-        $user = $request->user();
-        $settings = $user->getSettings();
+        $settings = $this->resolveWaSettingsForRequest($request);
+        if (! $settings) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tenant tidak ditemukan.',
+            ], 422);
+        }
+
+        $ownerId = (int) $settings->user_id;
+        $deviceCount = WaMultiSessionDevice::query()->forOwner($ownerId)->count();
+        $sessionId = trim((string) ($validated['session_id'] ?? ''));
+        if ($sessionId === '') {
+            $sessionId = 'tenant-'.$ownerId.'-'.Str::slug($validated['device_name'], '-');
+        }
+
+        if (WaMultiSessionDevice::query()->where('session_id', $sessionId)->exists()) {
+            $sessionId .= '-'.Str::lower(Str::random(4));
+        }
+
+        $device = WaMultiSessionDevice::query()->create([
+            'user_id' => $ownerId,
+            'device_name' => $validated['device_name'],
+            'session_id' => $sessionId,
+            'is_default' => $deviceCount === 0,
+            'is_active' => true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Device WA berhasil ditambahkan.',
+            'data' => $device,
+        ]);
+    }
+
+    public function setDefaultWaDevice(Request $request, WaMultiSessionDevice $device)
+    {
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
+
+        $settings = $this->resolveWaSettingsForRequest($request);
+        if (! $settings || $device->user_id !== (int) $settings->user_id) {
+            abort(404);
+        }
+
+        WaMultiSessionDevice::query()
+            ->forOwner($device->user_id)
+            ->update(['is_default' => false]);
+
+        WaMultiSessionDevice::query()
+            ->whereKey($device->id)
+            ->update(['is_default' => true]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Device default berhasil diperbarui.',
+        ]);
+    }
+
+    public function destroyWaDevice(Request $request, WaMultiSessionDevice $device)
+    {
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
+
+        $settings = $this->resolveWaSettingsForRequest($request);
+        if (! $settings || $device->user_id !== (int) $settings->user_id) {
+            abort(404);
+        }
+
+        $wasDefault = $device->is_default;
+        $ownerId = $device->user_id;
+        $device->delete();
+
+        if ($wasDefault) {
+            $nextDevice = WaMultiSessionDevice::query()
+                ->forOwner($ownerId)
+                ->orderBy('id')
+                ->limit(1)
+                ->first();
+
+            if ($nextDevice) {
+                $nextDevice->update(['is_default' => true]);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Device WA berhasil dihapus.',
+        ]);
+    }
+
+    public function testTemplate(Request $request)
+    {
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
+
+        $request->validate([
+            'type' => 'required|in:registration,invoice,payment',
+            'tenant_id' => 'nullable|integer',
+        ]);
+
+        $settings = $this->resolveWaSettingsForRequest($request);
+        if (! $settings) {
+            return response()->json(['success' => false, 'message' => 'Tenant tidak ditemukan.'], 422);
+        }
 
         if (! $settings->hasWaConfigured()) {
             return response()->json(['success' => false, 'message' => 'WA Gateway belum dikonfigurasi.']);
@@ -495,7 +707,10 @@ class TenantSettingsController extends Controller
 
         $template = $settings->getTemplate($request->type);
 
-        $bankAccounts = $user->bankAccounts()->active()->get();
+        $owner = User::query()->find((int) $settings->user_id);
+        $bankAccounts = $owner
+            ? $owner->bankAccounts()->active()->get()
+            : collect();
         $bankLines = $bankAccounts->map(fn ($b) => $b->bank_name.' '.$b->account_number.' a/n '.$b->account_name)->join("\n");
         if (empty(trim($bankLines))) {
             $bankLines = '(Belum ada rekening bank aktif)';
@@ -572,5 +787,75 @@ class TenantSettingsController extends Controller
     public function isolirPreview(Request $request)
     {
         return app(\App\Http\Controllers\IsolirPageController::class)->preview($request);
+    }
+
+    private function resolveWaSettingsForRequest(Request $request): ?\App\Models\TenantSettings
+    {
+        $user = $request->user();
+
+        if ($user->isSuperAdmin() && $request->integer('tenant_id')) {
+            $tenant = \App\Models\User::query()
+                ->tenants()
+                ->where('id', $request->integer('tenant_id'))
+                ->first();
+
+            return $tenant ? \App\Models\TenantSettings::getOrCreate($tenant->id) : null;
+        }
+
+        return $user->getSettings();
+    }
+
+    private function resolveSessionForRequest(Request $request, int $ownerId): ?string
+    {
+        $directSession = trim((string) $request->input('session_id', ''));
+        if ($directSession !== '') {
+            return $directSession;
+        }
+
+        $deviceId = $request->integer('device_id');
+        if ($deviceId) {
+            $device = WaMultiSessionDevice::query()
+                ->forOwner($ownerId)
+                ->whereKey($deviceId)
+                ->first();
+
+            return $device?->session_id;
+        }
+
+        $default = WaMultiSessionDevice::query()
+            ->forOwner($ownerId)
+            ->where('is_default', true)
+            ->where('is_active', true)
+            ->first();
+
+        return $default?->session_id;
+    }
+
+    private function ensureLocalWaGatewayParameters(\App\Models\TenantSettings $settings): void
+    {
+        $gatewayUrl = trim((string) config('wa.multi_session.public_url', ''));
+        $configuredToken = trim((string) config('wa.multi_session.auth_token', ''));
+        $configuredKey = trim((string) config('wa.multi_session.master_key', ''));
+        $webhookSecret = trim((string) ($settings->wa_webhook_secret ?? ''));
+
+        $payload = [
+            'wa_gateway_url' => $gatewayUrl,
+            'wa_gateway_token' => $configuredToken !== '' ? $configuredToken : (string) ($settings->wa_gateway_token ?? ''),
+            'wa_gateway_key' => $configuredKey !== '' ? $configuredKey : (string) ($settings->wa_gateway_key ?? ''),
+            'wa_webhook_secret' => $webhookSecret !== '' ? $webhookSecret : 'tenant-'.$settings->user_id,
+        ];
+
+        $hasChange = false;
+        foreach ($payload as $key => $value) {
+            if ((string) ($settings->{$key} ?? '') !== (string) $value) {
+                $hasChange = true;
+                break;
+            }
+        }
+
+        if ($hasChange) {
+            $settings->update($payload);
+            $settings->refresh();
+        }
     }
 }

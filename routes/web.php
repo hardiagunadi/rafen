@@ -28,9 +28,12 @@ use App\Http\Controllers\TenantSettingsController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\VoucherController;
 use App\Http\Controllers\WaBlastController;
+use App\Http\Controllers\WaMultiSessionProxyController;
 use App\Http\Controllers\WaWebhookController;
 use App\Http\Controllers\WgSettingsController;
 use Illuminate\Support\Facades\Route;
+
+Route::any('/wa-multi-session/{path?}', WaMultiSessionProxyController::class)->where('path', '.*');
 
 Route::get('login', [LoginController::class, 'show'])->name('login');
 Route::post('login', [LoginController::class, 'login']);
@@ -242,9 +245,26 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('/bank-accounts/{bankAccount}/primary', [TenantSettingsController::class, 'setPrimaryBankAccount'])->name('bank-accounts.set-primary');
 
         // WhatsApp settings
+        Route::get('/wa', function (\Illuminate\Http\Request $request) {
+            $params = [];
+            if ($request->user()?->isSuperAdmin()) {
+                $tenantId = $request->integer('tenant_id');
+                if ($tenantId > 0) {
+                    $params['tenant_id'] = $tenantId;
+                }
+            }
+
+            return redirect()->route('wa-gateway.index', $params);
+        })->name('wa-redirect');
         Route::put('/wa', [TenantSettingsController::class, 'updateWa'])->name('update-wa');
         Route::post('/test-wa', [TenantSettingsController::class, 'testWa'])->name('test-wa');
         Route::post('/test-template', [TenantSettingsController::class, 'testTemplate'])->name('test-template');
+        Route::post('/wa/session/{action}', [TenantSettingsController::class, 'sessionControl'])->name('wa-session-control');
+        Route::post('/wa/service/{action}', [TenantSettingsController::class, 'serviceControl'])->name('wa-service-control');
+        Route::get('/wa/devices', [TenantSettingsController::class, 'waDevices'])->name('wa-devices.index');
+        Route::post('/wa/devices', [TenantSettingsController::class, 'storeWaDevice'])->name('wa-devices.store');
+        Route::post('/wa/devices/{device}/default', [TenantSettingsController::class, 'setDefaultWaDevice'])->name('wa-devices.default');
+        Route::delete('/wa/devices/{device}', [TenantSettingsController::class, 'destroyWaDevice'])->name('wa-devices.destroy');
 
         // Isolir page settings
         Route::put('/isolir', [TenantSettingsController::class, 'updateIsolir'])->name('update-isolir');

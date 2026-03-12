@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\TenantSettings;
 use App\Models\WaBlastLog;
+use App\Models\WaMultiSessionDevice;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -33,11 +34,21 @@ class WaGatewayService
      */
     private bool $randomize = false;
 
+    private bool $blastMultiDevice = true;
+
+    private bool $blastNaturalVariation = true;
+
+    private int $blastDelayMinMs = 1200;
+
+    private int $blastDelayMaxMs = 2600;
+
     private ?int $ownerId = null;
 
     private ?int $sentById = null;
 
     private ?string $sentByName = null;
+
+    private ?string $sessionId = null;
 
     public function __construct(
         private string $url,
@@ -49,13 +60,22 @@ class WaGatewayService
 
     public static function forTenant(TenantSettings $settings): ?self
     {
-        $gatewayUrl = trim((string) ($settings->wa_gateway_url ?? ''));
+        $gatewayUrl = trim((string) config('wa.multi_session.public_url', ''));
+        if ($gatewayUrl === '') {
+            $gatewayUrl = trim((string) ($settings->wa_gateway_url ?? ''));
+        }
+
         if ($gatewayUrl === '') {
             return null;
         }
 
-        $token = trim((string) ($settings->wa_gateway_token ?? ''));
-        $key = trim((string) ($settings->wa_gateway_key ?? ''));
+        $token = trim((string) config('wa.multi_session.auth_token', ''));
+        $key = trim((string) config('wa.multi_session.master_key', ''));
+
+        if ($token === '') {
+            $token = trim((string) ($settings->wa_gateway_token ?? ''));
+            $key = trim((string) ($settings->wa_gateway_key ?? ''));
+        }
 
         if ($token === '') {
             return null;
@@ -76,7 +96,12 @@ class WaGatewayService
         }
 
         $instance->randomize = (bool) ($settings->wa_msg_randomize ?? true);
+        $instance->blastMultiDevice = (bool) ($settings->wa_blast_multi_device ?? true);
+        $instance->blastNaturalVariation = (bool) ($settings->wa_blast_message_variation ?? true);
+        $instance->blastDelayMinMs = max(300, (int) ($settings->wa_blast_delay_min_ms ?? max(700, $configuredDelayMs)));
+        $instance->blastDelayMaxMs = max($instance->blastDelayMinMs, (int) ($settings->wa_blast_delay_max_ms ?? ($instance->blastDelayMinMs + 1200)));
         $instance->ownerId = $settings->user_id ?? null;
+        $instance->sessionId = $instance->resolveDefaultTenantSession();
 
         // Auto-set sent_by dari user yang sedang login (jika ada)
         if ($authUser = auth()->user()) {
@@ -85,6 +110,14 @@ class WaGatewayService
         }
 
         return $instance;
+    }
+
+    public function setSessionId(?string $sessionId): self
+    {
+        $trimmed = trim((string) $sessionId);
+        $this->sessionId = $trimmed !== '' ? $trimmed : null;
+
+        return $this;
     }
 
     /**
@@ -100,6 +133,10 @@ class WaGatewayService
 
         if (! empty($this->key)) {
             $headers['key'] = $this->key;
+        }
+
+        if (! empty($this->sessionId)) {
+            $headers['X-Session-Id'] = $this->sessionId;
         }
 
         return $headers;
@@ -306,6 +343,7 @@ class WaGatewayService
                 ->post($this->url.'/api/v2/send-message', [
                     'data' => [
                         [
+                            'session' => $this->resolveSessionId($context),
                             'phone' => $phone,
                             'message' => $message,
                             'isGroup' => false,
@@ -413,10 +451,16 @@ class WaGatewayService
         $success = 0;
         $failed = 0;
         $results = [];
+        $sessionPool = $this->resolveBlastSessions();
+        $sessionPoolCount = count($sessionPool);
 
-        foreach ($recipients as $recipient) {
+        foreach ($recipients as $index => $recipient) {
             $phone = $recipient['phone'] ?? '';
-            $message = $recipient['message'] ?? '';
+            $message = $this->applyBlastMessageVariation(
+                (string) ($recipient['message'] ?? ''),
+                $recipient['name'] ?? null,
+                (int) $index
+            );
             $context = ['event' => 'blast', 'name' => $recipient['name'] ?? null];
 
             if (empty($message)) {
@@ -426,19 +470,31 @@ class WaGatewayService
                 continue;
             }
 
-            $sent = $this->sendMessage($phone, $message, $context);
+            $sent = false;
+            $usedSession = null;
+            for ($attempt = 0; $attempt < max(1, $sessionPoolCount); $attempt++) {
+                $sessionIndex = ((int) $index + $attempt) % max(1, $sessionPoolCount);
+                $sessionId = $sessionPool[$sessionIndex] ?? $this->resolveSessionId();
+                $usedSession = $sessionId;
+                $sent = $this->sendMessage($phone, $message, array_merge($context, ['session_id' => $sessionId]));
+                if ($sent) {
+                    break;
+                }
+            }
 
             if ($sent) {
                 $success++;
-                $results[] = ['phone' => $this->normalizePhone($phone), 'status' => true];
+                $results[] = ['phone' => $this->normalizePhone($phone), 'status' => true, 'session' => $usedSession];
             } else {
                 $normalized = $this->normalizePhone($phone);
                 $reason = empty(trim($phone))
                     ? 'Nomor HP kosong'
                     : (! $this->isValidPhone($normalized) ? 'Format nomor tidak valid sebagai nomor WA' : 'Gagal terkirim');
                 $failed++;
-                $results[] = ['phone' => $phone, 'status' => false, 'reason' => $reason];
+                $results[] = ['phone' => $phone, 'status' => false, 'reason' => $reason, 'session' => $usedSession];
             }
+
+            $this->applyBlastInterMessageDelay();
         }
 
         return [
@@ -446,6 +502,97 @@ class WaGatewayService
             'failed' => $failed,
             'results' => $results,
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveBlastSessions(): array
+    {
+        $fallback = [$this->resolveSessionId()];
+
+        if (! $this->blastMultiDevice || $this->ownerId === null) {
+            return $fallback;
+        }
+
+        $devices = WaMultiSessionDevice::query()
+            ->forOwner($this->ownerId)
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->get(['session_id']);
+
+        if ($devices->count() < 2) {
+            return $fallback;
+        }
+
+        $connectedSessions = [];
+        foreach ($devices as $device) {
+            $sessionId = trim((string) ($device->session_id ?? ''));
+            if ($sessionId === '') {
+                continue;
+            }
+
+            $status = $this->sessionStatus($sessionId);
+            $connectionStatus = strtolower((string) data_get($status, 'data.status', ''));
+
+            if (($status['status'] ?? false) === true && $connectionStatus === 'connected') {
+                $connectedSessions[] = $sessionId;
+            }
+        }
+
+        if ($connectedSessions === []) {
+            return $fallback;
+        }
+
+        return array_values(array_unique($connectedSessions));
+    }
+
+    private function applyBlastInterMessageDelay(): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        $minMs = max(0, $this->blastDelayMinMs);
+        $maxMs = max($minMs, $this->blastDelayMaxMs);
+
+        try {
+            $delayMs = random_int($minMs, $maxMs);
+        } catch (\Throwable) {
+            $delayMs = $minMs;
+        }
+
+        if ($delayMs > 0) {
+            usleep($delayMs * 1000);
+        }
+    }
+
+    private function applyBlastMessageVariation(string $message, ?string $name, int $index): string
+    {
+        $baseMessage = trim($message);
+        if ($baseMessage === '' || ! $this->blastNaturalVariation) {
+            return $baseMessage;
+        }
+
+        $recipient = trim((string) $name);
+        $recipient = $recipient !== '' ? $recipient : 'Bapak/Ibu';
+
+        $openings = [
+            'Halo '.$recipient.',',
+            'Selamat siang '.$recipient.',',
+            'Permisi '.$recipient.',',
+        ];
+        $closings = [
+            'Terima kasih atas perhatian Anda.',
+            'Jika ada pertanyaan, silakan balas pesan ini.',
+            'Tim kami siap membantu jika diperlukan.',
+        ];
+
+        $opening = $openings[$index % count($openings)];
+        $closing = $closings[$index % count($closings)];
+
+        return $opening."\n\n".$baseMessage."\n\n".$closing;
     }
 
     /**
@@ -457,6 +604,7 @@ class WaGatewayService
         $candidates = [
             '/api/device/info',
             '/api/v2/device/info',
+            '/api/v2/sessions/status?session='.$this->resolveSessionId(),
             '/api/devices',
             '/status',
         ];
@@ -518,5 +666,134 @@ class WaGatewayService
             'message' => 'Gateway tidak merespons pada endpoint yang diketahui. '.$lastError,
             'http_status' => 0,
         ];
+    }
+
+    public function startSession(?string $sessionId = null): array
+    {
+        return $this->callSessionEndpoint('/api/v2/sessions/start', $sessionId);
+    }
+
+    public function stopSession(?string $sessionId = null): array
+    {
+        return $this->callSessionEndpoint('/api/v2/sessions/stop', $sessionId);
+    }
+
+    public function restartSession(?string $sessionId = null): array
+    {
+        return $this->callSessionEndpoint('/api/v2/sessions/restart', $sessionId);
+    }
+
+    public function sessionStatus(?string $sessionId = null): array
+    {
+        $targetSession = $sessionId ?: $this->resolveSessionId();
+
+        try {
+            $response = Http::timeout(10)
+                ->withHeaders($this->buildHeaders())
+                ->get($this->url.'/api/v2/sessions/status', [
+                    'session' => $targetSession,
+                ]);
+
+            if ($response->successful()) {
+                $body = $response->json();
+
+                return [
+                    'status' => true,
+                    'message' => 'Status sesi berhasil diambil.',
+                    'data' => $body['data'] ?? $body,
+                    'http_status' => $response->status(),
+                ];
+            }
+
+            return [
+                'status' => false,
+                'message' => 'Gagal membaca status sesi (HTTP '.$response->status().').',
+                'data' => $response->json() ?? $response->body(),
+                'http_status' => $response->status(),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'status' => false,
+                'message' => 'Tidak dapat membaca status sesi: '.$e->getMessage(),
+                'http_status' => 0,
+                'network_error' => true,
+            ];
+        }
+    }
+
+    private function callSessionEndpoint(string $path, ?string $sessionId = null): array
+    {
+        $targetSession = $sessionId ?: $this->resolveSessionId();
+
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders($this->buildHeaders())
+                ->post($this->url.$path, [
+                    'session' => $targetSession,
+                ]);
+
+            if ($response->successful()) {
+                $body = $response->json();
+
+                return [
+                    'status' => true,
+                    'message' => (string) ($body['message'] ?? 'Berhasil.'),
+                    'data' => $body['data'] ?? $body,
+                    'http_status' => $response->status(),
+                ];
+            }
+
+            return [
+                'status' => false,
+                'message' => 'Permintaan gagal (HTTP '.$response->status().').',
+                'data' => $response->json() ?? $response->body(),
+                'http_status' => $response->status(),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'status' => false,
+                'message' => 'Tidak dapat menghubungi gateway sesi: '.$e->getMessage(),
+                'http_status' => 0,
+                'network_error' => true,
+            ];
+        }
+    }
+
+    private function resolveSessionId(array $context = []): string
+    {
+        $contextSession = trim((string) ($context['session_id'] ?? ''));
+
+        if ($contextSession !== '') {
+            return $contextSession;
+        }
+
+        if (! empty($this->sessionId)) {
+            return $this->sessionId;
+        }
+
+        if ($this->ownerId !== null) {
+            return 'tenant-'.$this->ownerId;
+        }
+
+        return 'default';
+    }
+
+    private function resolveDefaultTenantSession(): ?string
+    {
+        if ($this->ownerId === null) {
+            return null;
+        }
+
+        $defaultDevice = WaMultiSessionDevice::query()
+            ->forOwner($this->ownerId)
+            ->where('is_default', true)
+            ->where('is_active', true)
+            ->first();
+
+        if ($defaultDevice) {
+            return $defaultDevice->session_id;
+        }
+
+        return 'tenant-'.$this->ownerId;
     }
 }

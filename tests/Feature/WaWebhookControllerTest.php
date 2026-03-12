@@ -14,6 +14,9 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     Log::spy();
+    config()->set('wa.multi_session.public_url', '');
+    config()->set('wa.multi_session.auth_token', '');
+    config()->set('wa.multi_session.master_key', '');
 });
 
 it('accepts standard webhook message endpoint and stores sender with status', function () {
