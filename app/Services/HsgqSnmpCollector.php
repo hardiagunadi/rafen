@@ -5,11 +5,22 @@ namespace App\Services;
 use App\Models\OltConnection;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Process\Pool;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
 
 class HsgqSnmpCollector
 {
+    /**
+     * OID command fields are write-only on many OLT variants, so probing via snmpwalk is unreliable.
+     *
+     * @var array<int, string>
+     */
+    private const WRITE_ONLY_MODEL_FIELDS = [
+        'oid_reboot_onu',
+    ];
+
     private const OID_SYS_DESCR = '1.3.6.1.2.1.1.1.0';
 
     private const OID_SYS_OBJECT_ID = '1.3.6.1.2.1.1.2.0';
@@ -94,6 +105,16 @@ class HsgqSnmpCollector
         foreach ($oids as $field => $oid) {
             $oidValue = trim((string) $oid);
             if ($oidValue === '') {
+                continue;
+            }
+
+            if (in_array((string) $field, self::WRITE_ONLY_MODEL_FIELDS, true)) {
+                $probe[(string) $field] = [
+                    'oid' => $oidValue,
+                    'sample_count' => 0,
+                    'detected' => false,
+                ];
+
                 continue;
             }
 
@@ -337,6 +358,326 @@ class HsgqSnmpCollector
     }
 
     /**
+     * @return array{entries: array<int, string>, source_oids: array<int, string>, notice: string|null}
+     */
+    public function fetchOnuAlarmLogs(
+        OltConnection $oltConnection,
+        string $onuIndex,
+        ?string $onuId = null,
+        ?string $serialNumber = null
+    ): array {
+        $cloudAlarmData = $this->fetchOnuAlarmLogsFromCloud($oltConnection, $onuIndex, $onuId, $serialNumber);
+        if ($cloudAlarmData !== null) {
+            return $cloudAlarmData;
+        }
+
+        $configuredAlarmOids = collect((array) config('olt.alarm.oids', []))
+            ->map(fn (mixed $oid): string => ltrim(trim((string) $oid), '.'))
+            ->filter(fn (string $oid): bool => $oid !== '')
+            ->values()
+            ->all();
+        $alarmOids = $configuredAlarmOids !== []
+            ? $configuredAlarmOids
+            : $this->resolveAlarmDiscoveryRoots($oltConnection);
+
+        $searchTokens = $this->buildAlarmSearchTokens($onuIndex, $onuId, $serialNumber);
+        $maxEntries = max(1, (int) config('olt.alarm.max_entries', 50));
+        $entries = [];
+        $sourceOids = [];
+        $lastTimeoutMessage = null;
+
+        foreach ($alarmOids as $alarmOid) {
+            $sourceOids[] = $alarmOid;
+            try {
+                $lines = $this->walkRawLines($oltConnection, $alarmOid);
+            } catch (RuntimeException $exception) {
+                if ($this->isTimeoutErrorMessage($exception->getMessage())) {
+                    $lastTimeoutMessage = $exception->getMessage();
+                }
+
+                continue;
+            }
+
+            foreach ($lines as $line) {
+                $normalizedLine = strtolower($line);
+                $matched = collect($searchTokens)
+                    ->contains(fn (string $token): bool => $token !== '' && str_contains($normalizedLine, strtolower($token)));
+
+                if (! $matched) {
+                    continue;
+                }
+
+                $entries[] = $line;
+            }
+        }
+
+        $entries = array_values(array_unique($entries));
+        if ($entries === []) {
+            return [
+                'entries' => [],
+                'source_oids' => $sourceOids,
+                'notice' => $lastTimeoutMessage !== null
+                    ? $this->snmpAlarmTimeoutMessage($oltConnection).' Alarm kemungkinan tidak diekspos lewat SNMP pada perangkat ini.'
+                    : 'Alarm ONU tidak tersedia lewat SNMP pada perangkat ini.',
+            ];
+        }
+
+        return [
+            'entries' => array_slice($entries, 0, $maxEntries),
+            'source_oids' => $sourceOids,
+            'notice' => null,
+        ];
+    }
+
+    /**
+     * @return array{entries: array<int, string>, source_oids: array<int, string>, notice: string|null}|null
+     */
+    private function fetchOnuAlarmLogsFromCloud(
+        OltConnection $oltConnection,
+        string $onuIndex,
+        ?string $onuId = null,
+        ?string $serialNumber = null
+    ): ?array {
+        if (! (bool) config('olt.alarm.cloud.enabled', true)) {
+            return null;
+        }
+
+        $url = trim((string) config('olt.alarm.cloud.url', ''));
+        $token = trim((string) config('olt.alarm.cloud.token', ''));
+        if ($url === '' || $token === '') {
+            return null;
+        }
+
+        $pageSize = max(10, min(200, (int) config('olt.alarm.cloud.page_size', 50)));
+        $maxPages = max(1, min(20, (int) config('olt.alarm.cloud.max_pages', 5)));
+        $timeout = max(3, min(20, (int) config('olt.alarm.cloud.timeout', 8)));
+
+        $entries = [];
+
+        for ($page = 1; $page <= $maxPages; $page++) {
+            try {
+                $response = Http::timeout($timeout)
+                    ->acceptJson()
+                    ->withHeaders([
+                        'x-token' => $token,
+                    ])
+                    ->get($url, [
+                        'current' => $page,
+                        'page_size' => $pageSize,
+                    ]);
+            } catch (\Throwable) {
+                return null;
+            }
+
+            if (! $response->ok()) {
+                return null;
+            }
+
+            $payload = $response->json();
+            if (! is_array($payload) || (int) ($payload['code'] ?? 0) !== 1) {
+                return null;
+            }
+
+            $rows = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+            foreach ($rows as $row) {
+                if (! is_array($row) || ! $this->isCloudAlarmRowMatch($row, $oltConnection, $onuIndex, $onuId, $serialNumber)) {
+                    continue;
+                }
+
+                $entries[] = $this->formatCloudAlarmEntry($row);
+            }
+
+            if (count($rows) < $pageSize) {
+                break;
+            }
+        }
+
+        $entries = array_values(array_unique(array_filter($entries)));
+        if ($entries === []) {
+            return [
+                'entries' => [],
+                'source_oids' => ['hsgq-cloud'],
+                'notice' => 'Alarm ONU belum ditemukan di HSGQ Cloud untuk ONU ini.',
+            ];
+        }
+
+        return [
+            'entries' => array_slice($entries, 0, max(1, (int) config('olt.alarm.max_entries', 50))),
+            'source_oids' => ['hsgq-cloud'],
+            'notice' => null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isCloudAlarmRowMatch(
+        array $row,
+        OltConnection $oltConnection,
+        string $onuIndex,
+        ?string $onuId = null,
+        ?string $serialNumber = null
+    ): bool {
+        $entity = strtolower((string) ($row['entity'] ?? ''));
+        $aliasName = strtolower((string) ($row['aliasname'] ?? ''));
+        $location = strtolower((string) ($row['location'] ?? ''));
+        $description = strtolower((string) ($row['desc'] ?? ''));
+
+        $serialHex = strtolower((string) preg_replace('/[^a-f0-9]/i', '', (string) $serialNumber));
+        if ($serialHex !== '' && $entity === $serialHex) {
+            return true;
+        }
+
+        $normalizedOnuId = trim((string) $onuId);
+        if ($normalizedOnuId !== '' && $normalizedOnuId !== '-') {
+            $segments = explode('/', $normalizedOnuId);
+            $pon = isset($segments[0]) ? (int) $segments[0] : null;
+            $onu = isset($segments[1]) ? (int) $segments[1] : null;
+
+            if ($pon !== null && $onu !== null) {
+                $variants = [
+                    strtolower($pon.'/'.$onu),
+                    strtolower('onu '.$pon.'/'.$onu),
+                    strtolower('onu '.$pon.'/'.str_pad((string) $onu, 2, '0', STR_PAD_LEFT)),
+                    strtolower('onu'.str_pad((string) $pon, 2, '0', STR_PAD_LEFT).'/'.str_pad((string) $onu, 2, '0', STR_PAD_LEFT)),
+                ];
+
+                foreach ($variants as $variant) {
+                    if ($variant !== '' && (str_contains($aliasName, $variant) || str_contains($location, $variant))) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if ($onuIndex !== '' && str_contains($aliasName, strtolower($onuIndex))) {
+            return true;
+        }
+
+        if ($onuId !== null && $onuId !== '-' && str_contains($description, strtolower('onu '.trim($onuId)))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function formatCloudAlarmEntry(array $row): string
+    {
+        $timestamp = (int) ($row['timestamp'] ?? $row['create_time'] ?? 0);
+        $dateTime = $timestamp > 0
+            ? Carbon::createFromTimestamp($timestamp)->format('Y/m/d H:i:s')
+            : now()->format('Y/m/d H:i:s');
+
+        $level = match ((int) ($row['level'] ?? 0)) {
+            1 => 'Warning',
+            2 => 'Debug',
+            default => 'Info',
+        };
+
+        $location = trim((string) ($row['location'] ?? '-'));
+        $entity = trim((string) ($row['entity'] ?? '-'));
+        $description = trim((string) ($row['desc'] ?? 'Alarm'));
+
+        return '['.$dateTime.'] '.$level.': '.$location.' '.$entity.' '.$description;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveAlarmDiscoveryRoots(OltConnection $oltConnection): array
+    {
+        $configuredRoots = collect((array) config('olt.alarm.discovery_roots', []))
+            ->map(fn (mixed $oid): string => ltrim(trim((string) $oid), '.'))
+            ->filter(fn (string $oid): bool => $oid !== '')
+            ->values()
+            ->all();
+
+        $connectionSubtreeRoots = collect([
+            $oltConnection->oid_serial,
+            $oltConnection->oid_onu_name,
+            $oltConnection->oid_status,
+            $oltConnection->oid_reboot_onu,
+        ])->flatMap(fn (?string $oid): array => $this->deriveAlarmSubtreeRootsFromOid($oid))
+            ->values()
+            ->all();
+
+        $enterpriseFallbackRoots = collect([
+            $oltConnection->oid_serial,
+            $oltConnection->oid_onu_name,
+            $oltConnection->oid_status,
+            $oltConnection->oid_reboot_onu,
+        ])->map(fn (?string $oid): ?string => $this->extractEnterpriseRoot($oid))
+            ->filter(fn (?string $root): bool => $root !== null && $root !== '')
+            ->values()
+            ->all();
+
+        $resolved = array_values(array_unique(array_filter(array_merge(
+            $connectionSubtreeRoots,
+            $configuredRoots,
+            $enterpriseFallbackRoots,
+        ))));
+        if ($resolved === []) {
+            throw new RuntimeException('Gagal menentukan root OID alarm ONU otomatis.');
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function deriveAlarmSubtreeRootsFromOid(?string $oid): array
+    {
+        $normalizedOid = $this->normalizeOid($oid);
+        if ($normalizedOid === null) {
+            return [];
+        }
+
+        $segments = array_values(array_filter(explode('.', $normalizedOid), fn (string $segment): bool => $segment !== ''));
+        if (count($segments) < 9) {
+            return [];
+        }
+
+        $candidates = [];
+        $candidateSegmentSizes = [
+            count($segments) - 1,
+            count($segments) - 2,
+            count($segments) - 3,
+        ];
+
+        foreach ($candidateSegmentSizes as $size) {
+            if ($size < 8) {
+                continue;
+            }
+
+            $candidates[] = implode('.', array_slice($segments, 0, $size));
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
+    }
+
+    private function extractEnterpriseRoot(?string $oid): ?string
+    {
+        $normalizedOid = $this->normalizeOid($oid);
+        if ($normalizedOid === null) {
+            return null;
+        }
+
+        if (str_starts_with($normalizedOid, '1.3.6.1.4.1.5875.800')) {
+            return '1.3.6.1.4.1.5875.800';
+        }
+
+        if (str_starts_with($normalizedOid, '1.3.6.1.4.1.50224')) {
+            return '1.3.6.1.4.1.50224';
+        }
+
+        return null;
+    }
+
+    /**
      * @param  array<string, mixed>  $connectionConfig
      * @return array{
      *   model: string,
@@ -534,7 +875,7 @@ class HsgqSnmpCollector
         }
 
         if ($result->failed()) {
-            throw new RuntimeException($this->normalizeSnmpFailureMessage($oltConnection, trim($result->errorOutput() ?: $result->output())));
+            throw new RuntimeException($this->normalizeSnmpAlarmFailureMessage($oltConnection, trim($result->errorOutput() ?: $result->output())));
         }
 
         return $this->parseWalkOutput($result->output(), $normalizedBaseOid);
@@ -970,6 +1311,91 @@ class HsgqSnmpCollector
         );
     }
 
+    /**
+     * @return array<int, string>
+     */
+    private function walkRawLines(OltConnection $oltConnection, string $baseOid): array
+    {
+        $command = $this->buildSnmpWalkAlarmCommand($oltConnection, $baseOid);
+
+        try {
+            $result = Process::timeout($this->resolveAlarmProcessTimeoutSeconds($oltConnection))
+                ->run($command);
+        } catch (ProcessTimedOutException) {
+            throw new RuntimeException($this->snmpAlarmTimeoutMessage($oltConnection));
+        }
+
+        if ($result->failed()) {
+            throw new RuntimeException($this->normalizeSnmpFailureMessage($oltConnection, trim($result->errorOutput() ?: $result->output())));
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', trim($result->output())) ?: [];
+        $entries = [];
+
+        foreach ($lines as $line) {
+            $entry = $this->extractSnmpLineValue($line);
+            if ($entry !== null) {
+                $entries[] = $entry;
+            }
+        }
+
+        return $entries;
+    }
+
+    private function buildSnmpWalkAlarmCommand(OltConnection $oltConnection, string $baseOid): string
+    {
+        return sprintf(
+            'snmpwalk -On -v2c -c %s -t %d -r %d %s %s',
+            escapeshellarg($oltConnection->snmp_community),
+            $this->resolveAlarmSnmpTimeoutSeconds(),
+            $this->resolveAlarmSnmpRetries(),
+            escapeshellarg($oltConnection->host.':'.$oltConnection->snmp_port),
+            escapeshellarg('.'.ltrim(trim($baseOid), '.')),
+        );
+    }
+
+    private function extractSnmpLineValue(string $line): ?string
+    {
+        $normalizedLine = trim($line);
+        if ($normalizedLine === '') {
+            return null;
+        }
+
+        if (preg_match('/^\.?(?<oid>[0-9\.]+)\s*=\s*(?<type>[^:]+):\s*(?<value>.*)$/', $normalizedLine, $matches) !== 1) {
+            return $normalizedLine;
+        }
+
+        return $this->normalizeText($matches['value']) ?? $normalizedLine;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildAlarmSearchTokens(string $onuIndex, ?string $onuId = null, ?string $serialNumber = null): array
+    {
+        $tokens = [trim($onuIndex)];
+
+        $normalizedOnuId = trim((string) $onuId);
+        if ($normalizedOnuId !== '' && $normalizedOnuId !== '-') {
+            $tokens[] = $normalizedOnuId;
+            $tokens[] = 'onu '.$normalizedOnuId;
+            $tokens[] = 'onu'.$normalizedOnuId;
+        }
+
+        $normalizedSerial = trim((string) $serialNumber);
+        if ($normalizedSerial !== '' && $normalizedSerial !== '-') {
+            $hexSerial = strtolower((string) preg_replace('/[^a-f0-9]/i', '', $normalizedSerial));
+            if (strlen($hexSerial) === 12) {
+                $tokens[] = implode(':', str_split($hexSerial, 2));
+                $tokens[] = $hexSerial;
+            }
+
+            $tokens[] = strtolower($normalizedSerial);
+        }
+
+        return array_values(array_unique(array_filter($tokens, fn (string $token): bool => $token !== '')));
+    }
+
     private function resolveProcessTimeoutSeconds(OltConnection $oltConnection): int
     {
         $snmpTimeout = max(1, (int) $oltConnection->snmp_timeout);
@@ -978,9 +1404,32 @@ class HsgqSnmpCollector
         return max(8, ($snmpTimeout * ($snmpRetries + 1)) + 3);
     }
 
+    private function resolveAlarmProcessTimeoutSeconds(OltConnection $oltConnection): int
+    {
+        $snmpTimeout = max(1, min(5, $this->resolveAlarmSnmpTimeoutSeconds()));
+        $snmpRetries = max(0, min(2, $this->resolveAlarmSnmpRetries()));
+
+        return max(4, ($snmpTimeout * ($snmpRetries + 1)) + 2);
+    }
+
+    private function resolveAlarmSnmpTimeoutSeconds(): int
+    {
+        return max(1, (int) config('olt.alarm.snmp_timeout', 2));
+    }
+
+    private function resolveAlarmSnmpRetries(): int
+    {
+        return max(0, (int) config('olt.alarm.snmp_retries', 0));
+    }
+
     private function snmpTimeoutMessage(OltConnection $oltConnection): string
     {
         return 'SNMP timeout ke OLT. Tidak ada respons dalam '.$this->resolveProcessTimeoutSeconds($oltConnection).' detik.';
+    }
+
+    private function snmpAlarmTimeoutMessage(OltConnection $oltConnection): string
+    {
+        return 'SNMP timeout ke OLT. Tidak ada respons dalam '.$this->resolveAlarmProcessTimeoutSeconds($oltConnection).' detik.';
     }
 
     private function normalizeSnmpFailureMessage(OltConnection $oltConnection, string $message): string
@@ -1013,6 +1462,22 @@ class HsgqSnmpCollector
         }
 
         return 'SNMP set gagal: '.$message;
+    }
+
+    private function normalizeSnmpAlarmFailureMessage(OltConnection $oltConnection, string $message): string
+    {
+        $normalizedMessage = strtolower($message);
+
+        if (
+            str_contains($normalizedMessage, 'timed out')
+            || str_contains($normalizedMessage, 'exceeded the timeout')
+            || str_contains($normalizedMessage, 'timeout')
+            || str_contains($normalizedMessage, 'no response')
+        ) {
+            return $this->snmpAlarmTimeoutMessage($oltConnection);
+        }
+
+        return 'SNMP walk alarm gagal: '.$message;
     }
 
     private function walkByIndexWithTimeoutFallback(OltConnection $oltConnection, string $baseOid): ?array

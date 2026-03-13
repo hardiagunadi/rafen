@@ -196,6 +196,36 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="onu-alarm-modal" tabindex="-1" aria-labelledby="onu-alarm-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="onu-alarm-modal-label">Detail Alarm ONU</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+                    <div>
+                        <div class="font-weight-bold" id="onu-alarm-subtitle">ONU -</div>
+                        <div class="small text-muted" id="onu-alarm-meta">MAC/ID: -</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="onu-alarm-refresh-btn">
+                        <i class="fas fa-sync-alt mr-1"></i>Refresh
+                    </button>
+                </div>
+                <div id="onu-alarm-loading" class="text-muted d-none">
+                    <i class="fas fa-spinner fa-spin mr-1"></i>Mengambil data alarm dari OLT...
+                </div>
+                <div id="onu-alarm-error" class="alert alert-danger d-none mb-3"></div>
+                <div id="onu-alarm-empty" class="alert alert-secondary d-none mb-0" data-default-message="Belum ada data alarm untuk ONU ini.">Belum ada data alarm untuk ONU ini.</div>
+                <ul id="onu-alarm-list" class="list-unstyled small mb-0"></ul>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -220,12 +250,23 @@
         var datatableUrl = '{{ route('olt-connections.datatable', $oltConnection) }}';
         var rebootOnuUrl = '{{ route('olt-connections.onu-reboot', $oltConnection) }}';
         var onuStatusUrl = '{{ route('olt-connections.onu-status', $oltConnection) }}';
+        var onuAlarmsUrl = '{{ route('olt-connections.onu-alarms', $oltConnection) }}';
         var pollingWatcherTimer = null;
         var autoTriggerTimer = null;
         var rebootOnlineWatchers = {};
+        var alarmModalElement = document.getElementById('onu-alarm-modal');
+        var alarmModal = alarmModalElement ? $(alarmModalElement) : null;
+        var alarmSubtitle = document.getElementById('onu-alarm-subtitle');
+        var alarmMeta = document.getElementById('onu-alarm-meta');
+        var alarmList = document.getElementById('onu-alarm-list');
+        var alarmLoading = document.getElementById('onu-alarm-loading');
+        var alarmError = document.getElementById('onu-alarm-error');
+        var alarmEmpty = document.getElementById('onu-alarm-empty');
+        var alarmRefreshButton = document.getElementById('onu-alarm-refresh-btn');
         var autoTriggerIntervalMs = @json($autoTriggerIntervalMs);
         var fullTriggerIntervalMs = @json($fullTriggerIntervalMs);
         var autoPollingEnabled = @json($canPollOlt);
+        var canFetchOnuAlarm = @json($canPollOlt);
         var canRebootOnu = @json($canRebootOnu);
         var lastFullPollTriggeredAt = 0;
         var pollState = {
@@ -477,8 +518,19 @@
             { data: 'onu_id', render: function (data) {
                 return data === '-' ? '-' : '<code>' + data + '</code>';
             }},
-            { data: 'serial_number', render: function (data) {
-                return data === '-' ? '-' : '<code>' + data + '</code>';
+            { data: 'serial_number', render: function (data, type, row) {
+                if (data === '-') {
+                    return '-';
+                }
+
+                if (!row || !row.onu_index || row.onu_index === '-' || !canFetchOnuAlarm) {
+                    return '<code>' + data + '</code>';
+                }
+
+                return '<button type="button" class="btn btn-link btn-sm p-0"'
+                    + ' data-onu-alarm="' + escapeHtml(row.onu_index) + '"'
+                    + ' data-onu-id="' + escapeHtml(row.onu_id || '-') + '"'
+                    + ' data-onu-serial="' + escapeHtml(data) + '"><code>' + escapeHtml(data) + '</code></button>';
             }},
             { data: 'onu_name' },
             { data: 'distance_m' },
@@ -524,6 +576,111 @@
             if (type === 'danger' || type === 'warning' || type === 'success') {
                 window.alert(message);
             }
+        }
+
+        function setAlarmLoadingState(isLoading) {
+            if (!alarmLoading || !alarmRefreshButton) {
+                return;
+            }
+
+            alarmLoading.classList.toggle('d-none', !isLoading);
+            alarmRefreshButton.disabled = isLoading;
+        }
+
+        function resetAlarmPanels() {
+            if (alarmError) {
+                alarmError.classList.add('d-none');
+                alarmError.textContent = '';
+            }
+
+            if (alarmEmpty) {
+                alarmEmpty.classList.add('d-none');
+                alarmEmpty.textContent = alarmEmpty.getAttribute('data-default-message') || 'Belum ada data alarm untuk ONU ini.';
+            }
+
+            if (alarmList) {
+                alarmList.innerHTML = '';
+            }
+        }
+
+        function loadOnuAlarms(onuIndex) {
+            if (!alarmModal || !alarmList || !onuIndex) {
+                return Promise.resolve();
+            }
+
+            resetAlarmPanels();
+            setAlarmLoadingState(true);
+
+            var params = new URLSearchParams();
+            params.set('onu_index', onuIndex);
+
+            return fetch(onuAlarmsUrl + '?' + params.toString(), {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                credentials: 'same-origin',
+            })
+                .then(function (response) {
+                    return response.json().then(function (payload) {
+                        if (!response.ok) {
+                            throw new Error(payload.message || ('Gagal mengambil data alarm ONU (HTTP ' + response.status + ').'));
+                        }
+
+                        return payload;
+                    });
+                })
+                .then(function (payload) {
+                    var data = payload && payload.data && typeof payload.data === 'object' ? payload.data : {};
+                    var entries = Array.isArray(data.entries) ? data.entries : [];
+                    var notice = typeof data.notice === 'string' ? data.notice : '';
+
+                    if (entries.length === 0) {
+                        if (alarmEmpty) {
+                            alarmEmpty.textContent = notice !== '' ? notice : (alarmEmpty.getAttribute('data-default-message') || 'Belum ada data alarm untuk ONU ini.');
+                            alarmEmpty.classList.remove('d-none');
+                        }
+
+                        return;
+                    }
+
+                    alarmList.innerHTML = entries.map(function (entry) {
+                        return '<li class="border-bottom py-1"><code class="text-dark">' + escapeHtml(entry) + '</code></li>';
+                    }).join('');
+                })
+                .catch(function (error) {
+                    if (alarmError) {
+                        alarmError.classList.remove('d-none');
+                        alarmError.textContent = error.message || 'Gagal membaca data alarm ONU.';
+                    }
+                })
+                .finally(function () {
+                    setAlarmLoadingState(false);
+                });
+        }
+
+        function openOnuAlarmModal(onuIndex, onuId, serialNumber) {
+            if (!alarmModal || !onuIndex) {
+                return;
+            }
+
+            var normalizedOnuId = onuId && onuId !== '-' ? onuId : '-';
+            var normalizedSerial = serialNumber && serialNumber !== '-' ? serialNumber : '-';
+
+            if (alarmSubtitle) {
+                alarmSubtitle.textContent = 'ONU ' + normalizedOnuId;
+            }
+
+            if (alarmMeta) {
+                alarmMeta.textContent = 'MAC/ID: ' + normalizedSerial + ' | Index: ' + onuIndex;
+            }
+
+            if (alarmRefreshButton) {
+                alarmRefreshButton.setAttribute('data-onu-index', onuIndex);
+            }
+
+            alarmModal.modal('show');
+            loadOnuAlarms(onuIndex);
         }
 
         function stopRebootOnlineWatcher(onuIndex) {
@@ -807,6 +964,36 @@
             reloadTable(true);
         });
 
+        tableElement.addEventListener('click', function (event) {
+            var alarmButton = event.target.closest('[data-onu-alarm]');
+
+            if (!alarmButton) {
+                return;
+            }
+
+            var onuIndex = alarmButton.getAttribute('data-onu-alarm') || '';
+            var onuId = alarmButton.getAttribute('data-onu-id') || '-';
+            var serialNumber = alarmButton.getAttribute('data-onu-serial') || '-';
+
+            if (onuIndex === '') {
+                return;
+            }
+
+            openOnuAlarmModal(onuIndex, onuId, serialNumber);
+        });
+
+        if (alarmRefreshButton) {
+            alarmRefreshButton.addEventListener('click', function () {
+                var onuIndex = alarmRefreshButton.getAttribute('data-onu-index') || '';
+
+                if (onuIndex === '') {
+                    return;
+                }
+
+                loadOnuAlarms(onuIndex);
+            });
+        }
+
         if (canRebootOnu) {
             tableElement.addEventListener('click', function (event) {
                 var button = event.target.closest('[data-onu-reboot]');
@@ -887,6 +1074,16 @@
             startAutoTrigger();
             fetchPollingStatus();
         });
+
+        if (alarmModal) {
+            alarmModal.on('hidden.bs.modal', function () {
+                if (alarmRefreshButton) {
+                    alarmRefreshButton.removeAttribute('data-onu-index');
+                }
+                resetAlarmPanels();
+                setAlarmLoadingState(false);
+            });
+        }
 
         window.addEventListener('beforeunload', function () {
             stopAutoTrigger();

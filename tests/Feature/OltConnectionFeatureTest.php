@@ -5,6 +5,7 @@ use App\Models\OltOnuOptic;
 use App\Models\User;
 use App\Services\HsgqSnmpCollector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 uses(RefreshDatabase::class);
@@ -280,7 +281,8 @@ it('auto detects oid mapping for hsgq e04i epon profile from configured oids', f
         ->assertJsonPath('data.oids.oid_rx_olt', '1.3.6.1.4.1.50224.3.2.4.1.12')
         ->assertJsonPath('data.oids.oid_tx_olt', '1.3.6.1.4.1.50224.3.2.4.1.11')
         ->assertJsonPath('data.oids.oid_distance', '1.3.6.1.4.1.50224.3.3.2.1.15')
-        ->assertJsonPath('data.oids.oid_status', '1.3.6.1.4.1.50224.3.3.2.1.8');
+        ->assertJsonPath('data.oids.oid_status', '1.3.6.1.4.1.50224.3.3.2.1.8')
+        ->assertJsonPath('data.oids.oid_reboot_onu', '1.3.6.1.4.1.50224.3.3.2.1.9');
 });
 
 it('normalizes hsgq e04i optical values during polling', function () {
@@ -1020,6 +1022,208 @@ it('returns not found when onu status is requested for unknown index', function 
         ]))
         ->assertNotFound()
         ->assertJsonPath('message', 'Data ONU tidak ditemukan pada OLT ini.');
+});
+
+it('returns onu alarm details by onu index', function () {
+    config()->set('olt.alarm.oids', ['1.3.6.1.4.1.1.99']);
+
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+        'host' => '10.10.10.1',
+        'snmp_port' => 161,
+        'snmp_community' => 'public',
+        'snmp_timeout' => 5,
+        'snmp_retries' => 1,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON1',
+        'onu_number' => '1',
+        'onu_index' => '16777473',
+        'serial_number' => 'd0608cbcbdc3',
+    ]);
+
+    Process::fake(function ($process) {
+        if (str_contains($process->command, '.1.3.6.1.4.1.1.99')) {
+            return Process::result(implode("\n", [
+                '.1.3.6.1.4.1.1.99.1 = STRING: "[2026/03/08 15:49:40] Info: ONU 1/1 d0:60:8c:bc:bd:c3 ONU link up, Reason:"',
+                '.1.3.6.1.4.1.1.99.2 = STRING: "[2026/03/08 15:49:36] Info: ONU 1/1 d0:60:8c:bc:bd:c3 ONU authorization success, Reason:"',
+                '.1.3.6.1.4.1.1.99.3 = STRING: "[2026/03/08 11:49:51] Warning: ONU 2/1 aa:bb:cc:dd:ee:ff ONU dying gasp, Reason:"',
+            ]));
+        }
+
+        return Process::result('', 'Unexpected SNMP command in test.', 1);
+    });
+
+    $this->actingAs($tenant)
+        ->getJson(route('olt-connections.onu-alarms', [
+            'oltConnection' => $connection,
+            'onu_index' => '16777473',
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('status', 'ok')
+        ->assertJsonPath('data.onu_index', '16777473')
+        ->assertJsonPath('data.onu_id', '1/1')
+        ->assertJsonPath('data.serial_number', 'd0:60:8c:bc:bd:c3')
+        ->assertJsonPath('data.source_oids.0', '1.3.6.1.4.1.1.99')
+        ->assertJsonCount(2, 'data.entries');
+});
+
+it('returns onu alarm details from hsgq cloud api', function () {
+    config()->set('olt.alarm.cloud.enabled', true);
+    config()->set('olt.alarm.cloud.url', 'https://www.hsgqcloud.com/v1/device/alarm');
+    config()->set('olt.alarm.cloud.token', 'token-test');
+    config()->set('olt.alarm.cloud.page_size', 10);
+    config()->set('olt.alarm.cloud.max_pages', 2);
+
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+        'name' => 'OLT-WATUMALANG',
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON2',
+        'onu_number' => '23',
+        'onu_index' => '16777511',
+        'serial_number' => '64f88a0805e7',
+    ]);
+
+    Http::fake([
+        'https://www.hsgqcloud.com/v1/device/alarm*' => Http::response([
+            'code' => 1,
+            'message' => 'success',
+            'data' => [
+                [
+                    'entity' => '64f88a0805e7',
+                    'aliasname' => 'ONU02/23 LUSIYANI_LKG',
+                    'location' => 'ONU 2/23',
+                    'macaddr' => '98c7a4183e88',
+                    'level' => 2,
+                    'timestamp' => 1769582172,
+                    'desc' => 'ONU link up',
+                    'hostname' => 'OLT-WATUMALANG',
+                ],
+                [
+                    'entity' => 'a4f33b694df2',
+                    'aliasname' => 'ONU04/08 ERJUN_GL',
+                    'location' => 'ONU 4/8',
+                    'macaddr' => '98c7a4183e88',
+                    'level' => 1,
+                    'timestamp' => 1769575695,
+                    'desc' => 'Onu deregister Laser out',
+                    'hostname' => 'OLT-WATUMALANG',
+                ],
+            ],
+            'total' => 1,
+        ], 200),
+    ]);
+
+    Process::fake(fn () => Process::result('', 'Unexpected SNMP call.', 1));
+
+    $this->actingAs($tenant)
+        ->getJson(route('olt-connections.onu-alarms', [
+            'oltConnection' => $connection,
+            'onu_index' => '16777511',
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('status', 'ok')
+        ->assertJsonPath('data.source_oids.0', 'hsgq-cloud')
+        ->assertJsonCount(1, 'data.entries');
+});
+
+it('auto discovers onu alarm using default discovery root when alarm oids are empty', function () {
+    config()->set('olt.alarm.oids', []);
+    config()->set('olt.alarm.discovery_roots', ['1.3.6.1.4.1.5875.800']);
+
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON1',
+        'onu_number' => '1',
+        'onu_index' => '16777473',
+        'serial_number' => 'd0608cbcbdc3',
+    ]);
+
+    Process::fake(function ($process) {
+        if (str_contains($process->command, '.1.3.6.1.4.1.5875.800')) {
+            return Process::result('.1.3.6.1.4.1.5875.800.99.1 = STRING: "[2026/03/08 15:49:40] Info: ONU 1/1 d0:60:8c:bc:bd:c3 ONU link up, Reason:"');
+        }
+
+        return Process::result('', 'Unexpected SNMP command in test.', 1);
+    });
+
+    $this->actingAs($tenant)
+        ->getJson(route('olt-connections.onu-alarms', [
+            'oltConnection' => $connection,
+            'onu_index' => '16777473',
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('status', 'ok')
+        ->assertJsonPath('data.source_oids.0', '1.3.6.1.4.1.5875.800.3.1.1.1.1')
+        ->assertJsonCount(1, 'data.entries');
+});
+
+it('returns graceful alarm notice when snmp alarm query times out', function () {
+    config()->set('olt.alarm.oids', ['1.3.6.1.4.1.50224.3.99']);
+    config()->set('olt.alarm.snmp_timeout', 1);
+    config()->set('olt.alarm.snmp_retries', 0);
+
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON1',
+        'onu_number' => '1',
+        'onu_index' => '16777473',
+        'serial_number' => 'd0608cbcbdc3',
+    ]);
+
+    Process::fake(fn () => Process::result('', 'Timeout: No Response from 10.10.10.1:161', 1));
+
+    $this->actingAs($tenant)
+        ->getJson(route('olt-connections.onu-alarms', [
+            'oltConnection' => $connection,
+            'onu_index' => '16777473',
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('status', 'ok')
+        ->assertJsonCount(0, 'data.entries')
+        ->assertJsonPath('data.notice', 'SNMP timeout ke OLT. Tidak ada respons dalam 4 detik. Alarm kemungkinan tidak diekspos lewat SNMP pada perangkat ini.');
 });
 
 it('shows tx olt value per pon card on detail page', function () {

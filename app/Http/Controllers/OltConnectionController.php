@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\DetectOltModelRequest;
 use App\Http\Requests\DetectOltOidRequest;
+use App\Http\Requests\FetchOltOnuAlarmsRequest;
 use App\Http\Requests\RebootOltOnuRequest;
 use App\Http\Requests\StoreOltConnectionRequest;
 use App\Http\Requests\UpdateOltConnectionRequest;
@@ -583,6 +584,52 @@ class OltConnectionController extends Controller
                 'last_seen_at' => $onuOptic->last_seen_at?->format('Y-m-d H:i:s'),
             ],
         ]);
+    }
+
+    public function onuAlarms(OltConnection $oltConnection, FetchOltOnuAlarmsRequest $request): JsonResponse
+    {
+        if (! $this->canPollOltNow()) {
+            abort(403);
+        }
+
+        $this->authorizeAccess($oltConnection);
+
+        $onuIndex = (string) $request->validated('onu_index');
+        $onuOptic = $oltConnection->onuOptics()
+            ->where('onu_index', $onuIndex)
+            ->first();
+
+        if (! $onuOptic) {
+            return response()->json([
+                'message' => 'Data ONU tidak ditemukan pada OLT ini.',
+            ], 404);
+        }
+
+        try {
+            $alarmData = $this->collector->fetchOnuAlarmLogs(
+                $oltConnection,
+                $onuIndex,
+                $this->formatOnuId($onuOptic->pon_interface, $onuOptic->onu_number),
+                $onuOptic->serial_number,
+            );
+
+            return response()->json([
+                'status' => 'ok',
+                'data' => [
+                    'onu_index' => (string) $onuOptic->onu_index,
+                    'onu_id' => $this->formatOnuId($onuOptic->pon_interface, $onuOptic->onu_number),
+                    'serial_number' => $this->formatMacIdentifier($onuOptic->serial_number),
+                    'entries' => $alarmData['entries'],
+                    'source_oids' => $alarmData['source_oids'],
+                    'notice' => $alarmData['notice'],
+                    'fetched_at' => now()->format('Y-m-d H:i:s'),
+                ],
+            ]);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
     }
 
     private function authorizeAccess(OltConnection $oltConnection): void
