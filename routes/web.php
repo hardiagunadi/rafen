@@ -94,6 +94,8 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::post('olt-connections/auto-detect-model', [OltConnectionController::class, 'autoDetectModel'])->name('olt-connections.auto-detect-model');
     Route::post('olt-connections/auto-detect-oid', [OltConnectionController::class, 'autoDetectOid'])->name('olt-connections.auto-detect-oid');
     Route::post('olt-connections/{oltConnection}/poll', [OltConnectionController::class, 'poll'])->name('olt-connections.poll');
+    Route::post('olt-connections/{oltConnection}/onu/reboot', [OltConnectionController::class, 'rebootOnu'])->name('olt-connections.onu-reboot');
+    Route::get('olt-connections/{oltConnection}/onu/status', [OltConnectionController::class, 'onuStatus'])->name('olt-connections.onu-status');
     Route::get('olt-connections/{oltConnection}/polling-status', [OltConnectionController::class, 'pollingStatus'])->name('olt-connections.polling-status');
     Route::get('olt-connections/{oltConnection}/datatable', [OltConnectionController::class, 'datatable'])->name('olt-connections.datatable');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');

@@ -37,6 +37,7 @@ it('allows tenant admin to create hsgq olt connection', function () {
             'oid_tx_olt' => '1.3.6.1.4.1.1.6',
             'oid_distance' => '1.3.6.1.4.1.1.7',
             'oid_status' => '1.3.6.1.4.1.1.8',
+            'oid_reboot_onu' => '1.3.6.1.4.1.1.9',
         ]);
 
     $oltConnection = OltConnection::query()->first();
@@ -83,7 +84,8 @@ it('renders olt pages for tenant admin', function () {
     $this->actingAs($tenant)
         ->get(route('olt-connections.show', $connection))
         ->assertSuccessful()
-        ->assertSee('OLT UI Test');
+        ->assertSee('OLT UI Test')
+        ->assertSee('autoTriggerIntervalMs = '.(max(15, (int) config('olt.polling.live_refresh_seconds', 60)) * 1000), false);
 
     $this->actingAs($tenant)
         ->get(route('olt-connections.edit', $connection))
@@ -117,6 +119,7 @@ it('shows noc-only oid fields on olt forms and detail', function () {
         'oid_rx_onu' => '1.3.6.1.4.1.50224.3.3.3.1.4',
         'oid_distance' => '1.3.6.1.4.1.50224.3.3.2.1.15',
         'oid_status' => '1.3.6.1.4.1.50224.3.3.2.1.8',
+        'oid_reboot_onu' => '1.3.6.1.4.1.50224.3.3.2.1.9',
     ]);
 
     $this->actingAs($noc)
@@ -141,7 +144,8 @@ it('shows noc-only oid fields on olt forms and detail', function () {
         ->assertSee('OID MAC / Identifier:')
         ->assertSee('OID Rx ONU:')
         ->assertSee('OID Distance:')
-        ->assertSee('OID Status:');
+        ->assertSee('OID Status:')
+        ->assertSee('OID Reboot ONU:');
 });
 
 it('parses polling progress from running poll message', function () {
@@ -667,6 +671,7 @@ it('shows polling button for teknisi and full actions for noc user', function ()
     $this->actingAs($teknisi)
         ->get(route('olt-connections.index'))
         ->assertSuccessful()
+        ->assertSee('?auto_poll=1', false)
         ->assertSee('title="Polling Sekarang"', false)
         ->assertDontSee('title="Edit"', false)
         ->assertDontSee('title="Hapus"', false)
@@ -782,6 +787,65 @@ it('upserts onu optical data when polling succeeds', function () {
         ->and((string) $connection->last_poll_message)->toContain('ONU terdeteksi: 1');
 });
 
+it('supports quick polling mode for essential onu metrics', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    app()->instance(HsgqSnmpCollector::class, new class extends HsgqSnmpCollector
+    {
+        /**
+         * @param  callable(int, int, string): void|null  $progressReporter
+         * @return array<int, array<string, mixed>>
+         */
+        public function collectEssential(OltConnection $oltConnection, ?callable $progressReporter = null): array
+        {
+            return [
+                [
+                    'onu_index' => '1003.20',
+                    'pon_interface' => 'PON3',
+                    'onu_number' => '20',
+                    'distance_m' => 842,
+                    'rx_onu_dbm' => -22.10,
+                    'status' => 'online',
+                    'raw_payload' => [
+                        'distance' => '842',
+                        'rx_onu' => '-22.10',
+                        'status' => '1',
+                    ],
+                ],
+            ];
+        }
+    });
+
+    $this->actingAs($tenant)
+        ->postJson(route('olt-connections.poll', [
+            'oltConnection' => $connection,
+            'mode' => 'quick',
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('status', 'ok')
+        ->assertJsonPath('last_poll_success', true);
+
+    $connection->refresh();
+    $onuOptic = OltOnuOptic::query()
+        ->where('olt_connection_id', $connection->id)
+        ->where('onu_index', '1003.20')
+        ->firstOrFail();
+
+    expect($onuOptic->pon_interface)->toBe('PON3')
+        ->and($onuOptic->onu_number)->toBe('20')
+        ->and((float) $onuOptic->rx_onu_dbm)->toBe(-22.1)
+        ->and($onuOptic->status)->toBe('online')
+        ->and((string) $connection->last_poll_message)->toContain('Quick polling SNMP berhasil');
+});
+
 it('renders the onu optics datatable on show page', function () {
     $tenant = User::factory()->create([
         'role' => 'administrator',
@@ -804,11 +868,158 @@ it('renders the onu optics datatable on show page', function () {
         ->assertSee('Semua Port ID')
         ->assertSee('Total ONU')
         ->assertSee('onu-optics-table', false)
+        ->assertDontSee('Tx ONU')
         ->assertDontSee('<th>Index</th>', false)
         ->assertDontSee('<th>Rx OLT</th>', false)
         ->assertDontSee('<th>Tx OLT</th>', false)
         ->assertSee(route('olt-connections.datatable', $connection), false)
         ->assertSee(route('olt-connections.polling-status', $connection), false);
+});
+
+it('allows teknisi to trigger onu reboot action', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $teknisi = User::factory()->create([
+        'parent_id' => $tenant->id,
+        'role' => 'teknisi',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+        'snmp_write_community' => 'private',
+        'oid_reboot_onu' => '1.3.6.1.4.1.1.9',
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'onu_index' => '16777473',
+    ]);
+
+    Process::fake(fn () => Process::result('.1.3.6.1.4.1.1.9.16777473 = INTEGER: 1'));
+
+    $this->actingAs($teknisi)
+        ->postJson(route('olt-connections.onu-reboot', $connection), [
+            'onu_index' => '16777473',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('status', 'ok');
+
+    Process::assertRan(function ($process) {
+        return str_contains($process->command, "snmpset -On -v2c -c 'private'")
+            && str_contains($process->command, '.1.3.6.1.4.1.1.9.16777473');
+    });
+});
+
+it('returns error when reboot onu configuration is missing', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+        'snmp_write_community' => null,
+        'oid_reboot_onu' => null,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'onu_index' => '16777473',
+    ]);
+
+    $this->actingAs($tenant)
+        ->postJson(route('olt-connections.onu-reboot', $connection), [
+            'onu_index' => '16777473',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'SNMP Write Community belum diisi pada konfigurasi OLT.');
+});
+
+it('forbids non teknisi admin noc roles to reboot onu', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $staff = User::factory()->create([
+        'parent_id' => $tenant->id,
+        'role' => 'staff',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    $this->actingAs($staff)
+        ->postJson(route('olt-connections.onu-reboot', $connection), [
+            'onu_index' => '16777473',
+        ])
+        ->assertForbidden();
+});
+
+it('returns onu status snapshot by onu index', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    OltOnuOptic::factory()->create([
+        'olt_connection_id' => $connection->id,
+        'owner_id' => $tenant->id,
+        'pon_interface' => 'PON3',
+        'onu_number' => '20',
+        'onu_index' => '16777988',
+        'status' => 'online',
+        'last_seen_at' => now(),
+    ]);
+
+    $this->actingAs($tenant)
+        ->getJson(route('olt-connections.onu-status', [
+            'oltConnection' => $connection,
+            'onu_index' => '16777988',
+        ]))
+        ->assertSuccessful()
+        ->assertJsonPath('status', 'ok')
+        ->assertJsonPath('data.onu_index', '16777988')
+        ->assertJsonPath('data.onu_id', '3/20')
+        ->assertJsonPath('data.status', 'ONLINE');
+});
+
+it('returns not found when onu status is requested for unknown index', function () {
+    $tenant = User::factory()->create([
+        'role' => 'administrator',
+        'subscription_status' => 'active',
+        'subscription_expires_at' => now()->addDays(30),
+    ]);
+
+    $connection = OltConnection::factory()->create([
+        'owner_id' => $tenant->id,
+    ]);
+
+    $this->actingAs($tenant)
+        ->getJson(route('olt-connections.onu-status', [
+            'oltConnection' => $connection,
+            'onu_index' => '99999999',
+        ]))
+        ->assertNotFound()
+        ->assertJsonPath('message', 'Data ONU tidak ditemukan pada OLT ini.');
 });
 
 it('shows tx olt value per pon card on detail page', function () {
@@ -950,7 +1161,8 @@ it('filters onu optics by selected port id on datatable endpoint', function () {
         ->assertJsonPath('data.0.pon_interface', 'PON1')
         ->assertJsonPath('data.0.onu_id', '1/1')
         ->assertJsonPath('data.0.serial_number', 'd0:60:8c:bc:bd:c3')
-        ->assertJsonPath('data.0.onu_name', 'ONU PORT 1');
+        ->assertJsonPath('data.0.onu_name', 'ONU PORT 1')
+        ->assertJsonMissingPath('data.0.tx_onu_dbm');
 });
 
 it('filters onu optics by selected status and search on datatable endpoint', function () {

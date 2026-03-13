@@ -1,5 +1,7 @@
 @php
-    $showNocOnlyOidFields = auth()->user()->role === 'noc';
+    $currentUserRole = auth()->user()->role;
+    $showNocOnlyOidFields = $currentUserRole === 'noc';
+    $showRebootOidField = in_array($currentUserRole, ['administrator', 'noc'], true);
 @endphp
 
 <div class="form-row">
@@ -294,6 +296,7 @@
                 fillOid('oid-tx-olt', oids.oid_tx_olt || '');
                 fillOid('oid-distance', oids.oid_distance || '');
                 fillOid('oid-status', oids.oid_status || '');
+                fillOid('oid-reboot-onu', oids.oid_reboot_onu || '');
 
                 var detectedFields = body.data && typeof body.data.detected_fields === 'number'
                     ? body.data.detected_fields
@@ -437,19 +440,29 @@
     </div>
 </div>
 
-@if($showNocOnlyOidFields)
+@if($showNocOnlyOidFields || $showRebootOidField)
     <div class="form-row">
-        <div class="form-group col-md-6">
-            <label>OID Distance (m)</label>
-            <input type="text" name="oid_distance" id="oid-distance" class="form-control @error('oid_distance') is-invalid @enderror"
-                value="{{ old('oid_distance', $oltConnection->oid_distance ?? '') }}" placeholder="1.3.6.x.x.x">
-            @error('oid_distance')<div class="invalid-feedback">{{ $message }}</div>@enderror
-        </div>
-        <div class="form-group col-md-6">
-            <label>OID Status ONU</label>
-            <input type="text" name="oid_status" id="oid-status" class="form-control @error('oid_status') is-invalid @enderror"
-                value="{{ old('oid_status', $oltConnection->oid_status ?? '') }}" placeholder="1.3.6.x.x.x">
-            @error('oid_status')<div class="invalid-feedback">{{ $message }}</div>@enderror
-        </div>
+        @if($showNocOnlyOidFields)
+            <div class="form-group col-md-6">
+                <label>OID Distance (m)</label>
+                <input type="text" name="oid_distance" id="oid-distance" class="form-control @error('oid_distance') is-invalid @enderror"
+                    value="{{ old('oid_distance', $oltConnection->oid_distance ?? '') }}" placeholder="1.3.6.x.x.x">
+                @error('oid_distance')<div class="invalid-feedback">{{ $message }}</div>@enderror
+            </div>
+            <div class="form-group col-md-6">
+                <label>OID Status ONU</label>
+                <input type="text" name="oid_status" id="oid-status" class="form-control @error('oid_status') is-invalid @enderror"
+                    value="{{ old('oid_status', $oltConnection->oid_status ?? '') }}" placeholder="1.3.6.x.x.x">
+                @error('oid_status')<div class="invalid-feedback">{{ $message }}</div>@enderror
+            </div>
+        @endif
+        @if($showRebootOidField)
+            <div class="form-group col-md-6">
+                <label>OID Reboot ONU</label>
+                <input type="text" name="oid_reboot_onu" id="oid-reboot-onu" class="form-control @error('oid_reboot_onu') is-invalid @enderror"
+                    value="{{ old('oid_reboot_onu', $oltConnection->oid_reboot_onu ?? '') }}" placeholder="1.3.6.x.x.x">
+                @error('oid_reboot_onu')<div class="invalid-feedback">{{ $message }}</div>@enderror
+            </div>
+        @endif
     </div>
 @endif

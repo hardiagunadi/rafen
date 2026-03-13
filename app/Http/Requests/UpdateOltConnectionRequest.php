@@ -43,6 +43,7 @@ class UpdateOltConnectionRequest extends FormRequest
             'oid_tx_olt' => ['nullable', 'regex:/^[0-9]+(?:\\.[0-9]+)*$/'],
             'oid_distance' => ['nullable', 'regex:/^[0-9]+(?:\\.[0-9]+)*$/'],
             'oid_status' => ['nullable', 'regex:/^[0-9]+(?:\\.[0-9]+)*$/'],
+            'oid_reboot_onu' => ['nullable', 'regex:/^[0-9]+(?:\\.[0-9]+)*$/'],
         ];
     }
 
@@ -61,6 +62,7 @@ class UpdateOltConnectionRequest extends FormRequest
             'oid_tx_olt.regex' => 'OID Tx OLT harus berupa angka dengan pemisah titik.',
             'oid_distance.regex' => 'OID Distance harus berupa angka dengan pemisah titik.',
             'oid_status.regex' => 'OID status ONU harus berupa angka dengan pemisah titik.',
+            'oid_reboot_onu.regex' => 'OID reboot ONU harus berupa angka dengan pemisah titik.',
         ];
     }
 }

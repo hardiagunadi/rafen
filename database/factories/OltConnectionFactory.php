@@ -38,6 +38,7 @@ class OltConnectionFactory extends Factory
             'oid_tx_olt' => '1.3.6.1.4.1.5875.800.3.1.1.1.1.7',
             'oid_distance' => '1.3.6.1.4.1.5875.800.3.1.1.1.1.9',
             'oid_status' => '1.3.6.1.4.1.5875.800.3.1.1.1.1.8',
+            'oid_reboot_onu' => '1.3.6.1.4.1.5875.800.3.1.1.1.1.19',
         ];
     }
 }

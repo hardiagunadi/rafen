@@ -16,6 +16,10 @@ class PollOltConnectionJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
+    public const MODE_FULL = 'full';
+
+    public const MODE_QUICK = 'quick';
+
     public int $tries = 1;
 
     public int $uniqueFor;
@@ -23,8 +27,12 @@ class PollOltConnectionJob implements ShouldBeUnique, ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(public int $oltConnectionId)
+    public function __construct(public int $oltConnectionId, public string $mode = self::MODE_FULL)
     {
+        if (! in_array($this->mode, [self::MODE_FULL, self::MODE_QUICK], true)) {
+            $this->mode = self::MODE_FULL;
+        }
+
         $this->uniqueFor = max(30, (int) config('olt.polling.lock_seconds', 900));
         $this->onQueue((string) config('olt.polling.queue', 'default'));
     }
@@ -48,7 +56,7 @@ class PollOltConnectionJob implements ShouldBeUnique, ShouldQueue
         }
 
         try {
-            $this->updateRunningProgress($oltConnection, 5, 'Menghubungi OLT...');
+            $this->updateRunningProgress($oltConnection, 5, $this->mode === self::MODE_QUICK ? 'Quick polling: menghubungi OLT...' : 'Menghubungi OLT...');
 
             if (! $oltConnection->is_active) {
                 $oltConnection->update([
@@ -60,18 +68,31 @@ class PollOltConnectionJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            $records = $collector->collect(
-                $oltConnection,
-                function (int $completed, int $total, string $field) use ($oltConnection): void {
-                    $progressPercent = 10 + (int) floor(($completed / max(1, $total)) * 75);
+            $records = $this->mode === self::MODE_QUICK
+                ? $collector->collectEssential(
+                    $oltConnection,
+                    function (int $completed, int $total, string $field) use ($oltConnection): void {
+                        $progressPercent = 10 + (int) floor(($completed / max(1, $total)) * 75);
 
-                    $this->updateRunningProgress(
-                        $oltConnection,
-                        $progressPercent,
-                        'Membaca '.$this->humanizeField($field).' ('.$completed.'/'.$total.')'
-                    );
-                }
-            );
+                        $this->updateRunningProgress(
+                            $oltConnection,
+                            $progressPercent,
+                            'Quick polling: membaca '.$this->humanizeField($field).' ('.$completed.'/'.$total.')'
+                        );
+                    }
+                )
+                : $collector->collect(
+                    $oltConnection,
+                    function (int $completed, int $total, string $field) use ($oltConnection): void {
+                        $progressPercent = 10 + (int) floor(($completed / max(1, $total)) * 75);
+
+                        $this->updateRunningProgress(
+                            $oltConnection,
+                            $progressPercent,
+                            'Membaca '.$this->humanizeField($field).' ('.$completed.'/'.$total.')'
+                        );
+                    }
+                );
 
             $this->updateRunningProgress($oltConnection, 90, 'Menyimpan hasil polling...');
             $now = now();
@@ -104,28 +125,15 @@ class PollOltConnectionJob implements ShouldBeUnique, ShouldQueue
                 OltOnuOptic::query()->upsert(
                     $payload,
                     ['olt_connection_id', 'onu_index'],
-                    [
-                        'pon_interface',
-                        'onu_number',
-                        'serial_number',
-                        'onu_name',
-                        'distance_m',
-                        'rx_onu_dbm',
-                        'tx_onu_dbm',
-                        'rx_olt_dbm',
-                        'tx_olt_dbm',
-                        'status',
-                        'raw_payload',
-                        'last_seen_at',
-                        'updated_at',
-                    ]
+                    $this->upsertColumns()
                 );
             }
 
             $oltConnection->update([
                 'last_polled_at' => $now,
                 'last_poll_success' => true,
-                'last_poll_message' => 'Polling SNMP berhasil. ONU terdeteksi: '.count($records),
+                'last_poll_message' => ($this->mode === self::MODE_QUICK ? 'Quick polling SNMP berhasil.' : 'Polling SNMP berhasil.')
+                    .' ONU terdeteksi: '.count($records),
             ]);
         } catch (Throwable $exception) {
             $oltConnection->update([
@@ -146,6 +154,41 @@ class PollOltConnectionJob implements ShouldBeUnique, ShouldQueue
     public function uniqueId(): string
     {
         return (string) $this->oltConnectionId;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function upsertColumns(): array
+    {
+        if ($this->mode === self::MODE_QUICK) {
+            return [
+                'pon_interface',
+                'onu_number',
+                'distance_m',
+                'rx_onu_dbm',
+                'status',
+                'raw_payload',
+                'last_seen_at',
+                'updated_at',
+            ];
+        }
+
+        return [
+            'pon_interface',
+            'onu_number',
+            'serial_number',
+            'onu_name',
+            'distance_m',
+            'rx_onu_dbm',
+            'tx_onu_dbm',
+            'rx_olt_dbm',
+            'tx_olt_dbm',
+            'status',
+            'raw_payload',
+            'last_seen_at',
+            'updated_at',
+        ];
     }
 
     private function updateRunningProgress(OltConnection $oltConnection, int $progressPercent, string $message): void

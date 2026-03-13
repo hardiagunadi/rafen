@@ -241,6 +241,102 @@ class HsgqSnmpCollector
     }
 
     /**
+     * Polling cepat: fokus data penting (redaman Rx ONU + status + distance).
+     *
+     * @param  callable(int, int, string): void|null  $progressReporter
+     * @return array<int, array<string, mixed>>
+     */
+    public function collectEssential(OltConnection $oltConnection, ?callable $progressReporter = null): array
+    {
+        $oidMap = [
+            'distance_raw' => $oltConnection->oid_distance,
+            'rx_onu_raw' => $oltConnection->oid_rx_onu,
+            'status' => $oltConnection->oid_status,
+        ];
+
+        $configuredOidMap = array_filter($oidMap, fn (?string $oid) => filled($oid));
+        if (empty($configuredOidMap)) {
+            throw new RuntimeException('OID penting (Rx ONU / status / distance) belum dikonfigurasi.');
+        }
+
+        $walkResults = $this->walkConfiguredOids($oltConnection, $configuredOidMap, $progressReporter);
+
+        $allIndexes = collect([
+            'distance_raw',
+            'rx_onu_raw',
+            'status',
+        ])->flatMap(fn (string $field) => array_keys($walkResults[$field] ?? []))
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($allIndexes)) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($allIndexes as $onuIndex) {
+            $ponAndOnu = $this->inferPonAndOnu($onuIndex);
+            $rawPayload = [
+                'distance' => $this->resolveWalkValue($walkResults['distance_raw'] ?? [], $onuIndex),
+                'rx_onu' => $this->resolveWalkValue($walkResults['rx_onu_raw'] ?? [], $onuIndex),
+                'status' => $this->resolveWalkValue($walkResults['status'] ?? [], $onuIndex),
+            ];
+
+            $rows[] = [
+                'onu_index' => $onuIndex,
+                'pon_interface' => $ponAndOnu['pon_interface'],
+                'onu_number' => $ponAndOnu['onu_number'],
+                'distance_m' => $this->parseDistanceValue($rawPayload['distance']),
+                'rx_onu_dbm' => $this->parseOpticalValue($rawPayload['rx_onu'], 'rx_onu', $oltConnection),
+                'status' => $this->normalizeOnuStatus($rawPayload['status']),
+                'raw_payload' => $rawPayload,
+            ];
+        }
+
+        return $rows;
+    }
+
+    public function rebootOnu(OltConnection $oltConnection, string $onuIndex): void
+    {
+        $snmpWriteCommunity = trim((string) $oltConnection->snmp_write_community);
+        if ($snmpWriteCommunity === '') {
+            throw new RuntimeException('SNMP Write Community belum diisi pada konfigurasi OLT.');
+        }
+
+        $rebootBaseOid = $this->normalizeOid($oltConnection->oid_reboot_onu);
+        if ($rebootBaseOid === null) {
+            throw new RuntimeException('OID reboot ONU belum diisi pada konfigurasi OLT.');
+        }
+
+        $normalizedOnuIndex = trim($onuIndex);
+        if ($normalizedOnuIndex === '' || preg_match('/^[0-9]+(?:\.[0-9]+)*$/', $normalizedOnuIndex) !== 1) {
+            throw new RuntimeException('ONU index tidak valid.');
+        }
+
+        $command = sprintf(
+            'snmpset -On -v2c -c %s -t %d -r %d %s %s i 1',
+            escapeshellarg($snmpWriteCommunity),
+            $oltConnection->snmp_timeout,
+            $oltConnection->snmp_retries,
+            escapeshellarg($oltConnection->host.':'.$oltConnection->snmp_port),
+            escapeshellarg('.'.$rebootBaseOid.'.'.$normalizedOnuIndex),
+        );
+
+        try {
+            $result = Process::timeout($this->resolveProcessTimeoutSeconds($oltConnection))
+                ->run($command);
+        } catch (ProcessTimedOutException) {
+            throw new RuntimeException($this->snmpTimeoutMessage($oltConnection));
+        }
+
+        if ($result->failed()) {
+            $message = trim($result->errorOutput() ?: $result->output());
+            throw new RuntimeException($this->normalizeSnmpSetFailureMessage($oltConnection, $message));
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $connectionConfig
      * @return array{
      *   model: string,
@@ -901,6 +997,22 @@ class HsgqSnmpCollector
         }
 
         return 'SNMP walk gagal: '.$message;
+    }
+
+    private function normalizeSnmpSetFailureMessage(OltConnection $oltConnection, string $message): string
+    {
+        $normalizedMessage = strtolower($message);
+
+        if (
+            str_contains($normalizedMessage, 'timed out')
+            || str_contains($normalizedMessage, 'exceeded the timeout')
+            || str_contains($normalizedMessage, 'timeout')
+            || str_contains($normalizedMessage, 'no response')
+        ) {
+            return $this->snmpTimeoutMessage($oltConnection);
+        }
+
+        return 'SNMP set gagal: '.$message;
     }
 
     private function walkByIndexWithTimeoutFallback(OltConnection $oltConnection, string $baseOid): ?array

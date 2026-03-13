@@ -5,6 +5,8 @@ return [
         'queue' => env('OLT_POLL_QUEUE', 'default'),
         'lock_seconds' => (int) env('OLT_POLL_LOCK_SECONDS', 900),
         'parallel_walk_batch' => (int) env('OLT_POLL_PARALLEL_WALK_BATCH', 3),
+        'live_refresh_seconds' => (int) env('OLT_POLL_LIVE_REFRESH_SECONDS', 30),
+        'full_refresh_seconds' => (int) env('OLT_POLL_FULL_REFRESH_SECONDS', 300),
     ],
 
     'hsgq_models' => [

@@ -7,10 +7,15 @@
     $currentUser = auth()->user();
     $canManageOlt = $currentUser->isSuperAdmin() || in_array($currentUser->role, ['administrator', 'noc'], true);
     $canPollOlt = $canManageOlt || $currentUser->role === 'teknisi';
+    $canRebootOnu = $canPollOlt;
     $showNocOnlyOidFields = $currentUser->role === 'noc';
     $isPollingInProgress = $oltConnection->isPollingInProgress();
     $pollingProgressPercent = $oltConnection->pollingProgressPercent();
     $pollingMessage = $oltConnection->pollingDisplayMessage();
+    $quickRefreshSeconds = max(15, (int) config('olt.polling.live_refresh_seconds', 30));
+    $fullRefreshSeconds = max($quickRefreshSeconds, (int) config('olt.polling.full_refresh_seconds', 300));
+    $autoTriggerIntervalMs = $quickRefreshSeconds * 1000;
+    $fullTriggerIntervalMs = $fullRefreshSeconds * 1000;
 
     if ($isPollingInProgress) {
         $pollingBadgeClass = 'badge-info';
@@ -95,6 +100,7 @@
                     <div><strong>OID Rx ONU:</strong> <code>{{ $oltConnection->oid_rx_onu ?: '-' }}</code></div>
                     <div><strong>OID Distance:</strong> <code>{{ $oltConnection->oid_distance ?: '-' }}</code></div>
                     <div><strong>OID Status:</strong> <code>{{ $oltConnection->oid_status ?: '-' }}</code></div>
+                    <div><strong>OID Reboot ONU:</strong> <code>{{ $oltConnection->oid_reboot_onu ?: '-' }}</code></div>
                 </div>
             @endif
         </div>
@@ -173,15 +179,16 @@
                 <thead class="thead-light">
                     <tr>
                         <th>PON</th>
-                        <th>ONU</th>
                         <th>ONU ID</th>
                         <th>MAC / ID</th>
                         <th>Nama ONU</th>
                         <th>Distance</th>
                         <th>Rx ONU</th>
-                        <th>Tx ONU</th>
                         <th>Status</th>
                         <th>Last Seen</th>
+                        @if($canRebootOnu)
+                            <th>Aksi</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -209,7 +216,18 @@
         var searchTimer = null;
         var numberFormatter = new Intl.NumberFormat('id-ID');
         var pollingStatusUrl = '{{ route('olt-connections.polling-status', $oltConnection) }}';
+        var pollingTriggerUrl = '{{ route('olt-connections.poll', $oltConnection) }}';
+        var datatableUrl = '{{ route('olt-connections.datatable', $oltConnection) }}';
+        var rebootOnuUrl = '{{ route('olt-connections.onu-reboot', $oltConnection) }}';
+        var onuStatusUrl = '{{ route('olt-connections.onu-status', $oltConnection) }}';
         var pollingWatcherTimer = null;
+        var autoTriggerTimer = null;
+        var rebootOnlineWatchers = {};
+        var autoTriggerIntervalMs = @json($autoTriggerIntervalMs);
+        var fullTriggerIntervalMs = @json($fullTriggerIntervalMs);
+        var autoPollingEnabled = @json($canPollOlt);
+        var canRebootOnu = @json($canRebootOnu);
+        var lastFullPollTriggeredAt = 0;
         var pollState = {
             isPolling: @json($isPollingInProgress),
             completionHandled: false,
@@ -454,6 +472,128 @@
             window.history.replaceState({}, '', url);
         }
 
+        var columns = [
+            { data: 'pon_interface' },
+            { data: 'onu_id', render: function (data) {
+                return data === '-' ? '-' : '<code>' + data + '</code>';
+            }},
+            { data: 'serial_number', render: function (data) {
+                return data === '-' ? '-' : '<code>' + data + '</code>';
+            }},
+            { data: 'onu_name' },
+            { data: 'distance_m' },
+            { data: 'rx_onu_dbm', render: function (data, type, row) {
+                if (data === '-') {
+                    return '-';
+                }
+
+                if (row.rx_onu_alert) {
+                    return '<span class="text-danger font-weight-bold">' + data + '</span>';
+                }
+
+                return data;
+            }},
+            { data: 'status_badge', searchable: false },
+            { data: 'last_seen_at' }
+        ];
+
+        if (canRebootOnu) {
+            columns.push({
+                data: null,
+                orderable: false,
+                searchable: false,
+                className: 'text-nowrap',
+                render: function (data, type, row) {
+                    if (!row || !row.onu_index || row.onu_index === '-') {
+                        return '-';
+                    }
+
+                    return '<button type="button" class="btn btn-xs btn-warning text-white" data-onu-reboot="' + escapeHtml(row.onu_index) + '"'
+                        + ' data-onu-id="' + escapeHtml(row.onu_id || '-') + '">'
+                        + '<i class="fas fa-power-off mr-1"></i>Restart</button>';
+                }
+            });
+        }
+
+        function showToastMessage(message, type) {
+            if (window.showToast) {
+                window.showToast(message, type);
+                return;
+            }
+
+            if (type === 'danger' || type === 'warning' || type === 'success') {
+                window.alert(message);
+            }
+        }
+
+        function stopRebootOnlineWatcher(onuIndex) {
+            if (!Object.prototype.hasOwnProperty.call(rebootOnlineWatchers, onuIndex)) {
+                return;
+            }
+
+            window.clearInterval(rebootOnlineWatchers[onuIndex]);
+            delete rebootOnlineWatchers[onuIndex];
+        }
+
+        function fetchOnuStatusByIndex(onuIndex) {
+            var params = new URLSearchParams();
+            params.set('onu_index', onuIndex);
+
+            return fetch(onuStatusUrl + '?' + params.toString(), {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                credentials: 'same-origin',
+            }).then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok) {
+                        throw new Error(payload.message || ('Gagal cek status ONU (HTTP ' + response.status + ').'));
+                    }
+
+                    return payload;
+                });
+            }).then(function (payload) {
+                if (!payload || !payload.data || typeof payload.data !== 'object') {
+                    throw new Error('Data ONU tidak ditemukan saat verifikasi status online.');
+                }
+
+                return payload.data;
+            });
+        }
+
+        function watchOnuUntilOnline(onuIndex, onuId) {
+            var maxAttempts = 18;
+            var checkIntervalMs = 10000;
+            var attempts = 0;
+
+            stopRebootOnlineWatcher(onuIndex);
+
+            rebootOnlineWatchers[onuIndex] = window.setInterval(function () {
+                attempts++;
+
+                fetchOnuStatusByIndex(onuIndex)
+                    .then(function (row) {
+                        if (String(row.status || '').toUpperCase() !== 'ONLINE') {
+                            if (attempts >= maxAttempts) {
+                                stopRebootOnlineWatcher(onuIndex);
+                                showToastMessage('Restart berhasil, tetapi ONU ' + onuId + ' belum kembali online. Status terakhir: ' + (row.status || '-'), 'warning');
+                            }
+
+                            return;
+                        }
+
+                        stopRebootOnlineWatcher(onuIndex);
+                        table.ajax.reload(null, false);
+                        showToastMessage('Perangkat sudah kembali online: ONU ' + onuId + '.', 'success');
+                    })
+                    .catch(function (error) {
+                        stopRebootOnlineWatcher(onuIndex);
+                        showToastMessage(error.message || ('Gagal memantau status online ONU ' + onuId + '.'), 'danger');
+                    });
+            }, checkIntervalMs);
+        }
+
         var table = $('#onu-optics-table').DataTable({
             processing: true,
             serverSide: true,
@@ -462,38 +602,13 @@
                 search: searchInput.value || ''
             },
             ajax: {
-                url: '{{ route('olt-connections.datatable', $oltConnection) }}',
+                url: datatableUrl,
                 data: function (data) {
                     data.port_id = portFilter.value;
                     data.status = activeStatus();
                 }
             },
-            columns: [
-                { data: 'pon_interface' },
-                { data: 'onu_number' },
-                { data: 'onu_id', render: function (data) {
-                    return data === '-' ? '-' : '<code>' + data + '</code>';
-                }},
-                { data: 'serial_number', render: function (data) {
-                    return data === '-' ? '-' : '<code>' + data + '</code>';
-                }},
-                { data: 'onu_name' },
-                { data: 'distance_m' },
-                { data: 'rx_onu_dbm', render: function (data, type, row) {
-                    if (data === '-') {
-                        return '-';
-                    }
-
-                    if (row.rx_onu_alert) {
-                        return '<span class="text-danger font-weight-bold">' + data + '</span>';
-                    }
-
-                    return data;
-                }},
-                { data: 'tx_onu_dbm' },
-                { data: 'status_badge', searchable: false },
-                { data: 'last_seen_at' }
-            ],
+            columns: columns,
             pageLength: 50,
             searchDelay: 350,
             dom: "rt<'row align-items-center px-3 py-3'<'col-md-4'l><'col-md-4 text-center'i><'col-md-4'p>>",
@@ -582,6 +697,76 @@
             pollingWatcherTimer = null;
         }
 
+        function csrfToken() {
+            var element = document.querySelector('meta[name="csrf-token"]');
+
+            return element ? (element.getAttribute('content') || '') : '';
+        }
+
+        function triggerPollingInBackground(mode) {
+            var normalizedMode = mode === 'quick' ? 'quick' : 'full';
+
+            if (!autoPollingEnabled || pollState.isPolling) {
+                return;
+            }
+
+            fetch(pollingTriggerUrl + '?mode=' + encodeURIComponent(normalizedMode), {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                credentials: 'same-origin',
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Trigger polling gagal.');
+                    }
+
+                    return response.json();
+                })
+                .then(function () {
+                    pollState.isPolling = true;
+                    pollState.completionHandled = false;
+                    startPollingWatcher();
+                    fetchPollingStatus();
+                })
+                .catch(function () {
+                });
+        }
+
+        function startAutoTrigger() {
+            if (!autoPollingEnabled || autoTriggerTimer !== null) {
+                return;
+            }
+
+            autoTriggerTimer = window.setInterval(function () {
+                if (document.hidden) {
+                    return;
+                }
+
+                var now = Date.now();
+                var mode = 'quick';
+
+                if (now - lastFullPollTriggeredAt >= fullTriggerIntervalMs) {
+                    mode = 'full';
+                    lastFullPollTriggeredAt = now;
+                }
+
+                triggerPollingInBackground(mode);
+            }, autoTriggerIntervalMs);
+        }
+
+        function stopAutoTrigger() {
+            if (autoTriggerTimer === null) {
+                return;
+            }
+
+            window.clearInterval(autoTriggerTimer);
+            autoTriggerTimer = null;
+        }
+
         portFilter.addEventListener('change', function () {
             reloadTable(true);
         });
@@ -622,9 +807,100 @@
             reloadTable(true);
         });
 
+        if (canRebootOnu) {
+            tableElement.addEventListener('click', function (event) {
+                var button = event.target.closest('[data-onu-reboot]');
+
+                if (!button) {
+                    return;
+                }
+
+                var onuIndex = button.getAttribute('data-onu-reboot') || '';
+                var onuId = button.getAttribute('data-onu-id') || '-';
+
+                if (onuIndex === '') {
+                    return;
+                }
+
+                if (!window.confirm('Restart ONU ' + onuId + ' sekarang?')) {
+                    return;
+                }
+
+                var originalButtonHtml = button.innerHTML;
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Restart...';
+                showToastMessage('Memproses restart ONU ' + onuId + '...', 'warning');
+
+                fetch(rebootOnuUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken(),
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ onu_index: onuIndex }),
+                })
+                    .then(function (response) {
+                        return response.json().then(function (payload) {
+                            if (!response.ok) {
+                                throw new Error(payload.message || 'Gagal kirim reboot ONU.');
+                            }
+
+                            return payload;
+                        });
+                    })
+                    .then(function (payload) {
+                        var successMessage = 'Restart berhasil.';
+                        if (payload.message) {
+                            successMessage += ' ' + payload.message;
+                        }
+
+                        showToastMessage(successMessage, 'success');
+                        watchOnuUntilOnline(onuIndex, onuId);
+                    })
+                    .catch(function (error) {
+                        showToastMessage(error.message || ('Restart ONU gagal untuk ' + onuId + '.'), 'danger');
+                    })
+                    .finally(function () {
+                        button.disabled = false;
+                        button.innerHTML = originalButtonHtml;
+                    });
+            });
+        }
+
         updateStatusButtons('{{ $selectedStatus }}');
         updateSummaryCards(portFilter.value);
         syncQueryString();
+
+        var currentUrl = new URL(window.location.href);
+        var shouldAutoPoll = currentUrl.searchParams.get('auto_poll') === '1';
+        startAutoTrigger();
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) {
+                stopAutoTrigger();
+                return;
+            }
+
+            startAutoTrigger();
+            fetchPollingStatus();
+        });
+
+        window.addEventListener('beforeunload', function () {
+            stopAutoTrigger();
+            stopPollingWatcher();
+            Object.keys(rebootOnlineWatchers).forEach(function (onuIndex) {
+                stopRebootOnlineWatcher(onuIndex);
+            });
+        });
+
+        if (shouldAutoPoll) {
+            currentUrl.searchParams.delete('auto_poll');
+            window.history.replaceState({}, '', currentUrl.toString());
+            triggerPollingInBackground('full');
+        }
 
         if (pollState.isPolling) {
             fetchPollingStatus();

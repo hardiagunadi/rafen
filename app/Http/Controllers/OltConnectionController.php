@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\DetectOltModelRequest;
 use App\Http\Requests\DetectOltOidRequest;
+use App\Http\Requests\RebootOltOnuRequest;
 use App\Http\Requests\StoreOltConnectionRequest;
 use App\Http\Requests\UpdateOltConnectionRequest;
 use App\Jobs\PollOltConnectionJob;
@@ -179,6 +180,7 @@ class OltConnectionController extends Controller
             'recordsTotal' => $total,
             'recordsFiltered' => $filtered,
             'data' => $rows->map(fn (OltOnuOptic $onuOptic): array => [
+                'onu_index' => $onuOptic->onu_index,
                 'pon_interface' => $onuOptic->pon_interface ?? '-',
                 'onu_number' => $onuOptic->onu_number ?? '-',
                 'onu_id' => $this->formatOnuId($onuOptic->pon_interface, $onuOptic->onu_number),
@@ -189,7 +191,6 @@ class OltConnectionController extends Controller
                 'rx_onu_alert' => $onuOptic->rx_onu_dbm !== null
                     ? (float) $onuOptic->rx_onu_dbm < self::RX_ONU_SAFE_LIMIT_DBM
                     : false,
-                'tx_onu_dbm' => $onuOptic->tx_onu_dbm !== null ? number_format((float) $onuOptic->tx_onu_dbm, 2).' dBm' : '-',
                 'status' => $this->formatStatusLabel($onuOptic->status),
                 'status_badge' => $this->formatStatusBadge($onuOptic->status),
                 'last_seen_at' => $onuOptic->last_seen_at?->format('Y-m-d H:i:s') ?? '-',
@@ -269,15 +270,13 @@ class OltConnectionController extends Controller
     {
         $columnMap = [
             0 => ['pon_interface'],
-            1 => ['onu_number'],
-            2 => ['pon_interface', 'onu_number'],
-            3 => ['serial_number'],
-            4 => ['onu_name'],
-            5 => ['distance_m'],
-            6 => ['rx_onu_dbm'],
-            7 => ['tx_onu_dbm'],
-            8 => ['status'],
-            9 => ['last_seen_at'],
+            1 => ['pon_interface', 'onu_number'],
+            2 => ['serial_number'],
+            3 => ['onu_name'],
+            4 => ['distance_m'],
+            5 => ['rx_onu_dbm'],
+            6 => ['status'],
+            7 => ['last_seen_at'],
         ];
 
         $orders = $request->input('order', []);
@@ -405,7 +404,7 @@ class OltConnectionController extends Controller
             ->with('status', 'Koneksi OLT HSGQ dihapus.');
     }
 
-    public function poll(OltConnection $oltConnection): RedirectResponse
+    public function poll(OltConnection $oltConnection, Request $request): JsonResponse|RedirectResponse
     {
         if (! $this->canPollOltNow()) {
             abort(403);
@@ -413,9 +412,23 @@ class OltConnectionController extends Controller
 
         $this->authorizeAccess($oltConnection);
 
+        $mode = $this->normalizePollingMode((string) $request->input('mode'));
+
         if (app()->runningUnitTests()) {
-            PollOltConnectionJob::dispatchSync($oltConnection->id);
+            PollOltConnectionJob::dispatchSync($oltConnection->id, $mode);
             $latestConnection = $oltConnection->fresh();
+
+            if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'status' => $latestConnection?->last_poll_success === false ? 'error' : 'ok',
+                    'message' => $latestConnection?->last_poll_success === false
+                        ? 'Polling OLT gagal: '.($latestConnection->last_poll_message ?? 'Terjadi kesalahan SNMP.')
+                        : ($mode === PollOltConnectionJob::MODE_QUICK ? 'Quick polling OLT HSGQ berhasil. ' : 'Polling OLT HSGQ berhasil. ')
+                            .($latestConnection->last_poll_message ?? ''),
+                    'is_polling' => (bool) $latestConnection?->isPollingInProgress(),
+                    'last_poll_success' => $latestConnection?->last_poll_success,
+                ], $latestConnection?->last_poll_success === false ? 422 : 200);
+            }
 
             if ($latestConnection?->last_poll_success === false) {
                 return redirect()
@@ -425,7 +438,8 @@ class OltConnectionController extends Controller
 
             return redirect()
                 ->route('olt-connections.show', $oltConnection)
-                ->with('status', 'Polling OLT HSGQ berhasil. '.($latestConnection->last_poll_message ?? ''));
+                ->with('status', ($mode === PollOltConnectionJob::MODE_QUICK ? 'Quick polling OLT HSGQ berhasil. ' : 'Polling OLT HSGQ berhasil. ')
+                    .($latestConnection->last_poll_message ?? ''));
         }
 
         $oltConnection->update([
@@ -434,14 +448,28 @@ class OltConnectionController extends Controller
         ]);
 
         if ((string) config('queue.default') === 'sync') {
-            PollOltConnectionJob::dispatchAfterResponse($oltConnection->id);
+            PollOltConnectionJob::dispatchAfterResponse($oltConnection->id, $mode);
         } else {
-            PollOltConnectionJob::dispatch($oltConnection->id);
+            PollOltConnectionJob::dispatch($oltConnection->id, $mode);
+        }
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'ok',
+                'message' => $mode === PollOltConnectionJob::MODE_QUICK
+                    ? 'Quick polling OLT dijadwalkan di background.'
+                    : 'Polling OLT dijadwalkan di background.',
+                'is_polling' => true,
+                'last_poll_success' => null,
+            ]);
         }
 
         return redirect()
             ->route('olt-connections.show', $oltConnection)
-            ->with('status', 'Polling OLT dijadwalkan di background. Refresh halaman beberapa saat lagi untuk hasil terbaru.');
+            ->with('status', ($mode === PollOltConnectionJob::MODE_QUICK
+                ? 'Quick polling OLT dijadwalkan di background.'
+                : 'Polling OLT dijadwalkan di background.')
+                .' Refresh halaman beberapa saat lagi untuk hasil terbaru.');
     }
 
     public function autoDetectOid(DetectOltOidRequest $request): JsonResponse
@@ -488,6 +516,75 @@ class OltConnectionController extends Controller
         }
     }
 
+    public function rebootOnu(OltConnection $oltConnection, RebootOltOnuRequest $request): JsonResponse
+    {
+        if (! $this->canPollOltNow()) {
+            abort(403);
+        }
+
+        $this->authorizeAccess($oltConnection);
+
+        $onuIndex = (string) $request->validated('onu_index');
+        $onuExists = $oltConnection->onuOptics()
+            ->where('onu_index', $onuIndex)
+            ->exists();
+
+        if (! $onuExists) {
+            return response()->json([
+                'message' => 'ONU tidak ditemukan pada data OLT ini.',
+            ], 404);
+        }
+
+        try {
+            $this->collector->rebootOnu($oltConnection, $onuIndex);
+
+            return response()->json([
+                'status' => 'ok',
+                'message' => 'Perintah restart ONU berhasil dikirim ke OLT.',
+            ]);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function onuStatus(OltConnection $oltConnection, Request $request): JsonResponse
+    {
+        if (! $this->canPollOltNow()) {
+            abort(403);
+        }
+
+        $this->authorizeAccess($oltConnection);
+
+        $validated = $request->validate([
+            'onu_index' => ['required', 'regex:/^[0-9]+(?:\.[0-9]+)*$/'],
+        ], [
+            'onu_index.required' => 'ONU index wajib diisi.',
+            'onu_index.regex' => 'Format ONU index tidak valid.',
+        ]);
+
+        $onuOptic = $oltConnection->onuOptics()
+            ->where('onu_index', (string) $validated['onu_index'])
+            ->first();
+
+        if (! $onuOptic) {
+            return response()->json([
+                'message' => 'Data ONU tidak ditemukan pada OLT ini.',
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'data' => [
+                'onu_index' => (string) $onuOptic->onu_index,
+                'onu_id' => $this->formatOnuId($onuOptic->pon_interface, $onuOptic->onu_number),
+                'status' => $this->formatStatusLabel($onuOptic->status),
+                'last_seen_at' => $onuOptic->last_seen_at?->format('Y-m-d H:i:s'),
+            ],
+        ]);
+    }
+
     private function authorizeAccess(OltConnection $oltConnection): void
     {
         $user = auth()->user();
@@ -520,5 +617,12 @@ class OltConnectionController extends Controller
         }
 
         return in_array($user->role, ['administrator', 'noc', 'teknisi'], true);
+    }
+
+    private function normalizePollingMode(string $mode): string
+    {
+        return in_array($mode, [PollOltConnectionJob::MODE_FULL, PollOltConnectionJob::MODE_QUICK], true)
+            ? $mode
+            : PollOltConnectionJob::MODE_FULL;
     }
 }

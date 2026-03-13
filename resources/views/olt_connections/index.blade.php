@@ -68,7 +68,7 @@
                             </td>
                             <td>{{ $connection->last_polled_at?->format('Y-m-d H:i:s') ?? '-' }}</td>
                             <td class="text-right">
-                                <a href="{{ route('olt-connections.show', $connection) }}" class="btn btn-outline-primary btn-sm" title="Lihat Detail">
+                                <a href="{{ route('olt-connections.show', [$connection, 'auto_poll' => 1]) }}" class="btn btn-outline-primary btn-sm" title="Lihat Detail">
                                     <i class="fas fa-eye"></i>
                                 </a>
                                 @if($canPollOlt)

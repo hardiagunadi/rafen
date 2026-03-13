@@ -39,6 +39,7 @@ class OltConnection extends Model
         'oid_tx_olt',
         'oid_distance',
         'oid_status',
+        'oid_reboot_onu',
         'last_polled_at',
         'last_poll_success',
         'last_poll_message',
