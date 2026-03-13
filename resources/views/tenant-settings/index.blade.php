@@ -800,7 +800,7 @@
                             <option value="CIMB Niaga">CIMB Niaga</option>
                             <option value="Danamon">Danamon</option>
                             <option value="Permata">Permata</option>
-                            <option value="OCBC NISP">OCBC NISP</option>
+                            <option value="Bank Jateng">Bank Jateng</option>
                             <option value="Lainnya">Lainnya</option>
                         </select>
                     </div>

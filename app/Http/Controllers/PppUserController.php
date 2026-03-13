@@ -47,7 +47,7 @@ class PppUserController extends Controller
         $filterOnProcess = $request->input('filter_on_process', '');
 
         $query = PppUser::query()
-            ->with(['owner', 'profile', 'invoices' => fn ($q) => $q->where('status', 'unpaid')->latest()->limit(1)])
+            ->with(['owner', 'profile', 'assignedTeknisi', 'invoices' => fn ($q) => $q->where('status', 'unpaid')->latest()->limit(1)])
             ->accessibleBy($currentUser);
 
         if ($filterIsolir === '1') {
@@ -83,7 +83,8 @@ class PppUserController extends Controller
             ->get()
             ->keyBy('username');
 
-        $data = $users->map(function (PppUser $user) use ($activeSessions) {
+        $currentUserForMap = $currentUser;
+        $data = $users->map(function (PppUser $user) use ($activeSessions, $currentUserForMap) {
             $invoice = $user->invoices->first();
             $session = $activeSessions->get($user->username);
             $canRenew = $invoice && $invoice->created_at->equalTo($invoice->updated_at);
@@ -114,19 +115,31 @@ class PppUserController extends Controller
                 ? '<button class="dropdown-item text-danger" data-ajax-delete="'.route('invoices.destroy', $invoice).'" data-confirm="Hapus tagihan ini?"><i class="fas fa-file-invoice mr-1"></i>Hapus Tagihan</button>'
                 : '<span class="dropdown-item text-muted"><i class="fas fa-file-invoice mr-1"></i>Hapus Tagihan</span>';
 
-            $aksi = '<div class="btn-group btn-group-sm">'.
-                '<a href="'.route('ppp-users.edit', $user).'" class="btn btn-warning text-white" title="Edit"><i class="fas fa-pen"></i></a>'.
-                '<button type="button" class="btn btn-warning dropdown-toggle dropdown-toggle-split text-white" data-toggle="dropdown"></button>'.
-                '<div class="dropdown-menu dropdown-menu-right">'.
-                    $invoiceMenuItem.
-                    '<div class="dropdown-divider"></div>'.
-                    '<button class="dropdown-item text-danger" data-ajax-delete="'.route('ppp-users.destroy', $user).'" data-confirm="Hapus user PPP ini?"><i class="fas fa-user-times mr-1"></i>Hapus User</button>'.
-                '</div>'.
-                '</div>';
+            $isTeknisi = $currentUserForMap->isTeknisi();
+            $isAssigned = $user->assigned_teknisi_id !== null && $user->assigned_teknisi_id === $currentUserForMap->id;
+            $canManage = ! $isTeknisi || is_null($user->assigned_teknisi_id) || $isAssigned;
+
+            if ($canManage) {
+                $aksi = '<div class="btn-group btn-group-sm">'.
+                    '<a href="'.route('ppp-users.edit', $user).'" class="btn btn-warning text-white" title="Edit"><i class="fas fa-pen"></i></a>'.
+                    '<button type="button" class="btn btn-warning dropdown-toggle dropdown-toggle-split text-white" data-toggle="dropdown"></button>'.
+                    '<div class="dropdown-menu dropdown-menu-right">'.
+                        $invoiceMenuItem.
+                        '<div class="dropdown-divider"></div>'.
+                        '<button class="dropdown-item text-danger" data-ajax-delete="'.route('ppp-users.destroy', $user).'" data-confirm="Hapus user PPP ini?"><i class="fas fa-user-times mr-1"></i>Hapus User</button>'.
+                    '</div>'.
+                    '</div>';
+            } else {
+                $aksi = '<span class="text-muted small">Read-only</span>';
+            }
+
+            $teknisiLabel = $user->assignedTeknisi ? '<span class="badge badge-info">'.e($user->assignedTeknisi->name).'</span>' : '<span class="text-muted">-</span>';
 
             return [
                 'checkbox' => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
-                'customer_id' => '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('ppp-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>',
+                'customer_id' => $canManage
+                    ? '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('ppp-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>'
+                    : '<span class="badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'">'.($user->customer_id ?? '-').'</span>',
                 'nama' => (function () use ($user, $session) {
                     if ($session) {
                         $tooltipText = 'CONNECTED | '.$session->caller_id.' | Online: '.$session->uptime;
@@ -145,6 +158,7 @@ class PppUserController extends Controller
                 'diperpanjang' => $updated,
                 'jatuh_tempo' => $due,
                 'owner' => $user->owner?->email ?? $user->owner?->name ?? '-',
+                'teknisi' => $teknisiLabel,
                 'renew_print' => '<div class="btn-group btn-group-sm">'.$renewBtn.$bayarBtn.'</div>',
                 'aksi' => '<div class="text-right">'.$aksi.'</div>',
             ];
@@ -317,12 +331,22 @@ class PppUserController extends Controller
             abort(403);
         }
 
+        $teknisiList = collect();
+        if (! $currentUser->isTeknisi()) {
+            $teknisiQuery = User::query()->where('role', 'teknisi');
+            if (! $currentUser->isSuperAdmin()) {
+                $teknisiQuery->where('parent_id', $currentUser->effectiveOwnerId());
+            }
+            $teknisiList = $teknisiQuery->orderBy('name')->get();
+        }
+
         return view('ppp_users.edit', [
             'pppUser' => $pppUser,
             'owners' => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
             'groups' => ProfileGroup::query()->orderBy('name')->get(),
             'profiles' => PppProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
             'odps' => Odp::query()->accessibleBy($currentUser)->orderBy('code')->get(),
+            'teknisiList' => $teknisiList,
         ]);
     }
 

@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\LoginLog;
 use App\Models\PppUser;
 use App\Models\WaBlastLog;
+use App\Models\WaWebhookLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -238,13 +239,13 @@ class LogController extends Controller
         ]);
     }
 
-    // ── Log WA Blast ─────────────────────────────────────────────────────────
+    // ── Log Pengiriman WA ─────────────────────────────────────────────────────
 
-    public function waBlastIndex(): View
+    public function waPengirimanIndex(): View
     {
         $this->denyTeknisi();
 
-        return view('logs.wa-blast');
+        return view('logs.wa-pengiriman');
     }
 
     public function waBlastDatatable(Request $request): JsonResponse
@@ -287,11 +288,81 @@ class LogController extends Controller
                 'status'        => $r->status,
                 'reason'        => $r->reason ?? '-',
                 'ref_id'        => $r->ref_id ?? '-',
+                'message'       => $r->message ?? '',
             ]),
         ]);
     }
 
+    public function waWebhookDatatable(Request $request): JsonResponse
+    {
+        $this->denyTeknisi();
+
+        $user   = auth()->user();
+        $search = $request->input('search.value', $request->input('search', ''));
+
+        $query = WaWebhookLog::query()
+            ->accessibleBy($user)
+            ->when($request->filled('event_type'), fn($q) => $q->where('event_type', $request->event_type))
+            ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
+            ->when($search !== '', fn($q) => $q->where(function ($q2) use ($search) {
+                $q2->where('sender', 'like', "%{$search}%")
+                   ->orWhere('message', 'like', "%{$search}%")
+                   ->orWhere('session_id', 'like', "%{$search}%");
+            }))
+            ->orderByDesc('created_at');
+
+        $total    = WaWebhookLog::query()->accessibleBy($user)->count();
+        $filtered = $query->count();
+        $rows     = $query->offset($request->integer('start'))
+            ->limit(max(1, $request->integer('length', 20)))
+            ->get();
+
+        return response()->json([
+            'draw'            => $request->integer('draw'),
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $rows->map(function ($r) {
+                $payload = is_array($r->payload) ? $r->payload : [];
+                $mediaType = $this->detectMediaType($payload);
+                $payloadPreview = $payload !== [] ? json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '';
+
+                return [
+                    'created_at'      => $r->created_at?->format('Y-m-d H:i:s') ?? '-',
+                    'event_type'      => $r->event_type,
+                    'session_id'      => $r->session_id ?? '-',
+                    'sender'          => $r->sender ?? '-',
+                    'message'         => $r->message ?? '-',
+                    'status'          => $r->status ?? '-',
+                    'media_type'      => $mediaType,
+                    'has_payload'     => $payload !== [],
+                    'payload_preview' => mb_substr($payloadPreview, 0, 4000),
+                ];
+            }),
+        ]);
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
+
+    private function detectMediaType(array $payload): ?string
+    {
+        $msg = $payload['message'] ?? $payload['data']['message'] ?? null;
+        if (is_array($msg)) {
+            if (isset($msg['imageMessage']))    return 'image';
+            if (isset($msg['videoMessage']))    return 'video';
+            if (isset($msg['audioMessage']))    return 'audio';
+            if (isset($msg['documentMessage'])) return 'document';
+            if (isset($msg['stickerMessage']))  return 'sticker';
+            if (isset($msg['locationMessage'])) return 'location';
+            if (isset($msg['contactMessage']))  return 'contact';
+        }
+
+        $type = strtolower((string) ($payload['type'] ?? $payload['messageType'] ?? ''));
+        if (in_array($type, ['image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'ptt'], true)) {
+            return $type;
+        }
+
+        return null;
+    }
 
     private function extractJobName(string $payload): string
     {

@@ -83,7 +83,11 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('bg-process/datatable', [\App\Http\Controllers\LogController::class, 'bgProcessDatatable'])->name('bg-process.datatable');
         Route::get('radius-auth', [\App\Http\Controllers\LogController::class, 'radiusAuthIndex'])->name('radius-auth');
         Route::get('radius-auth/datatable', [\App\Http\Controllers\LogController::class, 'radiusAuthDatatable'])->name('radius-auth.datatable');
-        Route::get('wa-blast', [\App\Http\Controllers\LogController::class, 'waBlastIndex'])->name('wa-blast');
+        Route::get('wa-pengiriman', [\App\Http\Controllers\LogController::class, 'waPengirimanIndex'])->name('wa-pengiriman');
+        Route::get('wa-pengiriman/keluar/datatable', [\App\Http\Controllers\LogController::class, 'waBlastDatatable'])->name('wa-pengiriman.keluar.datatable');
+        Route::get('wa-pengiriman/masuk/datatable', [\App\Http\Controllers\LogController::class, 'waWebhookDatatable'])->name('wa-pengiriman.masuk.datatable');
+        // backward-compat redirect
+        Route::get('wa-blast', fn() => redirect()->route('logs.wa-pengiriman'))->name('wa-blast');
         Route::get('wa-blast/datatable', [\App\Http\Controllers\LogController::class, 'waBlastDatatable'])->name('wa-blast.datatable');
     });
     Route::post('mikrotik-connections/test', [MikrotikConnectionController::class, 'test'])->name('mikrotik-connections.test');
@@ -269,6 +273,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('/wa/devices', [TenantSettingsController::class, 'waDevices'])->name('wa-devices.index');
         Route::post('/wa/devices', [TenantSettingsController::class, 'storeWaDevice'])->name('wa-devices.store');
         Route::post('/wa/devices/{device}/default', [TenantSettingsController::class, 'setDefaultWaDevice'])->name('wa-devices.default');
+        Route::post('/wa/devices/{device}/test', [TenantSettingsController::class, 'testWaDevice'])->name('wa-devices.test');
         Route::delete('/wa/devices/{device}', [TenantSettingsController::class, 'destroyWaDevice'])->name('wa-devices.destroy');
 
         // Isolir page settings

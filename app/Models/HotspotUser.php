@@ -34,6 +34,7 @@ class HotspotUser extends Model
         'hotspot_password',
         'catatan',
         'mixradius_id',
+        'assigned_teknisi_id',
     ];
 
     /**
@@ -53,6 +54,11 @@ class HotspotUser extends Model
         return $this->belongsTo(User::class, 'owner_id');
     }
 
+    public function assignedTeknisi(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_teknisi_id');
+    }
+
     public function hotspotProfile(): BelongsTo
     {
         return $this->belongsTo(HotspotProfile::class);
@@ -69,7 +75,16 @@ class HotspotUser extends Model
             return $query;
         }
 
-        return $query->where('owner_id', $user->effectiveOwnerId());
+        $base = $query->where('owner_id', $user->effectiveOwnerId());
+
+        if ($user->isTeknisi()) {
+            return $base->where(function ($q) use ($user) {
+                $q->whereNull('assigned_teknisi_id')
+                    ->orWhere('assigned_teknisi_id', $user->id);
+            });
+        }
+
+        return $base;
     }
 
     /**

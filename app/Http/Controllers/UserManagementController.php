@@ -190,6 +190,7 @@ class UserManagementController extends Controller
             'keuangan' => 'Keuangan',
             'mitra' => 'Mitra',
             'teknisi' => 'Teknisi',
+            'cs' => 'Customer Services',
         ];
     }
 
@@ -201,6 +202,7 @@ class UserManagementController extends Controller
             'keuangan' => 'Keuangan',
             'mitra' => 'Mitra',
             'teknisi' => 'Teknisi',
+            'cs' => 'Customer Services',
         ];
     }
 }

@@ -24,6 +24,7 @@ class WaBlastLog extends Model
         'username',
         'customer_name',
         'ref_id',
+        'message',
         'created_at',
     ];
 

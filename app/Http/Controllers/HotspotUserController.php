@@ -36,7 +36,7 @@ class HotspotUserController extends Controller
         $filterOnProcess = $request->input('filter_on_process', '');
 
         $query = HotspotUser::query()
-            ->with(['owner', 'hotspotProfile'])
+            ->with(['owner', 'hotspotProfile', 'assignedTeknisi'])
             ->accessibleBy($currentUser);
 
         if ($filterOnProcess === '1') {
@@ -57,7 +57,8 @@ class HotspotUserController extends Controller
 
         $users = $query->latest()->skip($start)->take($length > 0 ? $length : 10)->get();
 
-        $data = $users->map(function (HotspotUser $user) {
+        $currentUserForMap = $currentUser;
+        $data = $users->map(function (HotspotUser $user) use ($currentUserForMap) {
             $statusColor = match ($user->status_akun) {
                 'enable' => 'success',
                 'disable' => 'danger',
@@ -73,24 +74,38 @@ class HotspotUserController extends Controller
                 $due = '<span class="text-muted">-</span>';
             }
 
-            $perpanjang = '<div class="btn-group btn-group-sm"><button class="btn btn-success" data-ajax-post="'.route('hotspot-users.renew', $user).'" data-confirm="Perpanjang layanan hotspot ini?"><i class="fas fa-redo-alt mr-1"></i>Perpanjang</button></div>';
+            $isTeknisi = $currentUserForMap->isTeknisi();
+            $canManage = ! $isTeknisi || is_null($user->assigned_teknisi_id) || $user->assigned_teknisi_id === $currentUserForMap->id;
 
-            $aksi = '<div class="btn-group btn-group-sm">'.
-                '<a href="'.route('hotspot-users.edit', $user).'" class="btn btn-warning text-white" title="Edit"><i class="fas fa-pen"></i></a>'.
-                '<button type="button" class="btn btn-warning dropdown-toggle dropdown-toggle-split text-white" data-toggle="dropdown"></button>'.
-                '<div class="dropdown-menu dropdown-menu-right">'.
-                    '<button class="dropdown-item text-danger" data-ajax-delete="'.route('hotspot-users.destroy', $user).'" data-confirm="Hapus user hotspot ini?"><i class="fas fa-trash mr-1"></i>Hapus</button>'.
-                '</div>'.
-                '</div>';
+            $perpanjang = $canManage
+                ? '<div class="btn-group btn-group-sm"><button class="btn btn-success" data-ajax-post="'.route('hotspot-users.renew', $user).'" data-confirm="Perpanjang layanan hotspot ini?"><i class="fas fa-redo-alt mr-1"></i>Perpanjang</button></div>'
+                : '';
+
+            if ($canManage) {
+                $aksi = '<div class="btn-group btn-group-sm">'.
+                    '<a href="'.route('hotspot-users.edit', $user).'" class="btn btn-warning text-white" title="Edit"><i class="fas fa-pen"></i></a>'.
+                    '<button type="button" class="btn btn-warning dropdown-toggle dropdown-toggle-split text-white" data-toggle="dropdown"></button>'.
+                    '<div class="dropdown-menu dropdown-menu-right">'.
+                        '<button class="dropdown-item text-danger" data-ajax-delete="'.route('hotspot-users.destroy', $user).'" data-confirm="Hapus user hotspot ini?"><i class="fas fa-trash mr-1"></i>Hapus</button>'.
+                    '</div>'.
+                    '</div>';
+            } else {
+                $aksi = '<span class="text-muted small">Read-only</span>';
+            }
+
+            $teknisiLabel = $user->assignedTeknisi ? '<span class="badge badge-info">'.e($user->assignedTeknisi->name).'</span>' : '<span class="text-muted">-</span>';
 
             return [
                 'checkbox' => '<input type="checkbox" name="ids[]" value="'.$user->id.'">',
-                'customer_id' => '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('hotspot-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>',
+                'customer_id' => $canManage
+                    ? '<a href="#" class="toggle-status-btn badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'" data-toggle-url="'.route('hotspot-users.toggle-status', $user).'" title="Klik untuk '.($user->status_akun === 'enable' ? 'disable' : 'enable').'">'.($user->customer_id ?? '-').'</a>'
+                    : '<span class="badge badge-'.($user->status_akun === 'enable' ? 'success' : 'danger').'">'.($user->customer_id ?? '-').'</span>',
                 'nama' => '<div class="font-weight-bold text-uppercase">'.$user->customer_name.'</div>',
                 'username' => $user->username ?? '-',
                 'profil' => $user->hotspotProfile?->name ?? '-',
                 'status' => $statusBadge,
                 'jatuh_tempo' => $due,
+                'teknisi' => $teknisiLabel,
                 'owner' => $user->owner?->name ?? '-',
                 'perpanjang' => $perpanjang,
                 'aksi' => '<div class="text-right">'.$aksi.'</div>',
@@ -215,11 +230,21 @@ class HotspotUserController extends Controller
             abort(403);
         }
 
+        $teknisiList = collect();
+        if (! $currentUser->isTeknisi()) {
+            $teknisiQuery = User::query()->where('role', 'teknisi');
+            if (! $currentUser->isSuperAdmin()) {
+                $teknisiQuery->where('parent_id', $currentUser->effectiveOwnerId());
+            }
+            $teknisiList = $teknisiQuery->orderBy('name')->get();
+        }
+
         return view('hotspot_users.edit', [
             'hotspotUser' => $hotspotUser,
             'owners' => $currentUser->isSuperAdmin() ? User::query()->orderBy('name')->get() : collect([$currentUser]),
             'groups' => ProfileGroup::query()->accessibleBy($currentUser)->orderBy('name')->get(),
             'profiles' => HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get(),
+            'teknisiList' => $teknisiList,
         ]);
     }
 

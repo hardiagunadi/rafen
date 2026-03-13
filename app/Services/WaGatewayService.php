@@ -294,6 +294,9 @@ class WaGatewayService
      */
     public function sendMessage(string $phone, string $message, array $context = []): bool
     {
+        // Simpan teks pesan asli (sebelum randomize) ke context agar tercatat di log
+        $context['message'] = mb_substr($message, 0, 4000);
+
         if (empty(trim($phone))) {
             Log::info('WA skip: nomor HP kosong', $context);
             $this->writeLog('skip', '', '', $context, 'Nomor HP kosong');
@@ -361,6 +364,7 @@ class WaGatewayService
                 $msgStatus = $msgData['status'] ?? null;
                 $statusValue = strtolower((string) $msgStatus);
                 $isGatewayStatusOk = (bool) ($body['status'] ?? false);
+                // 'queued' = gateway v2 menerima dan akan mengirim (sukses)
                 $isMessageFailed = in_array($statusValue, ['failed', 'error', 'undelivered'], true);
 
                 if ($isGatewayStatusOk && ! $isMessageFailed) {
@@ -376,8 +380,12 @@ class WaGatewayService
                     return true;
                 }
 
-                $failureReason = (string) ($body['message'] ?? 'Gateway menolak pengiriman.');
-                if ($isMessageFailed && $statusValue !== '') {
+                // Prioritaskan error detail dari pesan individual, fallback ke body message
+                $msgError = trim((string) ($msgData['error'] ?? ''));
+                $failureReason = $msgError !== ''
+                    ? $msgError
+                    : (string) ($body['message'] ?? 'Gateway menolak pengiriman.');
+                if ($isMessageFailed && $statusValue !== '' && $msgError === '') {
                     $failureReason = 'Status gateway: '.$statusValue;
                 }
 
@@ -432,6 +440,7 @@ class WaGatewayService
                 'user_id' => $context['user_id'] ?? null,
                 'username' => $context['username'] ?? null,
                 'customer_name' => $context['name'] ?? null,
+                'message' => $context['message'] ?? null,
                 'ref_id' => $refId,
                 'created_at' => now(),
             ]);

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdatePppUserRequest extends FormRequest
 {
@@ -57,6 +58,7 @@ class UpdatePppUserRequest extends FormRequest
             'ppp_password' => ['nullable', 'string', 'max:120', 'required_if:metode_login,username_password'],
             'password_clientarea' => ['nullable', 'string', 'max:120'],
             'catatan' => ['nullable', 'string'],
+            'assigned_teknisi_id' => ['nullable', Rule::exists('users', 'id')->where('role', 'teknisi')],
         ];
     }
 }

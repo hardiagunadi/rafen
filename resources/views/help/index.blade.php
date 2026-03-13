@@ -14,6 +14,7 @@
         'noc' => 'NOC',
         'keuangan' => 'KEUANGAN',
         'teknisi' => 'TEKNISI',
+        'cs' => 'CUSTOMER SERVICES',
     ];
 
     $quickAccessByRole = [
@@ -23,6 +24,7 @@
         'noc' => ['Dashboard', 'Session User', 'Router (NAS)', 'Monitoring OLT', 'Log Aplikasi', 'Troubleshooting'],
         'keuangan' => ['Data Tagihan', 'Konfirmasi Transfer', 'Data Keuangan', 'Rekonsiliasi Nota', 'Laporan Pendapatan Tenant'],
         'teknisi' => ['Session User', 'Monitoring OLT (Polling Sekarang)', 'Rekonsiliasi Nota', 'Penagihan Lapangan'],
+        'cs' => ['Dashboard', 'List Pelanggan', 'Data Tagihan', 'WA Blast', 'Konfirmasi Transfer', 'Log Aplikasi'],
     ];
 
     $currentRoleLabel = $roleLabels[$normalizedRole] ?? strtoupper(str_replace('_', ' ', $normalizedRole));

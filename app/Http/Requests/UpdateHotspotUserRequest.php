@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateHotspotUserRequest extends FormRequest
 {
@@ -40,6 +41,7 @@ class UpdateHotspotUserRequest extends FormRequest
             'username'           => ['required', 'string', 'max:120', 'unique:hotspot_users,username,'.$hotspotUserId],
             'hotspot_password'   => ['nullable', 'string', 'max:120', 'required_if:metode_login,username_password'],
             'catatan'            => ['nullable', 'string'],
+            'assigned_teknisi_id' => ['nullable', Rule::exists('users', 'id')->where('role', 'teknisi')],
         ];
     }
 }

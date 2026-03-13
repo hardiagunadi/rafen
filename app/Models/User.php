@@ -186,6 +186,11 @@ class User extends Authenticatable
         return $this->role === 'administrator' || $this->isSuperAdmin();
     }
 
+    public function isTeknisi(): bool
+    {
+        return $this->role === 'teknisi';
+    }
+
     public function canViewPppCredentials(): bool
     {
         return $this->isSuperAdmin();

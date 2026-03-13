@@ -185,6 +185,13 @@ class InvoiceController extends Controller
             abort(403);
         }
 
+        if ($user->isTeknisi()) {
+            $linkedCustomer = $invoice->pppUser ?? $invoice->hotspotUser;
+            if ($linkedCustomer && $linkedCustomer->assigned_teknisi_id !== null && $linkedCustomer->assigned_teknisi_id !== $user->id) {
+                abort(403);
+            }
+        }
+
         if ($invoice->status === 'paid') {
             if (request()->wantsJson()) {
                 return response()->json(['status' => 'Invoice sudah dibayar.']);
@@ -350,7 +357,7 @@ class InvoiceController extends Controller
     {
         $user = auth()->user();
 
-        $canSendWa = $user->isSuperAdmin() || $user->isAdmin() || $user->role === 'keuangan';
+        $canSendWa = $user->isSuperAdmin() || $user->isAdmin() || in_array($user->role, ['keuangan', 'noc', 'it_support', 'cs']);
         if (! $canSendWa) {
             abort(403);
         }
@@ -449,7 +456,16 @@ class InvoiceController extends Controller
             );
         }
 
-        $waService->sendMessage($phone, $message);
+        $context = [
+            'event'          => $invoice->isPaid() ? 'invoice_paid' : 'invoice_created',
+            'invoice_id'     => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'user_id'        => $pppUser->id,
+            'username'       => $pppUser->username,
+            'name'           => $invoice->customer_name ?? $pppUser->customer_name ?? null,
+        ];
+
+        $waService->sendMessage($phone, $message, $context);
 
         $this->logActivity('send_wa', 'Invoice', $invoice->id, $invoice->invoice_number, (int) $invoice->owner_id);
 

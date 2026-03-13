@@ -324,6 +324,29 @@
                     </div>
                 </div>
 
+                @if(!auth()->user()->isTeknisi())
+                <div class="card">
+                    <div class="card-header"><b>Penugasan Teknisi</b></div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Teknisi yang Ditugaskan</label>
+                                <select name="assigned_teknisi_id" class="form-control @error('assigned_teknisi_id') is-invalid @enderror">
+                                    <option value="">-- Tidak ada / Semua teknisi bisa akses --</option>
+                                    @foreach($teknisiList as $teknisi)
+                                        <option value="{{ $teknisi->id }}" {{ old('assigned_teknisi_id', $pppUser->assigned_teknisi_id) == $teknisi->id ? 'selected' : '' }}>
+                                            {{ $teknisi->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('assigned_teknisi_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                <small class="text-muted">Jika diisi, hanya teknisi yang dipilih yang dapat mengelola pelanggan ini. Teknisi lain hanya bisa melihat data.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @endif
+
             </div>
             <div class="d-flex justify-content-between px-3 pb-3">
                 <a href="{{ route('ppp-users.index') }}" class="btn btn-link">Batal</a>

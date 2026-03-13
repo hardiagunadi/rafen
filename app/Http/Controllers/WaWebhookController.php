@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\PppUser;
 use App\Models\RadiusAccount;
 use App\Models\TenantSettings;
+use App\Models\WaMultiSessionDevice;
 use App\Models\WaWebhookLog;
 use App\Services\WaGatewayService;
 use Illuminate\Http\JsonResponse;
@@ -208,7 +209,19 @@ class WaWebhookController extends Controller
 
     protected function extractSender(array $payload): ?string
     {
-        $senderValue = $payload['sender'] ?? $payload['from'] ?? $payload['phone'] ?? $payload['receiver'] ?? $payload['to'] ?? null;
+        // Untuk pesan masuk: sender / from lebih akurat dari receiver/to (receiver = nomor bot sendiri)
+        $senderValue = $payload['sender'] ?? $payload['from'] ?? $payload['pushName'] ?? $payload['phone'] ?? null;
+
+        // Fallback: cek data nested (format Baileys/WA-Gateway)
+        if ($senderValue === null && isset($payload['data']) && is_array($payload['data'])) {
+            $data = is_array($payload['data'][0] ?? null) ? $payload['data'][0] : $payload['data'];
+            $senderValue = $data['sender'] ?? $data['from'] ?? $data['phone'] ?? null;
+        }
+
+        // Fallback ke receiver/to hanya jika benar-benar tidak ada sender
+        if ($senderValue === null) {
+            $senderValue = $payload['receiver'] ?? $payload['to'] ?? null;
+        }
 
         if (! is_scalar($senderValue)) {
             return null;
@@ -233,28 +246,66 @@ class WaWebhookController extends Controller
 
     protected function extractMessageBody(array $payload): ?string
     {
-        $messageBody = $payload['message'] ?? $payload['text'] ?? $payload['caption'] ?? null;
-
-        if (is_array($messageBody)) {
-            $messageBody = $messageBody['text'] ?? $messageBody['caption'] ?? $messageBody['message'] ?? json_encode($messageBody);
-        }
-
-        if ($messageBody === null && isset($payload['data']) && is_array($payload['data'])) {
-            $payloadData = $payload['data'];
-
-            if (isset($payloadData[0]) && is_array($payloadData[0])) {
-                $firstData = $payloadData[0];
-                $messageBody = $firstData['message'] ?? $firstData['text'] ?? $firstData['caption'] ?? null;
-            } else {
-                $messageBody = $payloadData['message'] ?? $payloadData['text'] ?? $payloadData['caption'] ?? null;
+        // Format langsung: body / text / caption / message (string)
+        foreach (['body', 'text', 'caption'] as $key) {
+            if (isset($payload[$key]) && is_scalar($payload[$key]) && (string) $payload[$key] !== '') {
+                return mb_substr((string) $payload[$key], 0, 1000);
             }
         }
 
+        $messageBody = $payload['message'] ?? null;
+
+        // Format Baileys: message bisa berupa objek { conversation, extendedTextMessage, imageMessage, ... }
         if (is_array($messageBody)) {
-            $messageBody = $messageBody['text'] ?? $messageBody['caption'] ?? $messageBody['message'] ?? json_encode($messageBody);
+            $ext = is_array($messageBody['extendedTextMessage'] ?? null) ? $messageBody['extendedTextMessage'] : [];
+            $img = is_array($messageBody['imageMessage'] ?? null) ? $messageBody['imageMessage'] : [];
+            $vid = is_array($messageBody['videoMessage'] ?? null) ? $messageBody['videoMessage'] : [];
+            $doc = is_array($messageBody['documentMessage'] ?? null) ? $messageBody['documentMessage'] : [];
+
+            $messageBody = (isset($messageBody['conversation']) && is_scalar($messageBody['conversation']) ? $messageBody['conversation'] : null)
+                ?? ($ext['text'] ?? null)
+                ?? ($img['caption'] ?? null)
+                ?? ($vid['caption'] ?? null)
+                ?? ($doc['caption'] ?? null)
+                ?? (isset($messageBody['text']) && is_scalar($messageBody['text']) ? $messageBody['text'] : null)
+                ?? (isset($messageBody['caption']) && is_scalar($messageBody['caption']) ? $messageBody['caption'] : null)
+                ?? (isset($messageBody['message']) && is_scalar($messageBody['message']) ? $messageBody['message'] : null)
+                ?? null;
+
+            if (is_array($messageBody)) {
+                $messageBody = json_encode($messageBody);
+            }
         }
 
-        if (! is_scalar($messageBody)) {
+        // Format nested via data[]
+        if ($messageBody === null && isset($payload['data']) && is_array($payload['data'])) {
+            $data = is_array($payload['data'][0] ?? null) ? $payload['data'][0] : $payload['data'];
+
+            foreach (['body', 'text', 'caption'] as $key) {
+                if (isset($data[$key]) && is_scalar($data[$key]) && (string) $data[$key] !== '') {
+                    return mb_substr((string) $data[$key], 0, 1000);
+                }
+            }
+
+            $nestedMsg = $data['message'] ?? null;
+            if (is_array($nestedMsg)) {
+                $ext = is_array($nestedMsg['extendedTextMessage'] ?? null) ? $nestedMsg['extendedTextMessage'] : [];
+                $img = is_array($nestedMsg['imageMessage'] ?? null) ? $nestedMsg['imageMessage'] : [];
+                $vid = is_array($nestedMsg['videoMessage'] ?? null) ? $nestedMsg['videoMessage'] : [];
+                $nestedMsg = (isset($nestedMsg['conversation']) && is_scalar($nestedMsg['conversation']) ? $nestedMsg['conversation'] : null)
+                    ?? ($ext['text'] ?? null)
+                    ?? ($img['caption'] ?? null)
+                    ?? ($vid['caption'] ?? null)
+                    ?? (isset($nestedMsg['text']) && is_scalar($nestedMsg['text']) ? $nestedMsg['text'] : null)
+                    ?? (isset($nestedMsg['caption']) && is_scalar($nestedMsg['caption']) ? $nestedMsg['caption'] : null)
+                    ?? null;
+            }
+            if (is_scalar($nestedMsg) && (string) $nestedMsg !== '') {
+                $messageBody = $nestedMsg;
+            }
+        }
+
+        if (! is_scalar($messageBody) || (string) $messageBody === '') {
             return null;
         }
 
@@ -742,7 +793,10 @@ class WaWebhookController extends Controller
             return 'status';
         }
 
-        if (($payload['fromMe'] ?? false) === true) {
+        // fromMe=true berarti pesan keluar dari bot sendiri (bukan pesan masuk dari pelanggan)
+        // Klasifikasikan sebagai auto_reply hanya jika ada indikasi eksplisit (event atau flag),
+        // agar tidak mencemari tab WA Masuk dengan pesan keluar bot
+        if ($this->isTruthy($payload['fromMe'] ?? null)) {
             return 'auto_reply';
         }
 
@@ -803,6 +857,33 @@ class WaWebhookController extends Controller
 
             if ($matchedOwnerIds->count() > 1) {
                 Log::warning('WA Webhook: secret terduplikasi antar tenant');
+            }
+        }
+
+        // Fallback: coba resolve tenant via session dari payload.
+        // Gateway kadang mengirim session berupa nomor HP (628xxx/085xxx) atau custom session_id.
+        // Normalkan dan coba cocokkan ke kolom session_id DAN wa_number.
+        $rawSession = is_scalar($payload['session'] ?? null) ? trim((string) ($payload['session'] ?? '')) : '';
+        if ($rawSession !== '') {
+            $candidates = [$rawSession];
+            if (str_starts_with($rawSession, '62')) {
+                $candidates[] = '0'.substr($rawSession, 2);
+            } elseif (str_starts_with($rawSession, '0')) {
+                $candidates[] = '62'.substr($rawSession, 1);
+            }
+
+            // Coba cocokkan ke session_id dulu, kemudian ke wa_number
+            // Prioritaskan is_default=true jika ada beberapa device dengan wa_number sama
+            $device = WaMultiSessionDevice::query()
+                ->where(function ($q) use ($candidates) {
+                    $q->whereIn('session_id', $candidates)
+                      ->orWhereIn('wa_number', $candidates);
+                })
+                ->orderByDesc('is_default')
+                ->first();
+
+            if ($device) {
+                return (int) $device->user_id;
             }
         }
 

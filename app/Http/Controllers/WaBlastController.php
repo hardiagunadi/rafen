@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\HotspotProfile;
 use App\Models\HotspotUser;
+use App\Models\Odp;
 use App\Models\PppProfile;
 use App\Models\PppUser;
 use App\Models\TenantSettings;
@@ -19,7 +20,7 @@ class WaBlastController extends Controller
         $user = auth()->user();
         if (
             ! $user->isSuperAdmin()
-            && ! in_array($user->role, ['administrator', 'noc', 'it_support'])
+            && ! in_array($user->role, ['administrator', 'noc', 'it_support', 'cs'])
         ) {
             abort(403);
         }
@@ -39,8 +40,9 @@ class WaBlastController extends Controller
 
         $pppProfiles = PppProfile::query()->accessibleBy($currentUser)->orderBy('name')->get();
         $hotspotProfiles = HotspotProfile::query()->accessibleBy($currentUser)->orderBy('name')->get();
+        $odps = Odp::query()->accessibleBy($currentUser)->orderBy('name')->get();
 
-        return view('wa-blast.index', compact('settings', 'pppProfiles', 'hotspotProfiles'));
+        return view('wa-blast.index', compact('settings', 'pppProfiles', 'hotspotProfiles', 'odps'));
     }
 
     /**
@@ -55,8 +57,9 @@ class WaBlastController extends Controller
         $statusAkun = $request->input('status_akun', '');
         $statusBayar = $request->input('status_bayar', '');
         $profileId = $request->input('profile_id', '');
+        $odpIds = $request->input('odp_ids', []);
 
-        $recipients = $this->buildRecipients($currentUser, $tipe, $statusAkun, $statusBayar, $profileId, '');
+        $recipients = $this->buildRecipients($currentUser, $tipe, $statusAkun, $statusBayar, $profileId, '', $odpIds);
 
         return response()->json([
             'count' => count($recipients),
@@ -76,6 +79,8 @@ class WaBlastController extends Controller
             'status_akun' => 'nullable|string',
             'status_bayar'=> 'nullable|string',
             'profile_id'  => 'nullable|integer',
+            'odp_ids'     => 'nullable|array',
+            'odp_ids.*'   => 'integer',
             'message'     => 'required|string|min:5|max:4096',
         ]);
 
@@ -97,7 +102,8 @@ class WaBlastController extends Controller
             $validated['status_akun'] ?? '',
             $validated['status_bayar'] ?? '',
             $validated['profile_id'] ?? '',
-            $validated['message']
+            $validated['message'],
+            $validated['odp_ids'] ?? []
         );
 
         if (empty($recipients)) {
@@ -120,7 +126,7 @@ class WaBlastController extends Controller
      *
      * @return array<array{phone: string, message: string, name: string}>
      */
-    private function buildRecipients($currentUser, string $tipe, string $statusAkun, string $statusBayar, $profileId, string $message): array
+    private function buildRecipients($currentUser, string $tipe, string $statusAkun, string $statusBayar, $profileId, string $message, array $odpIds = []): array
     {
         $recipients = [];
 
@@ -135,6 +141,9 @@ class WaBlastController extends Controller
             }
             if ($profileId !== '' && $profileId !== null) {
                 $query->where('ppp_profile_id', (int) $profileId);
+            }
+            if (! empty($odpIds)) {
+                $query->whereIn('odp_id', $odpIds);
             }
 
             foreach ($query->get() as $user) {

@@ -51,6 +51,7 @@ class PppUser extends Model
         'ppp_password',
         'password_clientarea',
         'catatan',
+        'assigned_teknisi_id',
     ];
 
     /**
@@ -72,6 +73,11 @@ class PppUser extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function assignedTeknisi(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_teknisi_id');
     }
 
     public function profile(): BelongsTo
@@ -103,7 +109,16 @@ class PppUser extends Model
             return $query;
         }
 
-        return $query->where('owner_id', $user->effectiveOwnerId());
+        $base = $query->where('owner_id', $user->effectiveOwnerId());
+
+        if ($user->isTeknisi()) {
+            return $base->where(function ($q) use ($user) {
+                $q->whereNull('assigned_teknisi_id')
+                    ->orWhere('assigned_teknisi_id', $user->id);
+            });
+        }
+
+        return $base;
     }
 
     /**

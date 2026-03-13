@@ -43,7 +43,13 @@
                     ->count();
             }
 
-            $notificationTotal = $isolatedUsersCount + $monthlyRegistrationsCount;
+            $dueSoonCount = \App\Models\Invoice::query()
+                ->accessibleBy($authUser)
+                ->where('status', 'unpaid')
+                ->whereBetween('due_date', [$now->toDateString(), $now->copy()->addDays(7)->toDateString()])
+                ->count();
+
+            $notificationTotal = $isolatedUsersCount + $monthlyRegistrationsCount + $dueSoonCount;
         }
     @endphp
     @php
@@ -558,12 +564,11 @@
                             <span><i class="fas fa-user-plus text-info mr-2"></i>Registrasi Bulan Ini</span>
                             <span class="badge badge-info">{{ $monthlyRegistrationsCount }}</span>
                         </a>
+                        <a href="{{ route('invoices.index', ['filter_due' => '7days']) }}" class="dropdown-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-calendar-times text-warning mr-2"></i>Jatuh Tempo 7 Hari</span>
+                            <span class="badge badge-warning">{{ $dueSoonCount }}</span>
+                        </a>
                     </div>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link nav-link-icon" href="#" data-widget="fullscreen" role="button" title="Fullscreen">
-                        <i class="fas fa-expand-arrows-alt"></i>
-                    </a>
                 </li>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle user-dropdown-toggle" href="#" id="navbar-user-dropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
@@ -808,7 +813,7 @@
                                     <p>Semua Tagihan (Invoice)</p>
                                 </a>
                             </li>
-                            @if(auth()->user()->isSuperAdmin() || auth()->user()->isAdmin() || auth()->user()->role === 'keuangan')
+                            @if(auth()->user()->isSuperAdmin() || auth()->user()->isAdmin() || in_array(auth()->user()->role, ['keuangan', 'cs']))
                             <li class="nav-item">
                                 <a href="{{ route('payments.pending') }}" class="nav-link {{ request()->routeIs('payments.pending*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
@@ -965,9 +970,9 @@
                                 <hr class="mt-1 mb-1">
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('logs.wa-blast') }}" class="nav-link {{ request()->routeIs('logs.wa-blast') ? 'active' : '' }}">
+                                <a href="{{ route('logs.wa-pengiriman') }}" class="nav-link {{ request()->routeIs('logs.wa-pengiriman') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>Log WA Blast</p>
+                                    <p>Log Pengiriman WA</p>
                                 </a>
                             </li>
                         </ul>
@@ -1021,7 +1026,7 @@
                                             <p>Manajemen Device</p>
                                         </a>
                                     </li>
-                                    @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'], true))
+                                    @if(auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support', 'cs'], true))
                                     <li class="nav-item">
                                         <a href="{{ route('wa-blast.index') }}" class="nav-link {{ request()->routeIs('wa-blast.*') ? 'active' : '' }}">
                                             <i class="far fa-circle nav-icon"></i>
@@ -1643,7 +1648,7 @@ window.AppAjax = (function () {
         });
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function () {
         initDeleteButtons();
         initPostButtons();
         initNavbarGlobalSearch();

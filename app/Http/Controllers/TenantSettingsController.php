@@ -94,6 +94,14 @@ class TenantSettingsController extends Controller
 
         $user = $request->user();
         $settings = $user->getSettings();
+
+        // Checkbox tidak dikirim browser saat unchecked — paksa false jika tidak ada di request
+        foreach (['enable_qris_payment', 'enable_va_payment', 'enable_manual_payment', 'tripay_sandbox', 'midtrans_sandbox', 'duitku_sandbox', 'ipaymu_sandbox', 'xendit_sandbox', 'auto_isolate_unpaid'] as $boolField) {
+            if (! array_key_exists($boolField, $validated)) {
+                $validated[$boolField] = false;
+            }
+        }
+
         $settings->update($validated);
 
         return back()->with('success', 'Pengaturan pembayaran berhasil diperbarui.');
@@ -585,6 +593,7 @@ class TenantSettingsController extends Controller
         $validated = $request->validate([
             'tenant_id' => 'nullable|integer',
             'device_name' => 'required|string|max:120',
+            'wa_number' => 'nullable|string|max:30|regex:/^\d+$/',
             'session_id' => 'nullable|string|max:150|regex:/^[a-zA-Z0-9._-]+$/',
         ]);
 
@@ -607,10 +616,15 @@ class TenantSettingsController extends Controller
             $sessionId .= '-'.Str::lower(Str::random(4));
         }
 
+        $waNumber = trim((string) ($validated['wa_number'] ?? ''));
+        if ($waNumber !== '' && str_starts_with($waNumber, '0')) {
+            $waNumber = '62'.substr($waNumber, 1);
+        }
         $device = WaMultiSessionDevice::query()->create([
             'user_id' => $ownerId,
             'device_name' => $validated['device_name'],
             'session_id' => $sessionId,
+            'wa_number' => $waNumber !== '' ? $waNumber : null,
             'is_default' => $deviceCount === 0,
             'is_active' => true,
         ]);
@@ -678,6 +692,73 @@ class TenantSettingsController extends Controller
             'success' => true,
             'message' => 'Device WA berhasil dihapus.',
         ]);
+    }
+
+    public function testWaDevice(Request $request, WaMultiSessionDevice $device)
+    {
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
+
+        $settings = $this->resolveWaSettingsForRequest($request);
+        if (! $settings || $device->user_id !== (int) $settings->user_id) {
+            abort(404);
+        }
+
+        if (! $settings->hasWaConfigured()) {
+            return response()->json(['success' => false, 'message' => 'WA Gateway belum dikonfigurasi.'], 422);
+        }
+
+        $csPhone = trim((string) ($settings->business_phone ?? ''));
+        if (empty($csPhone)) {
+            return response()->json(['success' => false, 'message' => 'Nomor HP bisnis belum diisi di Pengaturan Bisnis.'], 422);
+        }
+
+        $service = WaGatewayService::forTenant($settings);
+        if (! $service) {
+            return response()->json(['success' => false, 'message' => 'WA Gateway tidak dapat diinisialisasi.'], 422);
+        }
+
+        $service->setSessionId($device->session_id);
+
+        // Cek status sesi sebelum kirim agar error message lebih informatif
+        $sessionCheck = $service->sessionStatus();
+        $sessionStatus = strtolower((string) ($sessionCheck['data']['status'] ?? ''));
+        if ($sessionStatus !== 'connected') {
+            $label = match ($sessionStatus) {
+                'connecting', 'awaiting_qr' => 'belum scan QR — buka Manajemen Device lalu klik Scan QR',
+                'disconnected', 'error'     => 'terputus — coba Restart Sesi lalu scan QR ulang',
+                'stopped', 'idle'           => 'tidak aktif — coba Restart Sesi',
+                default                     => "status: {$sessionStatus}",
+            };
+            return response()->json(['success' => false, 'message' => "Device \"{$device->device_name}\" {$label}."], 422);
+        }
+
+        $businessName = trim((string) ($settings->business_name ?? '')) ?: 'ISP';
+        $message = "✅ *Test Koneksi WA Berhasil*\n\n"
+            . "Device *{$device->device_name}* ({$device->session_id}) berhasil terhubung dan siap mengirim pesan.\n\n"
+            . "Dikirim dari: {$businessName}\n"
+            . now()->format('d/m/Y H:i');
+
+        $phone = '62'.ltrim(preg_replace('/[^0-9]/', '', $csPhone), '0');
+        $sent = $service->sendMessage($phone, $message, [
+            'event' => 'blast',
+            'name'  => 'Test Device',
+        ]);
+
+        if ($sent) {
+            return response()->json(['success' => true, 'message' => "Pesan test berhasil dikirim ke {$csPhone} via device {$device->device_name}."]);
+        }
+
+        // Ambil reason dari log terbaru untuk pesan error yang lebih spesifik
+        $lastLog = \App\Models\WaBlastLog::query()
+            ->where('owner_id', (int) $settings->user_id)
+            ->where('status', 'failed')
+            ->orderByDesc('created_at')
+            ->value('reason');
+        $errDetail = $lastLog ? " ({$lastLog})" : '';
+
+        return response()->json(['success' => false, 'message' => "Pesan tidak terkirim{$errDetail}."], 422);
     }
 
     public function testTemplate(Request $request)

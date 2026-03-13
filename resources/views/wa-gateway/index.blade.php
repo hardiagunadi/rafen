@@ -372,11 +372,16 @@
 
                 <form id="wa-device-form">
                     <div class="form-row">
-                        <div class="form-group col-md-5">
+                        <div class="form-group col-md-4">
                             <label for="wa_device_name">Nama Device</label>
                             <input type="text" id="wa_device_name" name="device_name" class="form-control" placeholder="Contoh: CS Utama" maxlength="120" required>
                         </div>
-                        <div class="form-group col-md-5">
+                        <div class="form-group col-md-3">
+                            <label for="wa_number">Nomor WA Device</label>
+                            <input type="text" id="wa_number" name="wa_number" class="form-control" placeholder="628xxx" maxlength="30">
+                            <small class="text-muted">Nomor HP yang terdaftar di WA (untuk matching pesan masuk).</small>
+                        </div>
+                        <div class="form-group col-md-3">
                             <label for="wa_session_id">Session ID (opsional)</label>
                             <input type="text" id="wa_session_id" name="session_id" class="form-control" placeholder="Otomatis jika dikosongkan" maxlength="150">
                             <small class="text-muted">Karakter: huruf, angka, titik, underscore, dash.</small>
@@ -397,6 +402,7 @@
                             <tr>
                                 <th>Device</th>
                                 <th>Session ID</th>
+                                <th>Nomor WA</th>
                                 <th>Default</th>
                                 <th>Koneksi</th>
                                 <th class="text-right">Aksi</th>
@@ -404,7 +410,7 @@
                         </thead>
                         <tbody id="wa-device-table-body">
                             <tr>
-                                <td colspan="5" class="text-center text-muted py-3">Memuat data device...</td>
+                                <td colspan="6" class="text-center text-muted py-3">Memuat data device...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -736,7 +742,7 @@ function renderWaDeviceTable(devices) {
     }
 
     if (!Array.isArray(devices) || devices.length === 0) {
-        body.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Belum ada device. Tambahkan device pertama Anda.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Belum ada device. Tambahkan device pertama Anda.</td></tr>';
 
         return;
     }
@@ -744,6 +750,7 @@ function renderWaDeviceTable(devices) {
     body.innerHTML = devices.map(function (device) {
         var deviceName = escapeHtml(device.device_name || '-');
         var sessionId = escapeHtml(device.session_id || '-');
+        var waNumber = device.wa_number ? escapeHtml(device.wa_number) : '<span class="text-muted">-</span>';
         var statusBadge = renderWaDeviceBadge(!!device.is_default);
         var actions = '';
 
@@ -754,12 +761,14 @@ function renderWaDeviceTable(devices) {
         actions += '<button type="button" class="btn btn-outline-success btn-sm mr-1 mb-1" onclick=\'openQrModal(' + Number(device.id) + ', ' + JSON.stringify(String(device.device_name || 'Device')) + ')\'>Scan QR</button>';
         actions += '<button type="button" class="btn btn-outline-info btn-sm mr-1 mb-1" onclick="controlDeviceSession(' + Number(device.id) + ', \'status\')">Cek Sesi</button>';
         actions += '<button type="button" class="btn btn-outline-warning btn-sm mr-1 mb-1" onclick="controlDeviceSession(' + Number(device.id) + ', \'restart\')">Restart Sesi</button>';
+        actions += '<button type="button" class="btn btn-outline-secondary btn-sm mr-1 mb-1" id="btn-test-device-' + Number(device.id) + '" onclick="testWaDevice(' + Number(device.id) + ')"><i class="fas fa-paper-plane mr-1"></i>Test</button>';
         actions += '<button type="button" class="btn btn-outline-danger btn-sm mb-1" onclick="deleteWaDevice(' + Number(device.id) + ')">Hapus</button>';
 
         return '' +
             '<tr>' +
                 '<td>' + deviceName + '</td>' +
                 '<td><code>' + sessionId + '</code></td>' +
+                '<td>' + waNumber + '</td>' +
                 '<td>' + statusBadge + '</td>' +
                 '<td><span class="badge badge-light" id="wa-device-conn-' + Number(device.id) + '">Mengecek...</span></td>' +
                 '<td class="text-right">' + actions + '</td>' +
@@ -892,6 +901,7 @@ function submitWaDeviceForm(event) {
     }
 
     var deviceName = (document.getElementById('wa_device_name')?.value || '').trim();
+    var waNumber = (document.getElementById('wa_number')?.value || '').trim();
     var sessionId = (document.getElementById('wa_session_id')?.value || '').trim();
 
     if (!deviceName) {
@@ -902,6 +912,7 @@ function submitWaDeviceForm(event) {
 
     var payload = Object.assign(getTenantPayload(), {
         device_name: deviceName,
+        wa_number: waNumber || null,
         session_id: sessionId || null,
     });
 
@@ -985,6 +996,28 @@ function deleteWaDevice(deviceId) {
     })
     .catch(function (error) {
         setWaDeviceResult(error.message, 'danger');
+    });
+}
+
+function testWaDevice(deviceId) {
+    var btn = document.getElementById('btn-test-device-' + deviceId);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Mengirim...'; }
+    setWaDeviceResult('Mengirim pesan test...', 'info');
+
+    fetch('{{ route("tenant-settings.wa-devices.test", ["device" => "__DEVICE__"]) }}'.replace('__DEVICE__', String(deviceId)), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        body: JSON.stringify(getTenantPayload()),
+    })
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+        setWaDeviceResult(data.message || (data.success ? 'Berhasil.' : 'Gagal.'), data.success ? 'success' : 'danger');
+    })
+    .catch(function () {
+        setWaDeviceResult('Terjadi kesalahan saat mengirim test.', 'danger');
+    })
+    .finally(function () {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Test'; }
     });
 }
 

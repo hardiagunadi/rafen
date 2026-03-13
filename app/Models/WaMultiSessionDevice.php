@@ -11,6 +11,7 @@ class WaMultiSessionDevice extends Model
     protected $fillable = [
         'user_id',
         'session_id',
+        'wa_number',
         'device_name',
         'is_default',
         'is_active',

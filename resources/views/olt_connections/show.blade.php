@@ -1096,7 +1096,7 @@
         if (shouldAutoPoll) {
             currentUrl.searchParams.delete('auto_poll');
             window.history.replaceState({}, '', currentUrl.toString());
-            triggerPollingInBackground('full');
+            triggerPollingInBackground('quick');
         }
 
         if (pollState.isPolling) {

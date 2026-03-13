@@ -165,6 +165,22 @@
                     <textarea name="catatan" class="form-control @error('catatan') is-invalid @enderror" rows="2">{{ old('catatan', $hotspotUser->catatan) }}</textarea>
                     @error('catatan')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
+
+                @if(!auth()->user()->isTeknisi())
+                <div class="form-group">
+                    <label>Teknisi yang Ditugaskan</label>
+                    <select name="assigned_teknisi_id" class="form-control @error('assigned_teknisi_id') is-invalid @enderror">
+                        <option value="">-- Tidak ada / Semua teknisi bisa akses --</option>
+                        @foreach($teknisiList as $teknisi)
+                            <option value="{{ $teknisi->id }}" {{ old('assigned_teknisi_id', $hotspotUser->assigned_teknisi_id) == $teknisi->id ? 'selected' : '' }}>
+                                {{ $teknisi->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('assigned_teknisi_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <small class="text-muted">Jika diisi, hanya teknisi yang dipilih yang dapat mengelola pelanggan ini. Teknisi lain hanya bisa melihat data.</small>
+                </div>
+                @endif
             </div>
 
             <div class="card-footer d-flex justify-content-between">

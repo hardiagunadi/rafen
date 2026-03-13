@@ -335,13 +335,16 @@ class HsgqSnmpCollector
             throw new RuntimeException('ONU index tidak valid.');
         }
 
+        $rebootValue = $this->resolveRebootValue($oltConnection);
+
         $command = sprintf(
-            'snmpset -On -v2c -c %s -t %d -r %d %s %s i 1',
+            'snmpset -On -v2c -c %s -t %d -r %d %s %s i %d',
             escapeshellarg($snmpWriteCommunity),
             $oltConnection->snmp_timeout,
             $oltConnection->snmp_retries,
             escapeshellarg($oltConnection->host.':'.$oltConnection->snmp_port),
             escapeshellarg('.'.$rebootBaseOid.'.'.$normalizedOnuIndex),
+            $rebootValue,
         );
 
         try {
@@ -1448,6 +1451,11 @@ class HsgqSnmpCollector
         return 'SNMP walk gagal: '.$message;
     }
 
+    private function resolveRebootValue(OltConnection $oltConnection): int
+    {
+        return 1;
+    }
+
     private function normalizeSnmpSetFailureMessage(OltConnection $oltConnection, string $message): string
     {
         $normalizedMessage = strtolower($message);
@@ -1459,6 +1467,14 @@ class HsgqSnmpCollector
             || str_contains($normalizedMessage, 'no response')
         ) {
             return $this->snmpTimeoutMessage($oltConnection);
+        }
+
+        if (str_contains($normalizedMessage, 'wrongvalue') || str_contains($normalizedMessage, 'wrong value')) {
+            return 'Reboot ONU tidak didukung oleh OLT ini (OID reboot tidak menerima nilai yang dikirim). Periksa konfigurasi OID Reboot ONU.';
+        }
+
+        if (str_contains($normalizedMessage, 'generror') || str_contains($normalizedMessage, 'general failure')) {
+            return 'OLT menolak perintah reboot ONU. OID reboot mungkin tidak kompatibel dengan model OLT ini.';
         }
 
         return 'SNMP set gagal: '.$message;

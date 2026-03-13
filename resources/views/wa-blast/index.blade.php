@@ -67,6 +67,18 @@
                     </div>
                 </div>
 
+                <div class="form-row" id="odp-filter-row">
+                    <div class="form-group col-md-8">
+                        <label>Filter ODP (Opsional, bisa pilih lebih dari satu)</label>
+                        <select id="blast_odp_ids" class="form-control" multiple="multiple" style="width:100%;">
+                            @foreach($odps as $odp)
+                                <option value="{{ $odp->id }}">{{ $odp->name }}</option>
+                            @endforeach
+                        </select>
+                        <small class="text-muted">Kosongkan untuk semua ODP. Hanya berlaku untuk tipe PPPoE.</small>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label>Pesan</label>
                     <textarea id="blast_message" class="form-control" rows="5" placeholder="Ketik pesan Anda di sini..."></textarea>
@@ -121,10 +133,19 @@
 <script>
 var sendInProgress = false;
 
+$(document).ready(function() {
+    $('#blast_odp_ids').select2({
+        theme: 'bootstrap4',
+        placeholder: 'Semua ODP',
+        allowClear: true,
+    });
+});
+
 document.getElementById('blast_tipe').addEventListener('change', function() {
     var tipe = this.value;
     document.getElementById('ppp-profile-group').style.display = (tipe === 'ppp' || tipe === 'all') ? '' : 'none';
     document.getElementById('hotspot-profile-group').style.display = (tipe === 'hotspot' || tipe === 'all') ? '' : 'none';
+    document.getElementById('odp-filter-row').style.display = (tipe === 'ppp' || tipe === 'all') ? '' : 'none';
     document.getElementById('preview-result').style.display = 'none';
 });
 
@@ -137,17 +158,32 @@ function getBlastParams() {
     var profileId = tipe === 'ppp' ? document.getElementById('blast_ppp_profile_id').value
                   : tipe === 'hotspot' ? document.getElementById('blast_hotspot_profile_id').value
                   : '';
+    var odpIds = (tipe === 'ppp' || tipe === 'all') ? $('#blast_odp_ids').val() : [];
     return {
         tipe: tipe,
         status_akun: document.getElementById('blast_status_akun').value,
         status_bayar: document.getElementById('blast_status_bayar').value,
         profile_id: profileId,
+        odp_ids: odpIds,
     };
+}
+
+function buildQueryString(params) {
+    var parts = [];
+    Object.keys(params).forEach(function(key) {
+        var val = params[key];
+        if (Array.isArray(val)) {
+            val.forEach(function(v) { parts.push(encodeURIComponent(key + '[]') + '=' + encodeURIComponent(v)); });
+        } else {
+            parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(val));
+        }
+    });
+    return parts.join('&');
 }
 
 function previewBlast() {
     var params = getBlastParams();
-    var url = '{{ route("wa-blast.preview") }}?' + new URLSearchParams(params).toString();
+    var url = '{{ route("wa-blast.preview") }}?' + buildQueryString(params);
 
     fetch(url, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }

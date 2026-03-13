@@ -670,6 +670,7 @@ class SuperAdminController extends Controller
             'keuangan' => 'Keuangan',
             'mitra' => 'Mitra',
             'teknisi' => 'Teknisi',
+            'cs' => 'Customer Services',
             default => ucwords(str_replace('_', ' ', $role)),
         };
     }

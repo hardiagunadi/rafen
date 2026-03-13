@@ -74,6 +74,7 @@
                             <th>Profil Hotspot</th>
                             <th>Status Akun</th>
                             <th>Jatuh Tempo</th>
+                            <th>Teknisi</th>
                             <th>Owner</th>
                             <th>Perpanjang</th>
                             <th class="text-right">Aksi</th>
@@ -121,6 +122,7 @@
                     { data: 'profil',      orderable: false },
                     { data: 'status',      orderable: false },
                     { data: 'jatuh_tempo', orderable: false },
+                    { data: 'teknisi',     orderable: false },
                     { data: 'owner',       orderable: false },
                     { data: 'perpanjang',  orderable: false, searchable: false },
                     { data: 'aksi',        orderable: false, searchable: false, className: 'text-right' },

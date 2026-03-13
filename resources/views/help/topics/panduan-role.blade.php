@@ -13,6 +13,7 @@
         'noc' => 'NOC',
         'keuangan' => 'Keuangan',
         'teknisi' => 'Teknisi',
+        'cs' => 'Customer Services',
     ];
 @endphp
 
@@ -45,6 +46,7 @@
                         <th>NOC</th>
                         <th>Keuangan</th>
                         <th>Teknisi</th>
+                        <th>CS</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -56,9 +58,11 @@
                         <td>Penuh</td>
                         <td>Terbatas</td>
                         <td>Terbatas</td>
+                        <td>Penuh</td>
                     </tr>
                     <tr>
                         <td>Session User (PPPoE/Hotspot)</td>
+                        <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
@@ -74,6 +78,7 @@
                         <td><i class="fas fa-check text-success"></i></td>
                         <td>Baca + tagihan</td>
                         <td>Operasional lapangan</td>
+                        <td><i class="fas fa-check text-success"></i></td>
                     </tr>
                     <tr>
                         <td>Router (NAS)</td>
@@ -81,6 +86,7 @@
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
+                        <td>Lihat status</td>
                         <td>Lihat status</td>
                         <td>Lihat status</td>
                     </tr>
@@ -92,6 +98,7 @@
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td>Polling Sekarang</td>
+                        <td><i class="fas fa-times text-danger"></i></td>
                     </tr>
                     <tr>
                         <td>Profil Paket</td>
@@ -101,6 +108,7 @@
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td>Terbatas (tanpa kelola)</td>
+                        <td><i class="fas fa-times text-danger"></i></td>
                     </tr>
                     <tr>
                         <td>Data Tagihan / Invoice</td>
@@ -110,6 +118,27 @@
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
                         <td>Tanpa hapus + tanpa nota</td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Konfirmasi Transfer</td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                    </tr>
+                    <tr>
+                        <td>WA Blast</td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
                     </tr>
                     <tr>
                         <td>Rekonsiliasi Nota</td>
@@ -119,6 +148,7 @@
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
                     </tr>
                     <tr>
                         <td>Data Keuangan</td>
@@ -128,11 +158,13 @@
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
                     </tr>
                     <tr>
                         <td>Tool Sistem</td>
                         <td>Penuh (termasuk reset)</td>
                         <td>Import/Export/Usage</td>
+                        <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
@@ -146,6 +178,7 @@
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-check text-success"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-check text-success"></i></td>
                     </tr>
                     <tr>
                         <td>Pengaturan Tenant / WA Gateway / FreeRADIUS / WG</td>
@@ -155,10 +188,12 @@
                         <td><i class="fas fa-check text-success"></i></td>
                         <td>Lihat sesuai kebutuhan</td>
                         <td><i class="fas fa-times text-danger"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
                     </tr>
                     <tr>
                         <td>Super Admin Dashboard + Kelola Tenant</td>
                         <td><i class="fas fa-check text-success"></i></td>
+                        <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
                         <td><i class="fas fa-times text-danger"></i></td>
@@ -224,6 +259,21 @@
                             <li>Teknisi fokus ke eksekusi lapangan: monitoring OLT, penagihan, rekonsiliasi nota.</li>
                             <li>Pada role teknisi, aksi sensitif seperti hapus invoice/nota tidak ditampilkan.</li>
                             <li>Validasi setoran tunai harian dan cocokkan dengan Rekonsiliasi Nota.</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6 mb-3">
+                <div class="card border-secondary h-100">
+                    <div class="card-header bg-secondary text-white py-2"><strong>Customer Services (CS)</strong></div>
+                    <div class="card-body">
+                        <ol class="mb-0">
+                            <li>Layani pelanggan: cek status akun PPPoE/Hotspot, update data kontak, dan aktifkan/nonaktifkan akun.</li>
+                            <li>Cek dan kirim tagihan (invoice) ke pelanggan via WA.</li>
+                            <li>Konfirmasi transfer/pembayaran dari pelanggan.</li>
+                            <li>Kirim WA Blast untuk notifikasi massal ke pelanggan.</li>
+                            <li>Pantau log pengiriman WA dan aktivitas pelanggan.</li>
                         </ol>
                     </div>
                 </div>

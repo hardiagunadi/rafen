@@ -521,11 +521,46 @@ class PaymentController extends Controller
     {
         $user = auth()->user();
 
-        if ($user->isSubUser() && !in_array($user->role, ['keuangan'])) {
+        if ($user->isSubUser() && !in_array($user->role, ['keuangan', 'cs'])) {
             abort(403);
         }
 
-        return view('payments.pending');
+        $payments = Payment::query()
+            ->where('payment_method', 'bank_transfer')
+            ->where('status', 'pending')
+            ->whereHas('invoice', fn($q) => $q->accessibleBy($user))
+            ->with(['invoice'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($p) {
+                $notes = $p->notes ?? '';
+                $proofPath = null; $amountTransferred = null; $transferDate = null; $catatan = null;
+                foreach (explode("\n", $notes) as $line) {
+                    if (str_starts_with($line, 'Bukti transfer: ')) $proofPath = trim(substr($line, 16));
+                    elseif (str_starts_with($line, 'Jumlah: ')) $amountTransferred = trim(substr($line, 8));
+                    elseif (str_starts_with($line, 'Tanggal: ')) $transferDate = trim(substr($line, 9));
+                    elseif (str_starts_with($line, 'Catatan: ')) $catatan = trim(substr($line, 9));
+                }
+                $invoice = $p->invoice;
+                return (object) [
+                    'id'                 => $p->id,
+                    'payment_number'     => $p->payment_number,
+                    'invoice_number'     => $invoice?->invoice_number ?? '-',
+                    'invoice_url'        => $invoice ? route('invoices.show', $invoice->id) : null,
+                    'customer_name'      => $invoice?->customer_name ?? '-',
+                    'customer_id'        => $invoice?->customer_id ?? '-',
+                    'amount'             => number_format((float) $p->amount, 0, ',', '.'),
+                    'amount_transferred' => $amountTransferred ? number_format((float) $amountTransferred, 0, ',', '.') : '-',
+                    'transfer_date'      => $transferDate ?? '-',
+                    'proof_url'          => $proofPath ? asset('storage/' . $proofPath) : null,
+                    'uploaded_at'        => $p->created_at->format('d/m/Y H:i'),
+                    'confirm_url'        => route('payments.confirm-manual', $p->id),
+                    'reject_url'         => route('payments.reject-manual', $p->id),
+                    'catatan'            => $catatan,
+                ];
+            });
+
+        return view('payments.pending', compact('payments'));
     }
 
     public function pendingDatatable(Request $request)
@@ -537,7 +572,7 @@ class PaymentController extends Controller
             ->where('payment_method', 'bank_transfer')
             ->where('status', 'pending')
             ->whereHas('invoice', fn($q) => $q->accessibleBy($user))
-            ->with(['invoice.pppUser', 'invoice.hotspotUser'])
+            ->with(['invoice.pppUser'])
             ->when($search !== '', function ($q) use ($search) {
                 $q->whereHas('invoice', fn($qi) => $qi->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('customer_name', 'like', "%{$search}%"));

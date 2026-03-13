@@ -83,6 +83,7 @@
                             <th>Renew / Bayar</th>
                             <th class="text-right">Aksi</th>
                             <th>Owner Data</th>
+                            <th>Teknisi</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -145,6 +146,7 @@
                     { data: 'renew_print', orderable: false, searchable: false },
                     { data: 'aksi',        orderable: false, searchable: false, className: 'text-right' },
                     { data: 'owner',       orderable: false },
+                    { data: 'teknisi',     orderable: false },
                 ],
                 language: {
                     search: 'Cari:', lengthMenu: 'Tampilkan _MENU_ data',
