@@ -28,6 +28,7 @@ class StoreUserRequest extends FormRequest
             'phone'        => ['sometimes', 'nullable', 'string', 'max:20'],
             'company_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'role'         => ['sometimes', 'required', 'string', 'in:administrator,it_support,noc,keuangan,mitra,teknisi,cs'],
+            'nickname'     => ['sometimes', 'nullable', 'string', 'max:60'],
         ];
     }
 

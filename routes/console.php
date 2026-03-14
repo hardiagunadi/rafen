@@ -72,3 +72,9 @@ Schedule::command('wa-gateway:ensure-running')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Kirim reminder shift besok ke semua pegawai via WA (jam 19:00)
+Schedule::command('shifts:send-reminders')
+    ->dailyAt('19:00')
+    ->withoutOverlapping()
+    ->runInBackground();

@@ -55,6 +55,14 @@ class WaNotificationService
 
             $template = self::pickTemplateVariant($settings, 'registration');
 
+            $portalUrl = '';
+            try {
+                $portalUrl = route('portal.login');
+            } catch (\Throwable) {
+                $portalUrl = '';
+            }
+            $passwordClientarea = ($isPpp ? ($user->password_clientarea ?? '-') : '-');
+
             $message = self::renderTemplate($template, [
                 'name' => $customerName,
                 'username' => $user->username,
@@ -64,6 +72,8 @@ class WaNotificationService
                 'customer_id' => $customerId,
                 'total' => $harga,
                 'cs_number' => $csNumber,
+                'portal_url' => $portalUrl,
+                'password_clientarea' => $passwordClientarea,
             ]);
 
             $service->sendMessage($phone, $message, $context);

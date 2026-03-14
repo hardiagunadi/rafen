@@ -49,6 +49,7 @@ class User extends Authenticatable
         'vpn_enabled',
         'trial_days_remaining',
         'registered_at',
+        'nickname',
     ];
 
     /**
@@ -118,6 +119,16 @@ class User extends Authenticatable
     public function waMultiSessionDevices(): HasMany
     {
         return $this->hasMany(WaMultiSessionDevice::class);
+    }
+
+    public function assignedTickets(): HasMany
+    {
+        return $this->hasMany(WaTicket::class, 'assigned_to_id');
+    }
+
+    public function shiftSchedules(): HasMany
+    {
+        return $this->hasMany(ShiftSchedule::class, 'user_id');
     }
 
     public function parent(): BelongsTo

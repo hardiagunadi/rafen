@@ -27,6 +27,7 @@ class UpdateUserRequest extends FormRequest
             'email' => ['sometimes', 'required', 'email', 'max:191', Rule::unique('users', 'email')->ignore($this->route('user'))],
             'password' => ['nullable', 'string', 'min:8'],
             'role' => ['sometimes', 'required', 'string', 'in:administrator,it_support,noc,keuangan,mitra,teknisi,cs'],
+            'nickname' => ['sometimes', 'nullable', 'string', 'max:60'],
         ];
     }
 }

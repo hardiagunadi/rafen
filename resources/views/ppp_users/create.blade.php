@@ -103,10 +103,6 @@
                         <div class="form-row">
                             <div class="form-group col-md-6">
                                 <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="tagihkan_ppn" name="tagihkan_ppn" value="1" @checked(old('tagihkan_ppn', true))>
-                                    <label class="form-check-label" for="tagihkan_ppn">Tagihkan PPN (persentase dari Profil PPP)</label>
-                                </div>
-                                <div class="form-check">
                                     <input type="checkbox" class="form-check-input" id="prorata_otomatis" name="prorata_otomatis" value="1" @checked(old('prorata_otomatis'))>
                                     <label class="form-check-label" for="prorata_otomatis">Prorata Otomatis</label>
                                 </div>

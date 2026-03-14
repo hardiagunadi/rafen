@@ -27,6 +27,8 @@ use App\Http\Controllers\TeknisiSetoranController;
 use App\Http\Controllers\TenantSettingsController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\VoucherController;
+use App\Http\Controllers\Portal\PortalAuthController;
+use App\Http\Controllers\Portal\PortalDashboardController;
 use App\Http\Controllers\WaBlastController;
 use App\Http\Controllers\WaMultiSessionProxyController;
 use App\Http\Controllers\WaWebhookController;
@@ -167,6 +169,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('ppp-users/{pppUser}/dialup-datatable', [\App\Http\Controllers\PppUserController::class, 'dialupDatatable'])->name('ppp-users.dialup-datatable');
     Route::post('ppp-users/{pppUser}/add-invoice', [\App\Http\Controllers\PppUserController::class, 'addInvoice'])->name('ppp-users.add-invoice');
     Route::post('ppp-users/{pppUser}/disconnect', [\App\Http\Controllers\PppUserController::class, 'disconnect'])->name('ppp-users.disconnect');
+    Route::get('ppp-users/{pppUser}/nota-aktivasi', [\App\Http\Controllers\PppUserController::class, 'notaAktivasi'])->name('ppp-users.nota-aktivasi');
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::get('odps/datatable', [OdpController::class, 'datatable'])->name('odps.datatable');
     Route::get('odps/generate-code', [OdpController::class, 'generateCode'])->name('odps.generate-code');
@@ -292,6 +295,46 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('/preview', [WaBlastController::class, 'preview'])->name('preview');
         Route::post('/send', [WaBlastController::class, 'send'])->name('send');
     });
+
+    // Chat WA Inbox
+    Route::prefix('wa-chat')->name('wa-chat.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\WaChatController::class, 'index'])->name('index');
+        Route::get('/conversations', [\App\Http\Controllers\WaChatController::class, 'conversations'])->name('conversations');
+        Route::get('/conversations/{waConversation}/messages', [\App\Http\Controllers\WaChatController::class, 'show'])->name('show');
+        Route::post('/conversations/{waConversation}/reply', [\App\Http\Controllers\WaChatController::class, 'reply'])->name('reply');
+        Route::post('/conversations/{waConversation}/resolve', [\App\Http\Controllers\WaChatController::class, 'markResolved'])->name('resolve');
+        Route::post('/conversations/{waConversation}/open', [\App\Http\Controllers\WaChatController::class, 'markOpen'])->name('open');
+        Route::post('/conversations/{waConversation}/assign', [\App\Http\Controllers\WaChatController::class, 'assign'])->name('assign');
+    });
+
+    // Tiket WA
+    Route::prefix('wa-tickets')->name('wa-tickets.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\WaTicketController::class, 'index'])->name('index');
+        Route::get('/datatable', [\App\Http\Controllers\WaTicketController::class, 'datatable'])->name('datatable');
+        Route::post('/', [\App\Http\Controllers\WaTicketController::class, 'store'])->name('store');
+        Route::get('/{waTicket}', [\App\Http\Controllers\WaTicketController::class, 'show'])->name('show');
+        Route::put('/{waTicket}', [\App\Http\Controllers\WaTicketController::class, 'update'])->name('update');
+        Route::post('/{waTicket}/assign', [\App\Http\Controllers\WaTicketController::class, 'assign'])->name('assign');
+        Route::delete('/{waTicket}', [\App\Http\Controllers\WaTicketController::class, 'destroy'])->name('destroy');
+    });
+
+    // Jadwal Shift
+    Route::prefix('shifts')->name('shifts.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\ShiftController::class, 'index'])->name('index');
+        Route::get('/my', [\App\Http\Controllers\ShiftController::class, 'mySchedule'])->name('my');
+        Route::get('/schedule', [\App\Http\Controllers\ShiftController::class, 'schedule'])->name('schedule');
+        Route::post('/schedule', [\App\Http\Controllers\ShiftController::class, 'storeSchedule'])->name('schedule.store');
+        Route::post('/schedule/bulk', [\App\Http\Controllers\ShiftController::class, 'bulkSchedule'])->name('schedule.bulk');
+        Route::delete('/schedule/{shiftSchedule}', [\App\Http\Controllers\ShiftController::class, 'destroySchedule'])->name('schedule.destroy');
+        Route::get('/definitions', [\App\Http\Controllers\ShiftController::class, 'definitions'])->name('definitions');
+        Route::post('/definitions', [\App\Http\Controllers\ShiftController::class, 'storeDefinition'])->name('definitions.store');
+        Route::put('/definitions/{shiftDefinition}', [\App\Http\Controllers\ShiftController::class, 'updateDefinition'])->name('definitions.update');
+        Route::delete('/definitions/{shiftDefinition}', [\App\Http\Controllers\ShiftController::class, 'destroyDefinition'])->name('definitions.destroy');
+        Route::get('/swap-requests', [\App\Http\Controllers\ShiftController::class, 'swapRequests'])->name('swap-requests');
+        Route::post('/swap-requests', [\App\Http\Controllers\ShiftController::class, 'requestSwap'])->name('swap-requests.store');
+        Route::post('/swap-requests/{shiftSwapRequest}/review', [\App\Http\Controllers\ShiftController::class, 'reviewSwap'])->name('swap-requests.review');
+        Route::post('/send-reminders', [\App\Http\Controllers\ShiftController::class, 'sendReminders'])->name('send-reminders');
+    });
 });
 
 // Tool Sistem (auth required, fitur sensitif dibatasi di controller)
@@ -366,6 +409,21 @@ Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/session', [WaWebhookCo
 Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/message', [WaWebhookController::class, 'message'])->whereNumber('tenant')->name('wa.webhook.message.tenant.compat');
 Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/auto-reply', [WaWebhookController::class, 'autoReply'])->whereNumber('tenant')->name('wa.webhook.auto-reply.tenant.compat');
 Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/status', [WaWebhookController::class, 'status'])->whereNumber('tenant')->name('wa.webhook.status.tenant.compat');
+
+// Portal Pelanggan PPPoE (cookie-based auth, standalone)
+Route::prefix('portal')->name('portal.')->group(function () {
+    Route::get('/login', [PortalAuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [PortalAuthController::class, 'login'])->name('login.post');
+    Route::post('/logout', [PortalAuthController::class, 'logout'])->name('logout');
+
+    Route::middleware('portal.auth')->group(function () {
+        Route::get('/', [PortalDashboardController::class, 'index'])->name('dashboard');
+        Route::get('/invoices', [PortalDashboardController::class, 'invoices'])->name('invoices');
+        Route::get('/account', [PortalDashboardController::class, 'account'])->name('account');
+        Route::post('/change-password', [PortalDashboardController::class, 'changePassword'])->name('change-password');
+        Route::post('/tickets', [PortalDashboardController::class, 'storeTicket'])->name('tickets.store');
+    });
+});
 
 // Super Admin Routes
 Route::middleware(['auth', \App\Http\Middleware\SuperAdminMiddleware::class])->prefix('super-admin')->name('super-admin.')->group(function () {

@@ -34,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => \App\Http\Middleware\TenantMiddleware::class,
             'tenant.module' => \App\Http\Middleware\EnsureTenantModuleEnabled::class,
+            'portal.auth' => \App\Http\Middleware\PortalAuth::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

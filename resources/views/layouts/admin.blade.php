@@ -874,7 +874,18 @@
                         </ul>
                     </li>
                     @endif
-                    @php $isSuperAdmin = auth()->user()->isSuperAdmin(); $isAdminOrAbove = $isSuperAdmin || (auth()->user()->isAdmin() && !auth()->user()->isSubUser()); $isTeknisi = auth()->user()->role === 'teknisi'; @endphp
+                    @php
+                        $isSuperAdmin = auth()->user()->isSuperAdmin();
+                        $isAdminOrAbove = $isSuperAdmin || (auth()->user()->isAdmin() && !auth()->user()->isSubUser());
+                        $isTeknisi = auth()->user()->role === 'teknisi';
+                        $isKeuangan = auth()->user()->role === 'keuangan';
+                        $tenantSettings = $tenantSettings ?? \App\Models\TenantSettings::where('user_id', auth()->user()->effectiveOwnerId())->first();
+                        $shiftModuleEnabled = $tenantSettings?->isShiftModuleEnabled() ?? false;
+                        $waChatRoles = ['administrator', 'noc', 'it_support', 'cs'];
+                        $canSeeWaChat = $isSuperAdmin || in_array(auth()->user()->role, $waChatRoles, true);
+                        $canSeeShift = $isSuperAdmin || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support', 'cs', 'teknisi'], true);
+                        $waChatUnreadCount = $canSeeWaChat ? \App\Models\WaConversation::query()->accessibleBy(auth()->user())->where('unread_count', '>', 0)->sum('unread_count') : 0;
+                    @endphp
                     @if($isAdminOrAbove)
                     <li class="nav-item has-treeview {{ request()->is('tools*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->is('tools*') ? 'active' : '' }}">
@@ -978,6 +989,70 @@
                         </ul>
                     </li>
                     @endif
+                    {{-- Chat WA --}}
+                    @if($canSeeWaChat)
+                    <li class="nav-item has-treeview {{ request()->routeIs('wa-chat.*', 'wa-tickets.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('wa-chat.*', 'wa-tickets.*') ? 'active' : '' }}">
+                            <i class="nav-icon fab fa-whatsapp text-success"></i>
+                            <p>
+                                Chat WA
+                                @if($waChatUnreadCount > 0)
+                                <span class="badge badge-danger right">{{ $waChatUnreadCount > 99 ? '99+' : $waChatUnreadCount }}</span>
+                                @endif
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('wa-chat.index') }}" class="nav-link {{ request()->routeIs('wa-chat.index') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>
+                                        Inbox Chat
+                                        @if($waChatUnreadCount > 0)
+                                        <span class="badge badge-danger right">{{ $waChatUnreadCount > 99 ? '99+' : $waChatUnreadCount }}</span>
+                                        @endif
+                                    </p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('wa-tickets.index') }}" class="nav-link {{ request()->routeIs('wa-tickets.*') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Tiket Pengaduan</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    @endif
+
+                    {{-- Jadwal Shift --}}
+                    @if($canSeeShift && $shiftModuleEnabled)
+                    <li class="nav-item has-treeview {{ request()->routeIs('shifts.*') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('shifts.*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-calendar-alt"></i>
+                            <p>
+                                Jadwal Shift
+                                <i class="right fas fa-angle-left"></i>
+                            </p>
+                        </a>
+                        <ul class="nav nav-treeview">
+                            @if(in_array(auth()->user()->role, ['administrator'], true) || $isSuperAdmin)
+                            <li class="nav-item">
+                                <a href="{{ route('shifts.index') }}" class="nav-link {{ request()->routeIs('shifts.index') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Kelola Jadwal</p>
+                                </a>
+                            </li>
+                            @endif
+                            <li class="nav-item">
+                                <a href="{{ route('shifts.my') }}" class="nav-link {{ request()->routeIs('shifts.my') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Jadwal Saya</p>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    @endif
+
                     @if(!$isTeknisi)
                     <li class="nav-item has-treeview {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*', 'wa-blast.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('users.*', 'tenant-settings.*', 'settings.*', 'wa-gateway.*', 'wa-blast.*') ? 'active' : '' }}">

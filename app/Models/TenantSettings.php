@@ -85,6 +85,8 @@ class TenantSettings extends Model
         'map_cache_max_zoom',
         'map_cache_version',
         'module_hotspot_enabled',
+        'shift_feature_enabled',
+        'wa_shift_group_number',
     ];
 
     protected function casts(): array
@@ -124,7 +126,13 @@ class TenantSettings extends Model
             'map_cache_max_zoom' => 'integer',
             'map_cache_version' => 'integer',
             'module_hotspot_enabled' => 'boolean',
+            'shift_feature_enabled' => 'boolean',
         ];
+    }
+
+    public function isShiftModuleEnabled(): bool
+    {
+        return (bool) $this->shift_feature_enabled;
     }
 
     public function getIsolirPageTitle(): string

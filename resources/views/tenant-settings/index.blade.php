@@ -406,6 +406,23 @@
                             Jika dimatikan: menu, halaman, dan endpoint hotspot tidak bisa diakses tenant ini.
                         </small>
                     </div>
+                    <hr>
+                    <div class="form-group mb-0">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="shift_feature_enabled" name="shift_feature_enabled" value="1" {{ old('shift_feature_enabled', $settings->shift_feature_enabled ?? false) ? 'checked' : '' }}>
+                            <label class="custom-control-label" for="shift_feature_enabled">Aktifkan fitur Jadwal Shift</label>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Jika aktif: menu Jadwal Shift muncul di sidebar untuk semua role kecuali keuangan/mitra.
+                        </small>
+                    </div>
+                    <div class="form-group mt-3 mb-0" id="waShiftGroupField" style="{{ old('shift_feature_enabled', $settings->shift_feature_enabled ?? false) ? '' : 'display:none;' }}">
+                        <label for="wa_shift_group_number">Nomor Grup WA untuk Ringkasan Shift</label>
+                        <input type="text" class="form-control" id="wa_shift_group_number" name="wa_shift_group_number"
+                            value="{{ old('wa_shift_group_number', $settings->wa_shift_group_number) }}"
+                            placeholder="Contoh: 62812345678-1234567890@g.us">
+                        <small class="text-muted">Jika diisi, ringkasan jadwal shift besok dikirim ke grup WA ini setiap malam. Kosongkan jika tidak ingin kirim ke grup.</small>
+                    </div>
                 </div>
                 <div class="card-footer">
                     <button type="submit" class="btn btn-primary">
@@ -1164,6 +1181,11 @@ function testTripay() {
         resultDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-times"></i> Gagal menguji koneksi</div>';
     });
 }
+
+// Toggle WA shift group field
+$('#shift_feature_enabled').on('change', function() {
+    $('#waShiftGroupField').toggle(this.checked);
+});
 </script>
 @endpush
 @endsection

@@ -17,6 +17,8 @@ class UpdateTenantModuleSettingsRequest extends FormRequest
     {
         return [
             'module_hotspot_enabled' => ['required', 'boolean'],
+            'shift_feature_enabled' => ['required', 'boolean'],
+            'wa_shift_group_number' => ['nullable', 'string', 'max:100'],
         ];
     }
 
@@ -24,6 +26,7 @@ class UpdateTenantModuleSettingsRequest extends FormRequest
     {
         $this->merge([
             'module_hotspot_enabled' => $this->boolean('module_hotspot_enabled'),
+            'shift_feature_enabled' => $this->boolean('shift_feature_enabled'),
         ]);
     }
 }

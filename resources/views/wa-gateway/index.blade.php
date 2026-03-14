@@ -307,7 +307,9 @@
                                         <code>{cs_number}</code> Nomor CS (dari Pengaturan) &nbsp;
                                         <code>{bank_account}</code> Info rekening bank &nbsp;
                                         <code>{payment_link}</code> Link bayar pelanggan &nbsp;
-                                        <code>{username}</code> Username PPP
+                                        <code>{username}</code> Username PPP &nbsp;
+                                        <code>{portal_url}</code> <span class="text-success">URL portal pelanggan</span> &nbsp;
+                                        <code>{password_clientarea}</code> <span class="text-success">Password portal pelanggan (hanya template Registrasi)</span>
                                     </div>
                                     <p class="text-muted small mb-2">Rotasi template aktif otomatis. Jika ingin custom beberapa versi pesan, pisahkan setiap versi dengan baris <code>---</code> dalam kolom template yang sama.</p>
                                     <p class="text-muted small mb-3">Tombol <strong>Test Kirim</strong> mengirim pesan ke nomor HP bisnis (CS) dengan data dummy. Simpan dulu sebelum test agar template terbaru digunakan.</p>

@@ -7,6 +7,8 @@ use App\Models\Invoice;
 use App\Models\PppUser;
 use App\Models\RadiusAccount;
 use App\Models\TenantSettings;
+use App\Models\WaConversation;
+use App\Models\WaChatMessage;
 use App\Models\WaMultiSessionDevice;
 use App\Models\WaWebhookLog;
 use App\Services\WaGatewayService;
@@ -172,6 +174,15 @@ class WaWebhookController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::warning('WA Webhook: failed to save '.$eventType.' log', ['error' => $e->getMessage()]);
+        }
+
+        // Sync incoming message to WA Chat inbox (only for inbound messages, not outbound)
+        if ($eventType === 'message' && $ownerId !== null && ! $this->isTruthy($payload['fromMe'] ?? null)) {
+            try {
+                $this->syncToConversation($payload, $ownerId);
+            } catch (\Throwable $e) {
+                Log::warning('WA Webhook: failed to sync conversation', ['error' => $e->getMessage()]);
+            }
         }
 
         try {
@@ -924,5 +935,57 @@ class WaWebhookController extends Controller
             ?? '';
 
         return is_scalar($secret) ? trim((string) $secret) : '';
+    }
+
+    private function syncToConversation(array $payload, int $ownerId): void
+    {
+        if ($this->isGroupMessage($payload)) {
+            return;
+        }
+
+        $phone = $this->extractSender($payload);
+        if ($phone === null || $phone === '') {
+            return;
+        }
+
+        $messageText = $this->extractMessageBody($payload);
+        if ($messageText === null || $messageText === '') {
+            return;
+        }
+
+        $sessionId = $this->extractSessionId($payload);
+        $contactName = null;
+        if (isset($payload['pushName']) && is_scalar($payload['pushName'])) {
+            $contactName = mb_substr(trim((string) $payload['pushName']), 0, 191) ?: null;
+        }
+
+        $conversation = WaConversation::firstOrCreate(
+            ['owner_id' => $ownerId, 'contact_phone' => $phone],
+            ['contact_name' => $contactName, 'session_id' => $sessionId, 'status' => 'open']
+        );
+
+        // Update contact name if we have one and it was unknown
+        if ($contactName && ! $conversation->contact_name) {
+            $conversation->update(['contact_name' => $contactName]);
+        }
+
+        $waMessageId = null;
+        if (isset($payload['id']) && is_scalar($payload['id'])) {
+            $waMessageId = mb_substr((string) $payload['id'], 0, 255);
+        } elseif (isset($payload['message_id']) && is_scalar($payload['message_id'])) {
+            $waMessageId = mb_substr((string) $payload['message_id'], 0, 255);
+        }
+
+        WaChatMessage::create([
+            'conversation_id' => $conversation->id,
+            'owner_id' => $ownerId,
+            'direction' => 'inbound',
+            'message' => $messageText,
+            'sender_name' => $contactName,
+            'wa_message_id' => $waMessageId,
+            'created_at' => now(),
+        ]);
+
+        $conversation->updateFromIncoming($messageText);
     }
 }

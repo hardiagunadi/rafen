@@ -645,6 +645,21 @@ class PppUserController extends Controller
         return redirect()->route('ppp-users.index')->with('status', 'User PPP terpilih dihapus.');
     }
 
+    public function notaAktivasi(PppUser $pppUser): \Illuminate\View\View
+    {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        if (! $user->isSuperAdmin() && $pppUser->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $pppUser->load(['profile', 'owner']);
+        $settings = TenantSettings::where('user_id', $pppUser->owner_id)->first();
+
+        return view('ppp-users.nota-aktivasi', compact('pppUser', 'settings'));
+    }
+
     /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>

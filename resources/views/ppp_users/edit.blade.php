@@ -14,7 +14,10 @@
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h4 class="mb-0">Edit Pelanggan — <span class="text-primary">{{ $pppUser->customer_name }}</span></h4>
-            <a href="{{ route('ppp-users.index') }}" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left"></i> Kembali</a>
+            <div class="d-flex gap-2">
+                <a href="{{ route('ppp-users.nota-aktivasi', $pppUser) }}" target="_blank" class="btn btn-sm btn-outline-success"><i class="fas fa-print"></i> Nota Aktivasi</a>
+                <a href="{{ route('ppp-users.index') }}" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left"></i> Kembali</a>
+            </div>
         </div>
 
         {{-- Main tabs: form + invoice/session/dialup --}}
@@ -121,10 +124,6 @@
 
                         <div class="form-row">
                             <div class="form-group col-md-6">
-                                <div class="form-check">
-                                    <input type="checkbox" class="form-check-input" id="tagihkan_ppn" name="tagihkan_ppn" value="1" @checked(old('tagihkan_ppn', $pppUser->tagihkan_ppn))>
-                                    <label class="form-check-label" for="tagihkan_ppn">Tagihkan PPN (persentase dari Profil PPP)</label>
-                                </div>
                                 <div class="form-check">
                                     <input type="checkbox" class="form-check-input" id="prorata_otomatis" name="prorata_otomatis" value="1" @checked(old('prorata_otomatis', $pppUser->prorata_otomatis))>
                                     <label class="form-check-label" for="prorata_otomatis">Prorata Otomatis</label>
