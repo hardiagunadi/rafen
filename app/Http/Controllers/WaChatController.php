@@ -72,6 +72,7 @@ class WaChatController extends Controller
                 'contact_phone' => $c->contact_phone,
                 'contact_name' => $c->contact_name ?? $c->contact_phone,
                 'status' => $c->status,
+                'bot_paused_until' => $c->bot_paused_until?->toISOString(),
                 'last_message' => $c->last_message,
                 'last_message_at' => $c->last_message_at?->diffForHumans(),
                 'last_message_at_raw' => $c->last_message_at?->toISOString(),
@@ -128,6 +129,7 @@ class WaChatController extends Controller
                 'contact_phone' => $waConversation->contact_phone,
                 'contact_name' => $waConversation->contact_name ?? $waConversation->contact_phone,
                 'status' => $waConversation->status,
+                'bot_paused_until' => $waConversation->bot_paused_until?->toISOString(),
                 'customer' => $customer,
             ],
             'messages' => $messages,
@@ -181,6 +183,7 @@ class WaChatController extends Controller
         $waConversation->update([
             'last_message' => mb_substr($text, 0, 255),
             'last_message_at' => now(),
+            'bot_paused_until' => null, // CS sudah handle, bot aktif kembali
         ]);
 
         $this->logActivity('replied', 'WaConversation', $waConversation->id, $waConversation->contact_phone, $ownerId);
@@ -200,6 +203,28 @@ class WaChatController extends Controller
     {
         $this->authorizeAccess($waConversation);
         $waConversation->update(['status' => 'open']);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function resumeBot(WaConversation $waConversation): JsonResponse
+    {
+        $this->authorizeAccess($waConversation);
+        $waConversation->update(['bot_paused_until' => null]);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function destroy(WaConversation $waConversation): JsonResponse
+    {
+        $this->authorizeAccess($waConversation);
+
+        if ($waConversation->status !== 'resolved') {
+            return response()->json(['success' => false, 'message' => 'Hanya percakapan yang sudah selesai (resolved) yang bisa dihapus.'], 422);
+        }
+
+        $waConversation->messages()->delete();
+        $waConversation->delete();
 
         return response()->json(['success' => true]);
     }

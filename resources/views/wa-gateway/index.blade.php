@@ -5,7 +5,7 @@
 @section('content')
 @php
     $activeTab = request()->query('tab', 'overview');
-    if (! in_array($activeTab, ['overview', 'devices'], true)) {
+    if (! in_array($activeTab, ['overview', 'devices', 'keyword-rules'], true)) {
         $activeTab = 'overview';
     }
     $canAccessWaBlast = auth()->user()->isSuperAdmin() || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'], true);
@@ -67,6 +67,14 @@
                             'tenant_id' => auth()->user()->isSuperAdmin() ? ($selectedTenant?->id ?? null) : null,
                         ])) }}" class="nav-link {{ $activeTab === 'devices' ? 'active' : '' }}">
                             <i class="fas fa-mobile-alt mr-1"></i>Manajemen Device
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ route('wa-gateway.index', array_filter([
+                            'tab' => 'keyword-rules',
+                            'tenant_id' => auth()->user()->isSuperAdmin() ? ($selectedTenant?->id ?? null) : null,
+                        ])) }}" class="nav-link {{ $activeTab === 'keyword-rules' ? 'active' : '' }}">
+                            <i class="fas fa-robot mr-1"></i>Keyword Rules
                         </a>
                     </li>
                 </ul>
@@ -420,6 +428,84 @@
             </div>
         </div>
         @endif
+
+        @if($activeTab === 'keyword-rules')
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <h3 class="card-title"><i class="fas fa-robot mr-1"></i> Keyword Rules Bot</h3>
+                <div class="card-tools">
+                    <button class="btn btn-success btn-sm" data-toggle="modal" data-target="#modal-keyword-add">
+                        <i class="fas fa-plus mr-1"></i> Tambah Rule
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="p-3 border-bottom bg-light">
+                    <small class="text-muted"><i class="fas fa-info-circle mr-1"></i>
+                        Keyword rules akan diproses <strong>sebelum</strong> intent bawaan bot. Gunakan kata kunci yang spesifik agar tidak bentrok dengan intent lain.
+                    </small>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0" id="keyword-rules-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px">P</th>
+                                <th>Keywords</th>
+                                <th>Balasan</th>
+                                <th style="width:80px">Status</th>
+                                <th style="width:100px">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="keyword-rules-tbody">
+                            <tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Memuat...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        @endif
+
+        {{-- Modal Tambah Keyword Rule --}}
+        <div class="modal fade" id="modal-keyword-add" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modal-keyword-title"><i class="fas fa-robot mr-1"></i> Tambah Keyword Rule</h5>
+                        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="keyword-rule-id" value="">
+                        <div class="form-group">
+                            <label>Keywords <small class="text-muted">(satu per baris, bot akan cocokkan salah satu)</small></label>
+                            <textarea id="keyword-rule-keywords" class="form-control" rows="4" placeholder="mati lampu&#10;gangguan listrik&#10;tidak ada sinyal"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Balasan Bot</label>
+                            <textarea id="keyword-rule-reply" class="form-control" rows="5" placeholder="Maaf, kami sedang mengalami gangguan. Tim teknis sedang bekerja..."></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Prioritas <small class="text-muted">(0 = tertinggi)</small></label>
+                                <input type="number" id="keyword-rule-priority" class="form-control" value="0" min="0" max="255">
+                            </div>
+                            <div class="form-group col-md-6 d-flex align-items-end">
+                                <div class="custom-control custom-switch">
+                                    <input type="checkbox" class="custom-control-input" id="keyword-rule-active" checked>
+                                    <label class="custom-control-label" for="keyword-rule-active">Aktif</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="keyword-rule-error" class="alert alert-danger d-none"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Batal</button>
+                        <button type="button" class="btn btn-success btn-sm" onclick="saveKeywordRule()">
+                            <i class="fas fa-save mr-1"></i> Simpan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="modal fade" id="wa-qr-modal" tabindex="-1" role="dialog" aria-labelledby="wa-qr-modal-label" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered" role="document">
@@ -1403,5 +1489,140 @@ document.addEventListener('DOMContentLoaded', function () {
 
     controlWaService('status', true);
 });
+</script>
+
+<script>
+// ========= Keyword Rules =========
+var keywordRulesData = [];
+
+function loadKeywordRules() {
+    fetch('{{ route('wa-keyword-rules.index') }}', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            keywordRulesData = data;
+            renderKeywordRules(data);
+        })
+        .catch(function(){ renderKeywordRulesError(); });
+}
+
+function renderKeywordRules(rules) {
+    var tbody = document.getElementById('keyword-rules-tbody');
+    if (!tbody) return;
+    if (!rules || rules.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Belum ada keyword rule. Klik <strong>Tambah Rule</strong> untuk memulai.</td></tr>';
+        return;
+    }
+    var html = '';
+    rules.forEach(function(rule) {
+        var kws = (rule.keywords || []).map(function(k){ return '<span class="badge badge-secondary mr-1">'+escHtml(k)+'</span>'; }).join('');
+        var statusBadge = rule.is_active
+            ? '<span class="badge badge-success">Aktif</span>'
+            : '<span class="badge badge-secondary">Nonaktif</span>';
+        var preview = rule.reply_text ? escHtml(rule.reply_text.substring(0, 60)) + (rule.reply_text.length > 60 ? '...' : '') : '-';
+        html += '<tr>'
+            + '<td><span class="badge badge-info">'+rule.priority+'</span></td>'
+            + '<td>'+kws+'</td>'
+            + '<td><small class="text-muted">'+preview+'</small></td>'
+            + '<td>'+statusBadge+'</td>'
+            + '<td>'
+            + '<button class="btn btn-xs btn-outline-primary mr-1" onclick="editKeywordRule('+rule.id+')"><i class="fas fa-edit"></i></button>'
+            + '<button class="btn btn-xs btn-outline-danger" onclick="deleteKeywordRule('+rule.id+')"><i class="fas fa-trash"></i></button>'
+            + '</td>'
+            + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+function renderKeywordRulesError() {
+    var tbody = document.getElementById('keyword-rules-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Gagal memuat data.</td></tr>';
+}
+
+function openKeywordAddModal() {
+    document.getElementById('modal-keyword-title').innerText = 'Tambah Keyword Rule';
+    document.getElementById('keyword-rule-id').value = '';
+    document.getElementById('keyword-rule-keywords').value = '';
+    document.getElementById('keyword-rule-reply').value = '';
+    document.getElementById('keyword-rule-priority').value = 0;
+    document.getElementById('keyword-rule-active').checked = true;
+    document.getElementById('keyword-rule-error').classList.add('d-none');
+    $('#modal-keyword-add').modal('show');
+}
+
+function editKeywordRule(id) {
+    var rule = keywordRulesData.find(function(r){ return r.id === id; });
+    if (!rule) return;
+    document.getElementById('modal-keyword-title').innerText = 'Edit Keyword Rule';
+    document.getElementById('keyword-rule-id').value = rule.id;
+    document.getElementById('keyword-rule-keywords').value = (rule.keywords || []).join('\n');
+    document.getElementById('keyword-rule-reply').value = rule.reply_text || '';
+    document.getElementById('keyword-rule-priority').value = rule.priority || 0;
+    document.getElementById('keyword-rule-active').checked = !!rule.is_active;
+    document.getElementById('keyword-rule-error').classList.add('d-none');
+    $('#modal-keyword-add').modal('show');
+}
+
+function saveKeywordRule() {
+    var id = document.getElementById('keyword-rule-id').value;
+    var keywordsRaw = document.getElementById('keyword-rule-keywords').value;
+    var keywords = keywordsRaw.split('\n').map(function(k){ return k.trim(); }).filter(function(k){ return k !== ''; });
+    var replyText = document.getElementById('keyword-rule-reply').value.trim();
+    var priority = parseInt(document.getElementById('keyword-rule-priority').value) || 0;
+    var isActive = document.getElementById('keyword-rule-active').checked;
+
+    var errEl = document.getElementById('keyword-rule-error');
+    errEl.classList.add('d-none');
+
+    if (keywords.length === 0) { errEl.innerText = 'Minimal satu keyword.'; errEl.classList.remove('d-none'); return; }
+    if (replyText === '') { errEl.innerText = 'Balasan bot tidak boleh kosong.'; errEl.classList.remove('d-none'); return; }
+
+    var url = id ? '/wa-keyword-rules/' + id : '/wa-keyword-rules';
+    var method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ keywords: keywords, reply_text: replyText, priority: priority, is_active: isActive }),
+    })
+    .then(function(r){ return r.json().then(function(data){ return {ok: r.ok, data: data}; }); })
+    .then(function(res){
+        if (!res.ok) {
+            var msg = res.data.message || 'Gagal menyimpan.';
+            errEl.innerText = msg; errEl.classList.remove('d-none');
+            return;
+        }
+        $('#modal-keyword-add').modal('hide');
+        loadKeywordRules();
+    })
+    .catch(function(){ errEl.innerText = 'Terjadi kesalahan jaringan.'; errEl.classList.remove('d-none'); });
+}
+
+function deleteKeywordRule(id) {
+    if (!confirm('Hapus keyword rule ini?')) return;
+    fetch('/wa-keyword-rules/' + id, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    })
+    .then(function(r){ if (r.ok) loadKeywordRules(); });
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.querySelector('[data-target="#modal-keyword-add"]') && document.querySelector('[data-target="#modal-keyword-add"]').addEventListener('click', function() {
+    openKeywordAddModal();
+});
+
+if (document.getElementById('keyword-rules-tbody')) {
+    loadKeywordRules();
+}
 </script>
 @endpush

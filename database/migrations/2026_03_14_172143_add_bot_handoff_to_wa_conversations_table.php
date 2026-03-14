@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('wa_conversations', function (Blueprint $table) {
-            //
+            $table->timestamp('bot_paused_until')->nullable()->after('status');
         });
     }
 
@@ -22,7 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('wa_conversations', function (Blueprint $table) {
-            //
+            $table->dropColumn('bot_paused_until');
         });
     }
 };

@@ -198,7 +198,7 @@
     <input type="date" id="inputTglAktivasi" value="{{ $tglAktivasiDefault }}"
         style="border:1px solid #ccc;border-radius:4px;padding:3px 8px;font-size:13px;"
         oninput="updateTanggal(this.value)">
-    <label style="margin:0 0 0 12px;font-size:13px;font-weight:bold;">Biaya Instalasi (Rp):</label>
+    <label style="margin:0 0 0 12px;font-size:13px;font-weight:bold;">Biaya Aktivasi (Rp):</label>
     <input type="number" id="inputBiaya" value="{{ (int)$totalBiaya }}" min="0" step="1000"
         style="border:1px solid #ccc;border-radius:4px;padding:3px 8px;font-size:13px;width:130px;"
         oninput="updateBiaya(this.value)">
@@ -276,10 +276,10 @@ $notaHtml = ''; // placeholder, kita render langsung dua kali via blade
             <tr><td class="lbl">ODP / POP</td><td class="sep">:</td><td class="val">{{ $pppUser->odp_pop }}</td></tr>
             @endif
         </table>
-        <div class="section-title">BIAYA PEMASANGAN</div>
+        <div class="section-title">BIAYA AKTIVASI</div>
         <table class="amount-table">
             <tr>
-                <td class="label">Biaya Instalasi</td>
+                <td class="label">Biaya Aktivasi</td>
                 <td class="value nota-biaya">{{ number_format($totalBiaya, 2, ',', '.') }}</td>
             </tr>
             <tr class="total-row">

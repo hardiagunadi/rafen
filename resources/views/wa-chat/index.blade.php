@@ -45,11 +45,17 @@
                         <span id="chatCustomerLink" class="ml-2"></span>
                     </div>
                     <div class="btn-group btn-group-sm">
+                        <button id="btnResumeBot" class="btn btn-outline-warning btn-sm d-none" title="Aktifkan bot kembali">
+                            <i class="fas fa-robot"></i> Aktifkan Bot
+                        </button>
                         <button id="btnResolve" class="btn btn-success btn-sm" title="Tandai Selesai">
                             <i class="fas fa-check"></i> Selesai
                         </button>
                         <button id="btnReopen" class="btn btn-warning btn-sm d-none" title="Buka Kembali">
                             <i class="fas fa-redo"></i> Buka
+                        </button>
+                        <button id="btnDeleteConv" class="btn btn-danger btn-sm d-none" title="Hapus Percakapan">
+                            <i class="fas fa-trash"></i> Hapus
                         </button>
                         <button id="btnCreateTicket" class="btn btn-info btn-sm" title="Buat Tiket">
                             <i class="fas fa-ticket-alt"></i> Tiket
@@ -264,8 +270,10 @@
     const $input    = $('#chatInput');
     const $replyText = $('#replyText');
     const $btnSend  = $('#btnSend');
-    const $btnResolve = $('#btnResolve');
-    const $btnReopen  = $('#btnReopen');
+    const $btnResolve    = $('#btnResolve');
+    const $btnReopen     = $('#btnReopen');
+    const $btnResumeBot  = $('#btnResumeBot');
+    const $btnDeleteConv = $('#btnDeleteConv');
 
     /* ── helpers ── */
     function esc(str) { return $('<span>').text(str).html(); }
@@ -311,6 +319,9 @@
                 const customerBadge = c.customer
                     ? `<a href="${esc(c.customer.url)}" target="_blank" class="badge badge-success mr-1" style="font-size:.68rem;" onclick="event.stopPropagation()"><i class="fas fa-user"></i> ${esc(c.customer.name)}</a>`
                     : `<span class="badge badge-secondary" style="font-size:.68rem;"><i class="fas fa-user-slash"></i> Non-pelanggan</span>`;
+                const botPauseBadge = c.bot_paused_until
+                    ? `<span class="badge badge-warning ml-1" style="font-size:.65rem;" title="Bot di-pause, CS sedang handle"><i class="fas fa-robot"></i> BOT PAUSE</span>`
+                    : '';
 
                 const $item = $(`
                     <a href="#" class="list-group-item list-group-item-action py-2 px-3 conversation-item ${isActive} ${hasUnread ? 'conv-unread' : ''}" data-id="${c.id}">
@@ -320,7 +331,7 @@
                         </div>
                         <div class="d-flex justify-content-between align-items-center mt-1">
                             <small class="text-muted text-truncate" style="max-width:150px;">${esc(c.last_message || '')}</small>
-                            <div class="flex-shrink-0 ml-1">${unreadBadge}<span class="badge badge-${statusColor}" style="font-size:.65rem;">${c.status}</span></div>
+                            <div class="flex-shrink-0 ml-1">${unreadBadge}<span class="badge badge-${statusColor}" style="font-size:.65rem;">${c.status}</span>${botPauseBadge}</div>
                         </div>
                         <div class="mt-1">${customerBadge}</div>
                     </a>
@@ -410,6 +421,8 @@
 
             $btnResolve.toggleClass('d-none', conv.status === 'resolved');
             $btnReopen.toggleClass('d-none', conv.status !== 'resolved');
+            $btnDeleteConv.toggleClass('d-none', conv.status !== 'resolved');
+            $btnResumeBot.toggleClass('d-none', !conv.bot_paused_until);
 
             // Full render
             $messages.empty().addClass('has-messages');
@@ -505,6 +518,31 @@
         if (!activeConversationId) return;
         $.post(`{{ url('wa-chat/conversations') }}/${activeConversationId}/open`, {_token:'{{ csrf_token() }}'}, function(res) {
             if (res.success) { loadMessages(activeConversationId); loadConversations(); }
+        });
+    });
+    $btnResumeBot.on('click', function() {
+        if (!activeConversationId) return;
+        $.post(`{{ url('wa-chat/conversations') }}/${activeConversationId}/resume-bot`, {_token:'{{ csrf_token() }}'}, function(res) {
+            if (res.success) { $btnResumeBot.addClass('d-none'); loadConversations(); }
+        });
+    });
+    $btnDeleteConv.on('click', function() {
+        if (!activeConversationId) return;
+        if (!confirm('Hapus percakapan ini beserta semua pesannya? Tindakan ini tidak dapat dibatalkan.')) return;
+        $.ajax({
+            url: `{{ url('wa-chat/conversations') }}/${activeConversationId}`,
+            method: 'DELETE',
+            data: {_token: '{{ csrf_token() }}'},
+            success: function(res) {
+                if (res.success) {
+                    activeConversationId = null;
+                    $header.addClass('d-none');
+                    $input.addClass('d-none');
+                    $messages.empty();
+                    $empty.show();
+                    loadConversations();
+                }
+            },
         });
     });
 

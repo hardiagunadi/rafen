@@ -92,7 +92,9 @@ class PppUserController extends Controller
 
             $statusBadge = '';
             if ($user->status_registrasi) {
-                $statusBadge = '<span class="badge badge-success mr-1">'.strtoupper(substr($user->status_registrasi, 0, 3)).'</span>';
+                $registrasiLabels = ['aktif' => 'AKTIF', 'on_process' => 'ON PROCESS', 'non_aktif' => 'NON AKTIF'];
+                $registrasiLabel = $registrasiLabels[$user->status_registrasi] ?? strtoupper($user->status_registrasi);
+                $statusBadge = '<span class="badge badge-success mr-1">'.$registrasiLabel.'</span>';
             }
             $tipe = $statusBadge.strtoupper(str_replace('_', '/', (string) $user->tipe_service));
 

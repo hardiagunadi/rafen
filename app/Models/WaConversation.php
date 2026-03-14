@@ -17,6 +17,7 @@ class WaConversation extends Model
         'contact_name',
         'assigned_to_id',
         'status',
+        'bot_paused_until',
         'last_message',
         'last_message_at',
         'unread_count',
@@ -26,8 +27,14 @@ class WaConversation extends Model
     {
         return [
             'last_message_at' => 'datetime',
+            'bot_paused_until' => 'datetime',
             'unread_count' => 'integer',
         ];
+    }
+
+    public function isBotPaused(): bool
+    {
+        return $this->bot_paused_until !== null && $this->bot_paused_until->isFuture();
     }
 
     public function owner(): BelongsTo

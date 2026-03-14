@@ -9,6 +9,8 @@ use App\Models\RadiusAccount;
 use App\Models\TenantSettings;
 use App\Models\WaConversation;
 use App\Models\WaChatMessage;
+use App\Models\WaConversationState;
+use App\Models\WaKeywordRule;
 use App\Models\WaMultiSessionDevice;
 use App\Models\WaWebhookLog;
 use App\Services\WaGatewayService;
@@ -374,12 +376,69 @@ class WaWebhookController extends Controller
             return;
         }
 
+        // Cek apakah bot di-pause (handoff ke CS)
+        $conversation = WaConversation::query()
+            ->where('owner_id', $ownerId)
+            ->where('contact_phone', $sender)
+            ->first();
+
+        if ($conversation && $conversation->isBotPaused()) {
+            return;
+        }
+
         $customerContext = $this->resolveCustomerContext($ownerId, $sender);
+
+        // Cek conversation state (multi-step flow) — prioritas tertinggi
+        if ($conversation) {
+            $stateReply = $this->checkConversationState($ownerId, $conversation, $payload, $incomingMessage, $customerContext, $settings, $service, $sender);
+            if ($stateReply !== null) {
+                return;
+            }
+        }
+
+        // Cek keyword rules kustom — prioritas kedua
+        $keywordReply = $this->checkKeywordRules($ownerId, $incomingMessage);
+        if ($keywordReply !== null) {
+            $service->sendMessage($sender, $keywordReply, [
+                'event' => 'auto_reply_outbound',
+                'intent' => 'keyword_rule',
+            ]);
+            return;
+        }
+
         $intent = $this->detectIntent($incomingMessage);
         $replyMessage = $this->buildConversationalReply($intent, $settings, $customerContext);
 
         if ($replyMessage === '') {
             return;
+        }
+
+        // Handle handoff ke CS
+        if ($intent === 'request_human') {
+            $conv = $conversation ?? WaConversation::query()
+                ->where('owner_id', $ownerId)
+                ->where('contact_phone', $sender)
+                ->first();
+
+            if ($conv) {
+                $conv->update([
+                    'bot_paused_until' => now()->addHours(2),
+                    'status' => 'pending',
+                ]);
+            }
+        }
+
+        // Mulai flow multi-step untuk confirm_payment dan technician_schedule
+        if (in_array($intent, ['confirm_payment', 'technician_schedule'], true)) {
+            $conv = $conversation ?? WaConversation::query()
+                ->where('owner_id', $ownerId)
+                ->where('contact_phone', $sender)
+                ->first();
+
+            if ($conv) {
+                $flow = $intent === 'confirm_payment' ? 'konfirmasi_bayar' : 'jadwal_teknisi';
+                $this->startFlow($flow, $conv, $ownerId);
+            }
         }
 
         $service->sendMessage($sender, $replyMessage, [
@@ -521,6 +580,73 @@ class WaWebhookController extends Controller
             return $base;
         }
 
+        if ($intent === 'request_human') {
+            $base = "Baik {$displayName}, permintaan Anda sudah kami teruskan ke tim CS kami.\nSilakan tunggu, kami akan segera membalas.";
+
+            if ($csNumber !== '') {
+                $base .= "\nAtau bisa langsung hubungi: {$csNumber}";
+            }
+
+            return $base;
+        }
+
+        if ($intent === 'check_package') {
+            if (($customerContext['found'] ?? false) !== true) {
+                return "Untuk cek paket aktif, mohon kirim ID pelanggan Anda terlebih dahulu ya.";
+            }
+
+            $profileName = trim((string) ($customerContext['profile_name'] ?? ''));
+            $rateDown = $customerContext['profile_rate_down'] ?? null;
+            $rateUp = $customerContext['profile_rate_up'] ?? null;
+            $jatuhTempo = $customerContext['jatuh_tempo'] ?? null;
+
+            if ($profileName === '') {
+                return "Data paket {$displayName} belum tersedia. Hubungi CS kami untuk informasi lebih lanjut.";
+            }
+
+            $message = "Paket aktif {$displayName}:\n- Nama Paket: {$profileName}";
+
+            if ($rateDown !== null && $rateDown !== '') {
+                $message .= "\n- Download: {$rateDown}";
+            }
+
+            if ($rateUp !== null && $rateUp !== '') {
+                $message .= "\n- Upload: {$rateUp}";
+            }
+
+            if ($jatuhTempo) {
+                $message .= "\n- Jatuh Tempo: ".(is_string($jatuhTempo) ? $jatuhTempo : $jatuhTempo->format('d/m/Y'));
+            }
+
+            return $message;
+        }
+
+        if ($intent === 'request_extend') {
+            $invoice = $customerContext['invoice'] ?? null;
+
+            if ($invoice instanceof Invoice) {
+                if (empty($invoice->payment_token)) {
+                    $invoice->update(['payment_token' => Invoice::generatePaymentToken()]);
+                }
+
+                $paymentLink = route('customer.invoice', $invoice->payment_token);
+                $total = 'Rp '.number_format((float) $invoice->total, 0, ',', '.');
+
+                return "Untuk perpanjang layanan {$displayName}, silakan selesaikan tagihan aktif berikut:\n"
+                    ."- Invoice: {$invoice->invoice_number}\n"
+                    ."- Nominal: {$total}\n"
+                    ."- Link Bayar: {$paymentLink}\n\n"
+                    ."Setelah pembayaran terverifikasi, layanan otomatis diperpanjang.";
+            }
+
+            $base = "Untuk perpanjang layanan, silakan hubungi CS kami {$displayName}.";
+            if ($csNumber !== '') {
+                $base = "Untuk perpanjang layanan, silakan hubungi CS kami di {$csNumber}, {$displayName}.";
+            }
+
+            return $base;
+        }
+
         if ($intent === 'greeting') {
             $timeGreeting = $this->timeGreetingLabel();
 
@@ -557,7 +683,19 @@ class WaWebhookController extends Controller
             return 'technician_schedule';
         }
 
-        if (preg_match('/\b(gangguan|internet putus|lemot|lambat|error|komplain|bantuan|tolong|cs)\b/u', $normalized)) {
+        if (preg_match('/\b(hubungi cs|minta cs|bicara sama cs|mau cs|ke cs|agen|manusia|operator|live agent)\b/u', $normalized)) {
+            return 'request_human';
+        }
+
+        if (preg_match('/\b(cek paket|paket saya|paket aktif|kecepatan internet|berapa mbps|profil saya|paket internet)\b/u', $normalized)) {
+            return 'check_package';
+        }
+
+        if (preg_match('/\b(perpanjang|mau perpanjang|extend langganan|tambah bulan|renew|lanjutkan langganan)\b/u', $normalized)) {
+            return 'request_extend';
+        }
+
+        if (preg_match('/\b(gangguan|internet putus|lemot|lambat|error|komplain|bantuan|tolong)\b/u', $normalized)) {
             return 'support';
         }
 
@@ -583,6 +721,7 @@ class WaWebhookController extends Controller
 
         if ($pppUser) {
             $session = $this->findActiveRadiusSession($pppUser->username);
+            $profile = $pppUser->profile;
 
             return [
                 'found' => true,
@@ -595,6 +734,10 @@ class WaWebhookController extends Controller
                 'session_online' => $session !== null,
                 'session_uptime' => $session?->uptime,
                 'invoice' => $this->findUnpaidInvoiceForCustomer($ownerId, $pppUser->customer_id, $pppUser->id),
+                'profile_name' => $profile?->name,
+                'profile_rate_up' => $profile?->rate_up ?? null,
+                'profile_rate_down' => $profile?->rate_down ?? null,
+                'jatuh_tempo' => $pppUser->jatuh_tempo,
             ];
         }
 
@@ -752,6 +895,196 @@ class WaWebhookController extends Controller
             $hour < 18 => 'sore',
             default => 'malam',
         };
+    }
+
+    protected function checkKeywordRules(int $ownerId, string $message): ?string
+    {
+        $normalized = mb_strtolower($message);
+
+        $rules = WaKeywordRule::query()
+            ->where('owner_id', $ownerId)
+            ->where('is_active', true)
+            ->orderBy('priority')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($rules as $rule) {
+            $keywords = (array) ($rule->keywords ?? []);
+            foreach ($keywords as $keyword) {
+                $kw = mb_strtolower(trim((string) $keyword));
+                if ($kw !== '' && str_contains($normalized, $kw)) {
+                    return $rule->reply_text;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    protected function checkConversationState(
+        int $ownerId,
+        WaConversation $conversation,
+        array $payload,
+        string $message,
+        array $customerContext,
+        TenantSettings $settings,
+        WaGatewayService $service,
+        string $sender
+    ): ?string {
+        $state = WaConversationState::query()
+            ->where('conversation_id', $conversation->id)
+            ->first();
+
+        if (! $state) {
+            return null;
+        }
+
+        // Hapus state expired
+        if ($state->isExpired()) {
+            $state->delete();
+            return null;
+        }
+
+        $reply = $this->advanceFlow($state, $message, $payload, $customerContext, $conversation, $ownerId);
+
+        if ($reply !== '') {
+            $service->sendMessage($sender, $reply, [
+                'event' => 'auto_reply_outbound',
+                'intent' => 'flow_'.$state->flow,
+            ]);
+        }
+
+        return $reply;
+    }
+
+    protected function startFlow(string $flow, WaConversation $conversation, int $ownerId): void
+    {
+        WaConversationState::updateOrCreate(
+            ['conversation_id' => $conversation->id],
+            [
+                'owner_id' => $ownerId,
+                'flow' => $flow,
+                'step' => 1,
+                'collected' => [],
+                'expires_at' => now()->addMinutes(30),
+            ]
+        );
+    }
+
+    protected function advanceFlow(
+        WaConversationState $state,
+        string $message,
+        array $payload,
+        array $customerContext,
+        WaConversation $conversation,
+        int $ownerId
+    ): string {
+        if ($state->flow === 'konfirmasi_bayar') {
+            return $this->advanceKonfirmasiBayar($state, $message, $payload, $customerContext);
+        }
+
+        if ($state->flow === 'jadwal_teknisi') {
+            return $this->advanceJadwalTeknisi($state, $message, $customerContext, $conversation, $ownerId);
+        }
+
+        return '';
+    }
+
+    protected function advanceKonfirmasiBayar(WaConversationState $state, string $message, array $payload, array $customerContext): string
+    {
+        $displayName = trim((string) ($customerContext['name'] ?? '')) ?: 'Bapak/Ibu';
+
+        // Step 1: sudah dikirim saat intent confirm_payment terdeteksi (pesan "silakan kirim foto")
+        // Tunggu foto di step 1
+        if ($state->step === 1) {
+            $mediaType = strtolower(trim((string) ($payload['mediaType'] ?? $payload['media_type'] ?? '')));
+            $hasMedia = in_array($mediaType, ['image', 'photo'], true)
+                || isset($payload['media'])
+                || isset($payload['base64']);
+
+            if ($hasMedia) {
+                $collected = $state->collected ?? [];
+                $collected['foto_received'] = true;
+                $collected['received_at'] = now()->toDateTimeString();
+
+                $state->update([
+                    'step' => 2,
+                    'collected' => $collected,
+                    'expires_at' => now()->addMinutes(30),
+                ]);
+
+                // Selesai, hapus state
+                $state->delete();
+
+                return "Terima kasih {$displayName}, bukti transfer sudah kami terima.\nTim kami akan verifikasi dalam 1x24 jam dan Anda akan mendapat konfirmasi setelah diproses.";
+            }
+
+            // Bukan foto, ingatkan
+            return "Maaf {$displayName}, kami belum menerima foto bukti transfernya.\nSilakan kirim foto/screenshot bukti transfer ya.";
+        }
+
+        return '';
+    }
+
+    protected function advanceJadwalTeknisi(WaConversationState $state, string $message, array $customerContext, WaConversation $conversation, int $ownerId): string
+    {
+        $displayName = trim((string) ($customerContext['name'] ?? '')) ?: 'Bapak/Ibu';
+        $collected = $state->collected ?? [];
+
+        if ($state->step === 1) {
+            // Terima alamat
+            $collected['alamat'] = $message;
+            $state->update([
+                'step' => 2,
+                'collected' => $collected,
+                'expires_at' => now()->addMinutes(30),
+            ]);
+
+            return "Terima kasih {$displayName}.\nSekarang, mohon jelaskan keluhan yang dialami (contoh: LOS merah, internet putus, lemot).";
+        }
+
+        if ($state->step === 2) {
+            // Terima keluhan
+            $collected['keluhan'] = $message;
+            $state->update([
+                'step' => 3,
+                'collected' => $collected,
+                'expires_at' => now()->addMinutes(30),
+            ]);
+
+            return "Baik {$displayName}, keluhan sudah dicatat.\nKapan waktu yang cocok untuk kunjungan teknisi? (contoh: Senin 10:00-14:00)";
+        }
+
+        if ($state->step === 3) {
+            // Terima waktu, selesai
+            $collected['waktu'] = $message;
+            $collected['customer_name'] = $customerContext['name'] ?? null;
+            $collected['customer_id'] = $customerContext['customer_id'] ?? null;
+
+            // Buat ticket note summary
+            $summary = "Permintaan jadwal teknisi via WA:\n"
+                ."- Pelanggan: ".($collected['customer_name'] ?? '-')."\n"
+                ."- ID: ".($collected['customer_id'] ?? '-')."\n"
+                ."- Alamat: ".($collected['alamat'] ?? '-')."\n"
+                ."- Keluhan: ".($collected['keluhan'] ?? '-')."\n"
+                ."- Waktu tersedia: ".($collected['waktu'] ?? '-');
+
+            // Simpan ke conversation sebagai catatan
+            $conversation->update([
+                'status' => 'pending',
+                'last_message' => $summary,
+            ]);
+
+            $state->delete();
+
+            return "Permintaan kunjungan teknisi {$displayName} sudah kami catat:\n"
+                ."- Alamat: ".($collected['alamat'] ?? '-')."\n"
+                ."- Keluhan: ".($collected['keluhan'] ?? '-')."\n"
+                ."- Waktu: ".($collected['waktu'] ?? '-')."\n\n"
+                ."Tim kami akan konfirmasi jadwal secepatnya. Terima kasih!";
+        }
+
+        return '';
     }
 
     /**

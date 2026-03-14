@@ -305,7 +305,17 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('/conversations/{waConversation}/resolve', [\App\Http\Controllers\WaChatController::class, 'markResolved'])->name('resolve');
         Route::post('/conversations/{waConversation}/open', [\App\Http\Controllers\WaChatController::class, 'markOpen'])->name('open');
         Route::post('/conversations/{waConversation}/assign', [\App\Http\Controllers\WaChatController::class, 'assign'])->name('assign');
+        Route::post('/conversations/{waConversation}/resume-bot', [\App\Http\Controllers\WaChatController::class, 'resumeBot'])->name('resume-bot');
+        Route::delete('/conversations/{waConversation}', [\App\Http\Controllers\WaChatController::class, 'destroy'])->name('destroy');
         Route::get('/search-customers', [\App\Http\Controllers\WaChatController::class, 'searchCustomers'])->name('search-customers');
+    });
+
+    // Keyword Rules Bot WA
+    Route::prefix('wa-keyword-rules')->name('wa-keyword-rules.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\WaKeywordRuleController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\WaKeywordRuleController::class, 'store'])->name('store');
+        Route::put('/{waKeywordRule}', [\App\Http\Controllers\WaKeywordRuleController::class, 'update'])->name('update');
+        Route::delete('/{waKeywordRule}', [\App\Http\Controllers\WaKeywordRuleController::class, 'destroy'])->name('destroy');
     });
 
     // Tiket WA

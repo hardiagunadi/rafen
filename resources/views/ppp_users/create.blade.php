@@ -120,8 +120,9 @@
 
                         <div class="form-row">
                             <div class="form-group col-md-6">
-                                <label>Biaya Instalasi <span class="text-muted">(Opsional)</span></label>
-                                <input type="number" step="0.01" name="biaya_instalasi" value="{{ old('biaya_instalasi') }}" class="form-control @error('biaya_instalasi') is-invalid @enderror" min="0">
+                                <label>Biaya Aktivasi <span class="text-muted">(Opsional)</span></label>
+                                <input type="text" id="biaya_instalasi_display" value="{{ old('biaya_instalasi') ? number_format((float) old('biaya_instalasi'), 0, ',', '.') : '' }}" class="form-control @error('biaya_instalasi') is-invalid @enderror" autocomplete="off" inputmode="numeric" oninput="formatBiayaAktivasi(this)" onblur="formatBiayaAktivasi(this)">
+                                <input type="hidden" name="biaya_instalasi" id="biaya_instalasi_value" value="{{ old('biaya_instalasi') }}">
                                 @error('biaya_instalasi')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="form-group col-md-6">
@@ -653,6 +654,12 @@
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+function formatBiayaAktivasi(el) {
+    var raw = el.value.replace(/\./g, '').replace(/[^0-9]/g, '');
+    var num = parseInt(raw, 10) || 0;
+    el.value = num > 0 ? num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+    document.getElementById('biaya_instalasi_value').value = num || 0;
+}
 $(function() {
     var $field = $('#customer_id');
     var $btnGen = $('#btn-generate-customer-id');
