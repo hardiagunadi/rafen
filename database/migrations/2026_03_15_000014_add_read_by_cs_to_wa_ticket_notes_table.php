@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('wa_ticket_notes', 'read_by_cs')) {
+            return;
+        }
+
         Schema::table('wa_ticket_notes', function (Blueprint $table) {
             // false = note dari teknisi yang belum dibaca CS/NOC
             // default true agar note yang dibuat CS/admin tidak dihitung sebagai notif
