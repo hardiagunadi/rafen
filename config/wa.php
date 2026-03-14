@@ -14,5 +14,6 @@ return [
         'log_file' => env('WA_MULTI_SESSION_LOG_FILE', storage_path('logs/wa-multi-session.log')),
         'script' => env('WA_MULTI_SESSION_SCRIPT', 'gateway-server.cjs'),
         'db_table' => env('WA_MULTI_SESSION_DB_TABLE', 'wa_multi_session_auth_store'),
+        'webhook_url' => env('WA_MULTI_SESSION_WEBHOOK_URL', ''),
     ],
 ];

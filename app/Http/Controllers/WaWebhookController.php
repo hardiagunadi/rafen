@@ -948,8 +948,46 @@ class WaWebhookController extends Controller
             return;
         }
 
+        // Reject Baileys LID format (numeric string >15 digits that doesn't start with 62 or 0)
+        // LID examples: 54778012909755 (14+ digits, not a real phone number)
+        if (preg_match('/^\d{14,}$/', $phone) && ! str_starts_with($phone, '62') && ! str_starts_with($phone, '0')) {
+            Log::info('WA Webhook: skip LID-format sender', ['phone' => $phone]);
+
+            return;
+        }
+
         $messageText = $this->extractMessageBody($payload);
-        if ($messageText === null || $messageText === '') {
+
+        // Extract media info (image/video/document/audio sent via base64 in payload)
+        $mediaType = null;
+        $mediaPath = null;
+        $mediaMime = null;
+        $mediaFilename = null;
+
+        $mediaRaw = $payload['media'] ?? null;
+        if (is_array($mediaRaw)) {
+            $mediaType = is_scalar($mediaRaw['type'] ?? null) ? (string) $mediaRaw['type'] : null;
+            $mediaBase64 = is_string($mediaRaw['data'] ?? null) ? $mediaRaw['data'] : null;
+            $mediaMime = is_scalar($mediaRaw['mimetype'] ?? null) ? (string) $mediaRaw['mimetype'] : null;
+            $mediaFilename = is_scalar($mediaRaw['filename'] ?? null) ? mb_substr((string) $mediaRaw['filename'], 0, 255) : null;
+
+            if ($mediaType && $mediaBase64) {
+                $ext = match ($mediaType) {
+                    'image' => 'jpg',
+                    'video' => 'mp4',
+                    'audio' => 'ogg',
+                    'document' => pathinfo($mediaFilename ?? '', PATHINFO_EXTENSION) ?: 'bin',
+                    default => 'bin',
+                };
+                $filename = 'wa-media/'.uniqid('msg_', true).'.'.$ext;
+                $fullPath = storage_path('app/public/'.$filename);
+                file_put_contents($fullPath, base64_decode($mediaBase64));
+                $mediaPath = $filename;
+            }
+        }
+
+        // Need at least text or media to store the message
+        if (($messageText === null || $messageText === '') && $mediaPath === null) {
             return;
         }
 
@@ -981,11 +1019,15 @@ class WaWebhookController extends Controller
             'owner_id' => $ownerId,
             'direction' => 'inbound',
             'message' => $messageText,
+            'media_type' => $mediaType,
+            'media_path' => $mediaPath,
+            'media_mime' => $mediaMime,
+            'media_filename' => $mediaFilename,
             'sender_name' => $contactName,
             'wa_message_id' => $waMessageId,
             'created_at' => now(),
         ]);
 
-        $conversation->updateFromIncoming($messageText);
+        $conversation->updateFromIncoming($messageText ?? ($mediaType ? "[$mediaType]" : '[media]'));
     }
 }

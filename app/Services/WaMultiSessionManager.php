@@ -119,6 +119,7 @@ class WaMultiSessionManager
             'WA_MS_DB_USER' => (string) ($dbConfig['username'] ?? ''),
             'WA_MS_DB_PASSWORD' => (string) ($dbConfig['password'] ?? ''),
             'WA_MS_DB_TABLE' => (string) config('wa.multi_session.db_table', 'wa_multi_session_auth_store'),
+            'WA_MS_WEBHOOK_URL' => (string) config('wa.multi_session.webhook_url', ''),
         ];
 
         $exports = collect($env)

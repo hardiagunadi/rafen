@@ -95,6 +95,24 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="ticketConversationId">
+                <input type="hidden" id="ticketCustomerType">
+                <input type="hidden" id="ticketCustomerId">
+                <div class="form-group">
+                    <label>Pelanggan <small class="text-muted">(opsional)</small></label>
+                    <div class="input-group">
+                        <input type="text" id="ticketCustomerSearch" class="form-control form-control-sm"
+                               placeholder="Cari nama / username / no. HP..." autocomplete="off">
+                        <div class="input-group-append">
+                            <button type="button" id="btnClearCustomer" class="btn btn-sm btn-outline-secondary d-none" title="Hapus pilihan">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="ticketCustomerResults" class="list-group mt-1" style="position:absolute;z-index:9999;width:calc(100% - 2rem);display:none;"></div>
+                    <div id="ticketCustomerSelected" class="mt-1 d-none">
+                        <span class="badge badge-success py-1 px-2" id="ticketCustomerBadge" style="font-size:.82rem;"></span>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label>Judul</label>
                     <input type="text" id="ticketTitle" class="form-control" required>
@@ -112,10 +130,42 @@
                     <label>Deskripsi <small class="text-muted">(opsional)</small></label>
                     <textarea id="ticketDescription" class="form-control" rows="3"></textarea>
                 </div>
+                <div class="form-group">
+                    <label>Foto / Gambar <small class="text-muted">(opsional, maks 5 MB)</small></label>
+                    <div class="custom-file">
+                        <input type="file" class="custom-file-input" id="ticketImage" accept="image/*">
+                        <label class="custom-file-label" for="ticketImage">Pilih gambar...</label>
+                    </div>
+                    <div id="ticketImagePreviewWrap" class="mt-2 d-none">
+                        <img id="ticketImagePreview" src="" alt="Preview"
+                             style="max-width:100%;max-height:180px;border-radius:6px;cursor:zoom-in;border:1px solid #ddd;">
+                        <button type="button" id="btnRemoveTicketImage" class="btn btn-xs btn-danger mt-1 d-block">
+                            <i class="fas fa-times mr-1"></i>Hapus gambar
+                        </button>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
                 <button type="button" id="btnSaveTicket" class="btn btn-primary">Simpan</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Modal Lightbox Gambar --}}
+<div class="modal fade" id="modalImageLightbox" tabindex="-1" style="z-index:1060;">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:90vw;">
+        <div class="modal-content" style="background:transparent;border:none;box-shadow:none;">
+            <div class="modal-body text-center p-0 position-relative">
+                <button type="button" class="close position-absolute" data-dismiss="modal"
+                    style="top:-12px;right:-12px;z-index:10;background:#fff;border-radius:50%;width:32px;height:32px;opacity:1;line-height:32px;padding:0;font-size:1.2rem;box-shadow:0 2px 8px rgba(0,0,0,.4);">&times;</button>
+                <img id="lightboxImg" src="" alt="" style="max-width:88vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);">
+                <div class="mt-2">
+                    <a id="lightboxDownload" href="" target="_blank" class="btn btn-sm btn-light">
+                        <i class="fas fa-download mr-1"></i>Buka / Unduh
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -160,6 +210,7 @@
 
 /* Chat bubble area */
 #chatMessages { background: #efeae2; }
+#chatMessages.has-messages { align-items: flex-start !important; justify-content: flex-start !important; display: block !important; }
 
 /* Inbound bubble */
 .bubble-in {
@@ -174,6 +225,10 @@
     border-radius: 12px 0 12px 12px;
     box-shadow: 0 1px 2px rgba(0,0,0,.12);
 }
+
+/* Lightbox backdrop gelap */
+#modalImageLightbox .modal-backdrop,
+#modalImageLightbox { background: rgba(0,0,0,.85); }
 
 /* Toast notif pesan baru */
 #newMsgToast {
@@ -196,7 +251,7 @@
 (function() {
     let activeConversationId = null;
     let pollingTimer = null;
-    let lastMessageId = null;      // track last message id for append-only polling
+    let lastMessageId = -1;        // -1 = belum load, 0 = loaded tapi kosong, >0 = id terakhir
     // JS Map: conversationId -> customer object (avoids HTML attribute injection issues)
     const customerMap = {};
     // Track previous unread counts for new-message detection
@@ -279,16 +334,51 @@
         });
     }
 
+    /* ── lightbox gambar ── */
+    $(document).on('click', '.wa-img-preview', function(e) {
+        e.preventDefault();
+        const url = $(this).data('url');
+        $('#lightboxImg').attr('src', url);
+        $('#lightboxDownload').attr('href', url);
+        $('#modalImageLightbox').modal('show');
+    });
+    // Tutup modal jika klik backdrop
+    $('#modalImageLightbox').on('click', function(e) {
+        if ($(e.target).is('#modalImageLightbox') || $(e.target).is('.modal-body')) {
+            $(this).modal('hide');
+        }
+    });
+
+    /* ── render media content ── */
+    function renderMedia(m) {
+        if (!m.media_type || !m.media_url) return '';
+        if (m.media_type === 'image') {
+            return `<div style="margin-bottom:4px;"><img src="${esc(m.media_url)}" class="wa-img-preview" data-url="${esc(m.media_url)}" style="max-width:260px;max-height:200px;border-radius:6px;display:block;cursor:zoom-in;" loading="lazy"></div>`;
+        }
+        if (m.media_type === 'video') {
+            return `<div style="margin-bottom:4px;"><video src="${esc(m.media_url)}" controls style="max-width:260px;max-height:200px;border-radius:6px;display:block;"></video></div>`;
+        }
+        if (m.media_type === 'audio') {
+            return `<div style="margin-bottom:4px;"><audio src="${esc(m.media_url)}" controls style="max-width:260px;"></audio></div>`;
+        }
+        if (m.media_type === 'document') {
+            const fname = m.media_filename || 'dokumen';
+            return `<div style="margin-bottom:4px;"><a href="${esc(m.media_url)}" target="_blank" class="d-flex align-items-center" style="font-size:.85rem;gap:6px;"><i class="fas fa-file-alt" style="font-size:1.4rem;color:#555;"></i><span>${esc(fname)}</span></a></div>`;
+        }
+        return '';
+    }
+
     /* ── render single bubble ── */
     function renderBubble(m) {
         const isOut = m.direction === 'outbound';
         const name  = m.sender_name ? `<div style="font-size:.72rem;font-weight:700;color:${isOut?'#075e54':'#128c7e'};margin-bottom:3px;">${esc(m.sender_name)}</div>` : '';
         const cls   = isOut ? 'bubble-out' : 'bubble-in';
         const align = isOut ? 'justify-content-end' : 'justify-content-start';
+        const mediaHtml = renderMedia(m);
+        const textHtml  = m.message ? `<div style="white-space:pre-wrap;font-size:.875rem;line-height:1.4;">${esc(m.message)}</div>` : '';
         return `<div class="d-flex ${align} mb-2 px-2" data-mid="${m.id}" data-date="${esc(m.created_at_date)}">
             <div class="${cls}" style="max-width:72%; padding:7px 11px;">
-                ${name}
-                <div style="white-space:pre-wrap;font-size:.875rem;line-height:1.4;">${esc(m.message)}</div>
+                ${name}${mediaHtml}${textHtml}
                 <div style="text-align:right;margin-top:3px;"><small style="color:#8696a0;font-size:.68rem;">${m.created_at_human}</small></div>
             </div>
         </div>`;
@@ -322,8 +412,7 @@
             $btnReopen.toggleClass('d-none', conv.status !== 'resolved');
 
             // Full render
-            $messages.empty();
-            $messages.css({'align-items':'', 'justify-content':''});
+            $messages.empty().addClass('has-messages');
             $empty.hide();
 
             let lastDate = null;
@@ -335,12 +424,8 @@
                 $messages.append(renderBubble(m));
             });
 
-            // Track last message id
-            if (res.messages.length) {
-                lastMessageId = res.messages[res.messages.length - 1].id;
-            } else {
-                lastMessageId = null;
-            }
+            // Track last message id (0 = loaded but empty, so pollMessages still runs)
+            lastMessageId = res.messages.length ? res.messages[res.messages.length - 1].id : 0;
 
             $messages.scrollTop($messages[0].scrollHeight);
 
@@ -355,8 +440,8 @@
 
     /* ── poll new messages (append-only, no flicker) ── */
     function pollMessages(conversationId) {
-        if (!conversationId) return;
-        const url = `{{ url('wa-chat/conversations') }}/${conversationId}/messages` + (lastMessageId ? `?after=${lastMessageId}` : '');
+        if (!conversationId || lastMessageId < 0) return;
+        const url = `{{ url('wa-chat/conversations') }}/${conversationId}/messages?after=${lastMessageId}`;
         $.get(url, function(res) {
             if (!res.new_messages || !res.new_messages.length) return;
             const wasAtBottom = ($messages[0].scrollHeight - $messages.scrollTop() - $messages.outerHeight() < 80);
@@ -373,7 +458,7 @@
     $(document).on('click', '.conversation-item', function(e) {
         e.preventDefault();
         const cid = parseInt($(this).data('id'));
-        lastMessageId = null;
+        lastMessageId = -1;
         activeConversationId = cid;
         loadMessages(cid);
     });
@@ -381,7 +466,7 @@
     /* ── toast click → buka percakapan ── */
     $('#newMsgToast').on('click', function() {
         const cid = $(this).data('convid');
-        if (cid) { lastMessageId = null; activeConversationId = cid; loadMessages(cid); }
+        if (cid) { lastMessageId = -1; activeConversationId = cid; loadMessages(cid); }
         $(this).fadeOut(200);
     });
 
@@ -399,8 +484,8 @@
         }, function(res) {
             if (res.success) {
                 $replyText.val('');
-                // Reset lastMessageId so pollMessages picks up sent message
-                pollMessages(activeConversationId);
+                // Full reload after send to get sent message with correct id
+                loadMessages(activeConversationId);
                 loadConversations();
             } else {
                 alert(res.message || 'Gagal mengirim pesan.');
@@ -428,18 +513,140 @@
         if (!activeConversationId) return;
         $('#ticketConversationId').val(activeConversationId);
         $('#ticketTitle, #ticketDescription').val('');
+        // Reset customer picker & gambar
+        ticketCustomerClear();
+        $('#ticketImage').val('');
+        $('#ticketImagePreviewWrap').addClass('d-none');
+        $('#ticketImagePreview').attr('src', '');
+        $('#ticketImage').next('.custom-file-label').text('Pilih gambar...');
+        // Pre-fill pelanggan dari konversasi yang sedang aktif (jika ada)
+        const cust = customerMap[activeConversationId];
+        if (cust) {
+            ticketCustomerSet(cust.type || 'ppp', cust.id || cust.customer_id, cust.name, cust.url);
+        }
         $('#modalCreateTicket').modal('show');
     });
+
+    // ── customer search in ticket modal ──
+    function ticketCustomerClear() {
+        $('#ticketCustomerType').val('');
+        $('#ticketCustomerId').val('');
+        $('#ticketCustomerSearch').val('').prop('readonly', false);
+        $('#ticketCustomerSelected').addClass('d-none');
+        $('#ticketCustomerBadge').text('');
+        $('#btnClearCustomer').addClass('d-none');
+        $('#ticketCustomerResults').hide().empty();
+    }
+
+    function ticketCustomerSet(type, id, name, url) {
+        $('#ticketCustomerType').val(type);
+        $('#ticketCustomerId').val(id);
+        const label = (type === 'ppp' ? 'PPP' : 'Hotspot') + ': ' + name;
+        $('#ticketCustomerBadge').html(`<i class="fas fa-user mr-1"></i>${esc(label)} <a href="${esc(url)}" target="_blank" class="ml-1 text-white" onclick="event.stopPropagation()" title="Buka profil"><i class="fas fa-external-link-alt"></i></a>`);
+        $('#ticketCustomerSelected').removeClass('d-none');
+        $('#ticketCustomerSearch').val(name).prop('readonly', true);
+        $('#btnClearCustomer').removeClass('d-none');
+        $('#ticketCustomerResults').hide().empty();
+    }
+
+    $('#btnClearCustomer').on('click', function() { ticketCustomerClear(); });
+
+    let _custSearchTimer = null;
+    $('#ticketCustomerSearch').on('input', function() {
+        clearTimeout(_custSearchTimer);
+        const q = $(this).val().trim();
+        if (q.length < 2) { $('#ticketCustomerResults').hide().empty(); return; }
+        _custSearchTimer = setTimeout(function() {
+            $.get('{{ route("wa-chat.search-customers") }}', {q}, function(results) {
+                const $res = $('#ticketCustomerResults').empty();
+                if (!results.length) {
+                    $res.append('<div class="list-group-item list-group-item-sm text-muted small py-1">Tidak ditemukan</div>').show();
+                    return;
+                }
+                results.forEach(function(r) {
+                    $res.append(
+                        $(`<a href="#" class="list-group-item list-group-item-action py-1 px-2 small">
+                            <span class="badge badge-${r.type === 'ppp' ? 'primary' : 'warning'} mr-1" style="font-size:.65rem;">${r.type.toUpperCase()}</span>
+                            <strong>${esc(r.name)}</strong>
+                            <small class="text-muted ml-1">${esc(r.sub)}</small>
+                        </a>`)
+                        .on('click', function(e) {
+                            e.preventDefault();
+                            ticketCustomerSet(r.type, r.id, r.name, r.url);
+                        })
+                    );
+                });
+                $res.show();
+            });
+        }, 300);
+    });
+
+    // Tutup dropdown hasil pencarian jika klik di luar
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('#ticketCustomerSearch, #ticketCustomerResults').length) {
+            $('#ticketCustomerResults').hide();
+        }
+    });
+
+    // Preview gambar tiket
+    $('#ticketImage').on('change', function() {
+        const file = this.files[0];
+        if (!file) return;
+        $('#ticketImagePreviewWrap').removeClass('d-none');
+        const reader = new FileReader();
+        reader.onload = function(e) { $('#ticketImagePreview').attr('src', e.target.result); };
+        reader.readAsDataURL(file);
+        // Update label
+        $(this).next('.custom-file-label').text(file.name);
+    });
+
+    $('#btnRemoveTicketImage').on('click', function() {
+        $('#ticketImage').val('');
+        $('#ticketImagePreviewWrap').addClass('d-none');
+        $('#ticketImagePreview').attr('src', '');
+        $('#ticketImage').next('.custom-file-label').text('Pilih gambar...');
+    });
+
+    // Klik preview gambar tiket → lightbox
+    $(document).on('click', '#ticketImagePreview', function() {
+        $('#lightboxImg').attr('src', $(this).attr('src'));
+        $('#lightboxDownload').attr('href', $(this).attr('src'));
+        $('#modalImageLightbox').modal('show');
+    });
+
     $('#btnSaveTicket').on('click', function() {
-        $.post('{{ route("wa-tickets.store") }}', {
-            conversation_id: $('#ticketConversationId').val(),
-            title: $('#ticketTitle').val(),
-            type: $('#ticketType').val(),
-            description: $('#ticketDescription').val(),
-            _token: '{{ csrf_token() }}'
-        }, function(res) {
-            if (res.success) { $('#modalCreateTicket').modal('hide'); alert('Tiket berhasil dibuat. ID: #' + res.ticket_id); }
-        }).fail(function(xhr) { alert('Gagal: ' + (xhr.responseJSON?.message || 'Error')); });
+        const title = $('#ticketTitle').val().trim();
+        if (!title) { alert('Judul wajib diisi.'); return; }
+
+        const fd = new FormData();
+        fd.append('_token', '{{ csrf_token() }}');
+        fd.append('conversation_id', $('#ticketConversationId').val());
+        fd.append('title', title);
+        fd.append('type', $('#ticketType').val());
+        fd.append('description', $('#ticketDescription').val());
+        const custType = $('#ticketCustomerType').val();
+        const custId   = $('#ticketCustomerId').val();
+        if (custType) fd.append('customer_type', custType);
+        if (custId)   fd.append('customer_id', custId);
+        const imgFile = $('#ticketImage')[0].files[0];
+        if (imgFile)  fd.append('image', imgFile);
+
+        $('#btnSaveTicket').prop('disabled', true);
+        $.ajax({
+            url: '{{ route("wa-tickets.store") }}',
+            method: 'POST',
+            data: fd,
+            processData: false,
+            contentType: false,
+            success: function(res) {
+                if (res.success) {
+                    $('#modalCreateTicket').modal('hide');
+                    alert('Tiket berhasil dibuat. ID: #' + res.ticket_id);
+                }
+            },
+            error: function(xhr) { alert('Gagal: ' + (xhr.responseJSON?.message || 'Error')); },
+            complete: function() { $('#btnSaveTicket').prop('disabled', false); },
+        });
     });
 
     /* ── assign ── */
@@ -465,13 +672,15 @@
         searchTimer = setTimeout(loadConversations, 300);
     });
 
-    /* ── polling 15s ── */
+    /* ── polling: conversations 5s, messages 3s ── */
     function startPolling() {
         if (pollingTimer) clearInterval(pollingTimer);
+        // Poll conversation list every 5s
+        setInterval(loadConversations, 5000);
+        // Poll new messages every 3s (append-only, no flicker)
         pollingTimer = setInterval(function() {
-            loadConversations();
-            if (activeConversationId) loadMessages(activeConversationId);
-        }, 15000);
+            if (activeConversationId) pollMessages(activeConversationId);
+        }, 3000);
     }
 
     /* ── nickname hint ── */

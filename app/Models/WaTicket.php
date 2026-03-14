@@ -2,17 +2,23 @@
 
 namespace App\Models;
 
+use App\Models\HotspotUser;
+use App\Models\PppUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WaTicket extends Model
 {
     protected $fillable = [
         'owner_id',
         'conversation_id',
+        'customer_type',
+        'customer_id',
         'title',
         'description',
+        'image_path',
         'type',
         'status',
         'priority',
@@ -46,6 +52,31 @@ class WaTicket extends Model
     public function assignedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_by_id');
+    }
+
+    public function notes(): HasMany
+    {
+        return $this->hasMany(WaTicketNote::class, 'ticket_id')->orderBy('created_at');
+    }
+
+    /**
+     * Pelanggan terkait (PppUser atau HotspotUser).
+     * Menggunakan manual polymorphic sederhana via customer_type + customer_id.
+     */
+    public function customerModel(): ?Model
+    {
+        if (! $this->customer_type || ! $this->customer_id) {
+            return null;
+        }
+
+        $map = [
+            'ppp'     => PppUser::class,
+            'hotspot' => HotspotUser::class,
+        ];
+
+        $class = $map[$this->customer_type] ?? null;
+
+        return $class ? $class::find($this->customer_id) : null;
     }
 
     public function scopeAccessibleBy(Builder $query, User $user): Builder

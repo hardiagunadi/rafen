@@ -97,20 +97,23 @@ class WaChatController extends Controller
             abort(403);
         }
 
+        $afterId = request()->query('after');
+
+        // Append-only mode: return only new messages after given id
+        if ($afterId !== null) {
+            $newMessages = $waConversation->messages()
+                ->where('id', '>', (int) $afterId)
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn ($msg) => $this->formatMessage($msg));
+
+            return response()->json(['new_messages' => $newMessages]);
+        }
+
         $messages = $waConversation->messages()
             ->orderBy('created_at')
             ->get()
-            ->map(function ($msg) {
-                return [
-                    'id' => $msg->id,
-                    'direction' => $msg->direction,
-                    'message' => $msg->message,
-                    'sender_name' => $msg->sender_name,
-                    'created_at' => $msg->created_at?->toISOString(),
-                    'created_at_human' => $msg->created_at?->format('H:i'),
-                    'created_at_date' => $msg->created_at?->format('d M Y'),
-                ];
-            });
+            ->map(fn ($msg) => $this->formatMessage($msg));
 
         // Reset unread count when CS opens conversation
         if ($waConversation->unread_count > 0) {
@@ -201,6 +204,64 @@ class WaChatController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function searchCustomers(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        if (! $user->isSuperAdmin() && ! in_array($user->role, self::ALLOWED_ROLES, true)) {
+            abort(403);
+        }
+
+        $q = trim($request->input('q', ''));
+        if (strlen($q) < 2) {
+            return response()->json([]);
+        }
+
+        $ownerId = $user->effectiveOwnerId();
+        $results = [];
+
+        $ppps = PppUser::where('owner_id', $ownerId)
+            ->where(function ($query) use ($q) {
+                $query->where('customer_name', 'like', "%{$q}%")
+                    ->orWhere('username', 'like', "%{$q}%")
+                    ->orWhere('nomor_hp', 'like', "%{$q}%");
+            })
+            ->limit(8)
+            ->get(['id', 'customer_name', 'username', 'nomor_hp']);
+
+        foreach ($ppps as $p) {
+            $results[] = [
+                'type' => 'ppp',
+                'id'   => $p->id,
+                'name' => $p->customer_name,
+                'sub'  => $p->username.($p->nomor_hp ? ' · '.$p->nomor_hp : ''),
+                'url'  => route('ppp-users.show', $p->id),
+            ];
+        }
+
+        $hotspots = HotspotUser::where('owner_id', $ownerId)
+            ->where(function ($query) use ($q) {
+                $query->where('customer_name', 'like', "%{$q}%")
+                    ->orWhere('username', 'like', "%{$q}%")
+                    ->orWhere('nomor_hp', 'like', "%{$q}%");
+            })
+            ->limit(8)
+            ->get(['id', 'customer_name', 'username', 'nomor_hp']);
+
+        foreach ($hotspots as $h) {
+            $results[] = [
+                'type' => 'hotspot',
+                'id'   => $h->id,
+                'name' => $h->customer_name,
+                'sub'  => $h->username.($h->nomor_hp ? ' · '.$h->nomor_hp : ''),
+                'url'  => route('hotspot-users.show', $h->id),
+            ];
+        }
+
+        return response()->json($results);
+    }
+
     public function assign(Request $request, WaConversation $waConversation): JsonResponse
     {
         $this->authorizeAccess($waConversation);
@@ -226,6 +287,23 @@ class WaChatController extends Controller
         $waConversation->update(['assigned_to_id' => $assignedToId]);
 
         return response()->json(['success' => true]);
+    }
+
+    private function formatMessage(\App\Models\WaChatMessage $msg): array
+    {
+        return [
+            'id' => $msg->id,
+            'direction' => $msg->direction,
+            'message' => $msg->message,
+            'media_type' => $msg->media_type,
+            'media_url' => $msg->media_path ? asset('storage/'.$msg->media_path) : null,
+            'media_mime' => $msg->media_mime,
+            'media_filename' => $msg->media_filename,
+            'sender_name' => $msg->sender_name,
+            'created_at' => $msg->created_at?->toISOString(),
+            'created_at_human' => $msg->created_at?->format('H:i'),
+            'created_at_date' => $msg->created_at?->format('d M Y'),
+        ];
     }
 
     /**

@@ -50,6 +50,27 @@
                 ->count();
 
             $notificationTotal = $isolatedUsersCount + $monthlyRegistrationsCount + $dueSoonCount;
+
+            // Untuk teknisi: ganti notifikasi dengan jumlah tiket aktif yang di-assign
+            if ($authUser->role === 'teknisi') {
+                $teknisiActiveTickets = \App\Models\WaTicket::where('assigned_to_id', $authUser->id)
+                    ->whereIn('status', ['open', 'in_progress'])
+                    ->count();
+                $notificationTotal = $teknisiActiveTickets;
+            }
+
+            // Admin, CS, dan NOC mendapat notifikasi update tiket dari teknisi
+            $csTicketUpdateCount = 0;
+            $canSeeTicketUpdate = ($authUser->isAdmin() && ! $authUser->isSubUser())
+                || in_array($authUser->role, ['cs', 'noc'], true);
+            if ($canSeeTicketUpdate) {
+                $ownerId = $authUser->effectiveOwnerId();
+                $csTicketUpdateCount = \App\Models\WaTicketNote::query()
+                    ->where('read_by_cs', false)
+                    ->whereHas('ticket', fn ($q) => $q->where('owner_id', $ownerId))
+                    ->count();
+                $notificationTotal += $csTicketUpdateCount;
+            }
         }
     @endphp
     @php
@@ -556,6 +577,18 @@
                     <div class="dropdown-menu dropdown-menu-right navbar-icon-dropdown" aria-labelledby="navbar-notification-dropdown">
                         <span class="dropdown-item-text font-weight-bold">Ringkasan Notifikasi</span>
                         <div class="dropdown-divider"></div>
+                        @if(auth()->user()->role === 'teknisi')
+                        <a href="{{ route('wa-tickets.index') }}" class="dropdown-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-ticket-alt text-warning mr-2"></i>Tiket Aktif Saya</span>
+                            <span class="badge badge-{{ $teknisiActiveTickets > 0 ? 'danger' : 'secondary' }}">{{ $teknisiActiveTickets ?? 0 }}</span>
+                        </a>
+                        @else
+                        @if($csTicketUpdateCount > 0)
+                        <a href="{{ route('wa-tickets.index') }}" class="dropdown-item d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-ticket-alt text-warning mr-2"></i>Update Tiket dari Teknisi</span>
+                            <span class="badge badge-warning">{{ $csTicketUpdateCount }}</span>
+                        </a>
+                        @endif
                         <a href="{{ route('ppp-users.index', ['filter_isolir' => 1]) }}" class="dropdown-item d-flex justify-content-between align-items-center">
                             <span><i class="fas fa-user-slash text-danger mr-2"></i>User Terisolir</span>
                             <span class="badge badge-danger">{{ $isolatedUsersCount }}</span>
@@ -568,6 +601,7 @@
                             <span><i class="fas fa-calendar-times text-warning mr-2"></i>Jatuh Tempo 7 Hari</span>
                             <span class="badge badge-warning">{{ $dueSoonCount }}</span>
                         </a>
+                        @endif
                     </div>
                 </li>
                 <li class="nav-item dropdown">
@@ -882,9 +916,13 @@
                         $tenantSettings = $tenantSettings ?? \App\Models\TenantSettings::where('user_id', auth()->user()->effectiveOwnerId())->first();
                         $shiftModuleEnabled = $tenantSettings?->isShiftModuleEnabled() ?? false;
                         $waChatRoles = ['administrator', 'noc', 'it_support', 'cs'];
-                        $canSeeWaChat = $isSuperAdmin || in_array(auth()->user()->role, $waChatRoles, true);
+                        $canSeeWaChat = $isSuperAdmin || in_array(auth()->user()->role, $waChatRoles, true) || $isTeknisi;
                         $canSeeShift = $isSuperAdmin || in_array(auth()->user()->role, ['administrator', 'noc', 'it_support', 'cs', 'teknisi'], true);
-                        $waChatUnreadCount = $canSeeWaChat ? \App\Models\WaConversation::query()->accessibleBy(auth()->user())->where('unread_count', '>', 0)->sum('unread_count') : 0;
+                        $waChatUnreadCount = ($canSeeWaChat && !$isTeknisi) ? \App\Models\WaConversation::query()->accessibleBy(auth()->user())->where('unread_count', '>', 0)->sum('unread_count') : 0;
+                        // Badge tiket untuk teknisi: tiket open/in_progress yang di-assign ke mereka
+                        $teknisiTicketCount = $isTeknisi ? \App\Models\WaTicket::where('assigned_to_id', auth()->id())->whereIn('status', ['open', 'in_progress'])->count() : 0;
+                        // Badge update tiket dari teknisi (untuk CS/NOC/admin)
+                        $csTicketUpdateCount = $csTicketUpdateCount ?? 0;
                     @endphp
                     @if($isAdminOrAbove)
                     <li class="nav-item has-treeview {{ request()->is('tools*') ? 'menu-open' : '' }}">
@@ -991,18 +1029,22 @@
                     @endif
                     {{-- Chat WA --}}
                     @if($canSeeWaChat)
+                    @php
+                        $waMenuBadge = $isTeknisi ? $teknisiTicketCount : ($waChatUnreadCount + $csTicketUpdateCount);
+                    @endphp
                     <li class="nav-item has-treeview {{ request()->routeIs('wa-chat.*', 'wa-tickets.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('wa-chat.*', 'wa-tickets.*') ? 'active' : '' }}">
                             <i class="nav-icon fab fa-whatsapp text-success"></i>
                             <p>
-                                Chat WA
-                                @if($waChatUnreadCount > 0)
-                                <span class="badge badge-danger right">{{ $waChatUnreadCount > 99 ? '99+' : $waChatUnreadCount }}</span>
+                                {{ $isTeknisi ? 'Tiket Saya' : 'Chat WA' }}
+                                @if($waMenuBadge > 0)
+                                <span class="badge badge-danger right">{{ $waMenuBadge > 99 ? '99+' : $waMenuBadge }}</span>
                                 @endif
                                 <i class="right fas fa-angle-left"></i>
                             </p>
                         </a>
                         <ul class="nav nav-treeview">
+                            @if(!$isTeknisi)
                             <li class="nav-item">
                                 <a href="{{ route('wa-chat.index') }}" class="nav-link {{ request()->routeIs('wa-chat.index') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
@@ -1014,10 +1056,18 @@
                                     </p>
                                 </a>
                             </li>
+                            @endif
                             <li class="nav-item">
                                 <a href="{{ route('wa-tickets.index') }}" class="nav-link {{ request()->routeIs('wa-tickets.*') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>Tiket Pengaduan</p>
+                                    <p>
+                                        {{ $isTeknisi ? 'Tiket Saya' : 'Tiket Pengaduan' }}
+                                        @if($isTeknisi && $teknisiTicketCount > 0)
+                                        <span class="badge badge-danger right">{{ $teknisiTicketCount > 99 ? '99+' : $teknisiTicketCount }}</span>
+                                        @elseif(!$isTeknisi && $csTicketUpdateCount > 0)
+                                        <span class="badge badge-warning right" title="Ada update dari teknisi">{{ $csTicketUpdateCount > 99 ? '99+' : $csTicketUpdateCount }}</span>
+                                        @endif
+                                    </p>
                                 </a>
                             </li>
                         </ul>

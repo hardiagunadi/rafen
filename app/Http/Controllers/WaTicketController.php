@@ -6,6 +6,7 @@ use App\Models\TenantSettings;
 use App\Models\User;
 use App\Models\WaConversation;
 use App\Models\WaTicket;
+use App\Models\WaTicketNote;
 use App\Services\WaGatewayService;
 use App\Traits\LogsActivity;
 use Illuminate\Http\JsonResponse;
@@ -38,9 +39,15 @@ class WaTicketController extends Controller
             abort(403);
         }
 
+        // Admin, CS, dan NOC mendapat highlight update belum dibaca dari teknisi
+        $canSeeUnread = $user->isSuperAdmin()
+            || ($user->isAdmin() && ! $user->isSubUser())
+            || in_array($user->role, ['cs', 'noc'], true);
+
         $query = WaTicket::query()
             ->accessibleBy($user)
             ->with(['conversation:id,contact_phone,contact_name', 'assignedTo:id,name,nickname'])
+            ->withCount(['notes as unread_count' => fn ($q) => $q->where('read_by_cs', false)])
             ->orderByDesc('created_at');
 
         if ($request->filled('status')) {
@@ -65,7 +72,7 @@ class WaTicketController extends Controller
 
         $tickets = $query->paginate(25);
 
-        $data = $tickets->getCollection()->map(function (WaTicket $ticket) {
+        $data = $tickets->getCollection()->map(function (WaTicket $ticket) use ($canSeeUnread) {
             return [
                 'id' => $ticket->id,
                 'title' => $ticket->title,
@@ -80,6 +87,7 @@ class WaTicketController extends Controller
                     : '-',
                 'created_at' => $ticket->created_at?->format('d/m/Y H:i'),
                 'actions_url' => route('wa-tickets.show', $ticket),
+                'has_unread_update' => $canSeeUnread && ($ticket->unread_count > 0),
             ];
         });
 
@@ -104,8 +112,11 @@ class WaTicketController extends Controller
             'conversation_id' => ['required', 'integer', 'exists:wa_conversations,id'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            'image' => ['nullable', 'image', 'max:5120'],
             'type' => ['required', 'string', 'in:complaint,installation,troubleshoot,other'],
             'priority' => ['nullable', 'string', 'in:low,normal,high'],
+            'customer_type' => ['nullable', 'string', 'in:ppp,hotspot'],
+            'customer_id' => ['nullable', 'integer'],
         ]);
 
         $conversation = WaConversation::findOrFail($data['conversation_id']);
@@ -116,14 +127,29 @@ class WaTicketController extends Controller
 
         $ownerId = $user->effectiveOwnerId();
 
+        $imagePath = null;
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('tickets', 'public');
+        }
+
         $ticket = WaTicket::create([
             'owner_id' => $ownerId,
             'conversation_id' => $conversation->id,
+            'customer_type' => $data['customer_type'] ?? null,
+            'customer_id' => $data['customer_id'] ?? null,
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
+            'image_path' => $imagePath,
             'type' => $data['type'],
             'priority' => $data['priority'] ?? 'normal',
             'status' => 'open',
+        ]);
+
+        // Catat timeline: tiket dibuat
+        $ticket->notes()->create([
+            'user_id' => $user->id,
+            'type' => 'created',
+            'meta' => 'Tiket dibuat oleh '.($user->nickname ?? $user->name),
         ]);
 
         // Notify customer via WA (optional)
@@ -162,9 +188,22 @@ class WaTicketController extends Controller
             abort(403);
         }
 
-        $waTicket->load(['conversation:id,contact_phone,contact_name', 'assignedTo:id,name,nickname', 'assignedBy:id,name']);
+        $waTicket->load([
+            'conversation:id,contact_phone,contact_name',
+            'assignedTo:id,name,nickname',
+            'assignedBy:id,name',
+            'notes.user:id,name,nickname,role',
+        ]);
 
-        return view('wa-chat.ticket-show', compact('waTicket'));
+        // Admin, CS, dan NOC membuka tiket: tandai notif teknisi sebagai sudah dibaca
+        $canMarkRead = $user->isSuperAdmin()
+            || ($user->isAdmin() && ! $user->isSubUser())
+            || in_array($user->role, ['cs', 'noc'], true);
+        if ($canMarkRead) {
+            $waTicket->notes()->where('read_by_cs', false)->update(['read_by_cs' => true]);
+        }
+
+        return view('wa-chat.ticket-show', compact('waTicket', 'user'));
     }
 
     public function update(Request $request, WaTicket $waTicket): JsonResponse
@@ -191,13 +230,25 @@ class WaTicketController extends Controller
             'description' => ['nullable', 'string'],
         ]);
 
-        $wasResolved = $waTicket->status !== 'resolved' && ($data['status'] ?? null) === 'resolved';
+        $oldStatus = $waTicket->status;
+        $wasResolved = $oldStatus !== 'resolved' && ($data['status'] ?? null) === 'resolved';
 
         if ($wasResolved) {
             $data['resolved_at'] = now();
         }
 
         $waTicket->update(array_filter($data, fn ($v) => $v !== null));
+
+        // Catat timeline: perubahan status
+        if (isset($data['status']) && $data['status'] !== $oldStatus) {
+            $waTicket->notes()->create([
+                'user_id' => $user->id,
+                'type' => 'status_change',
+                'meta' => $oldStatus.' → '.$data['status'],
+                // Jika teknisi yang ubah status → tandai belum dibaca CS
+                'read_by_cs' => $user->role !== 'teknisi',
+            ]);
+        }
 
         // Notify customer if resolved
         if ($wasResolved) {
@@ -217,6 +268,54 @@ class WaTicketController extends Controller
         }
 
         return response()->json(['success' => true]);
+    }
+
+    public function addNote(Request $request, WaTicket $waTicket): JsonResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        if (! $user->isSuperAdmin() && ! in_array($user->role, self::CS_ROLES, true) && $user->role !== 'teknisi') {
+            abort(403);
+        }
+
+        if (! $user->isSuperAdmin() && $waTicket->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        if ($user->role === 'teknisi' && $waTicket->assigned_to_id !== $user->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'note' => ['nullable', 'string', 'max:2000'],
+            'image' => ['nullable', 'image', 'max:5120'],
+        ]);
+
+        if (! $request->filled('note') && ! $request->hasFile('image')) {
+            return response()->json(['success' => false, 'message' => 'Isi catatan atau pilih foto.'], 422);
+        }
+
+        $imagePath = null;
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('ticket-notes', 'public');
+        }
+
+        $note = $waTicket->notes()->create([
+            'user_id' => $user->id,
+            'type' => 'note',
+            'note' => $request->input('note'),
+            'image_path' => $imagePath,
+            // Catatan dari teknisi → belum dibaca CS
+            'read_by_cs' => $user->role !== 'teknisi',
+        ]);
+
+        $note->load('user:id,name,nickname,role');
+
+        return response()->json([
+            'success' => true,
+            'note' => $this->formatNote($note),
+        ]);
     }
 
     public function assign(Request $request, WaTicket $waTicket): JsonResponse
@@ -246,6 +345,13 @@ class WaTicketController extends Controller
             'assigned_to_id' => $assignee->id,
             'assigned_by_id' => $user->id,
             'status' => $waTicket->status === 'open' ? 'in_progress' : $waTicket->status,
+        ]);
+
+        // Catat timeline: assignment
+        $waTicket->notes()->create([
+            'user_id' => $user->id,
+            'type' => 'assigned',
+            'meta' => 'Di-assign ke '.($assignee->nickname ?? $assignee->name),
         ]);
 
         // Notify teknisi via WA
@@ -288,5 +394,19 @@ class WaTicketController extends Controller
         $waTicket->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    private function formatNote(WaTicketNote $note): array
+    {
+        return [
+            'id' => $note->id,
+            'type' => $note->type,
+            'note' => $note->note,
+            'meta' => $note->meta,
+            'image_url' => $note->image_path ? asset('storage/'.$note->image_path) : null,
+            'user_name' => $note->user ? ($note->user->nickname ?? $note->user->name) : '-',
+            'user_role' => $note->user?->role,
+            'created_at' => $note->created_at?->format('d/m/Y H:i'),
+        ];
     }
 }

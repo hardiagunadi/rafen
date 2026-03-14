@@ -85,9 +85,13 @@
                 return;
             }
             res.data.forEach(function(t) {
-                $body.append(`<tr>
+                const unreadBadge = t.has_unread_update
+                    ? ' <span class="badge badge-warning" title="Ada update dari teknisi"><i class="fas fa-bell"></i></span>'
+                    : '';
+                const rowClass = t.has_unread_update ? 'table-warning' : '';
+                $body.append(`<tr class="${rowClass}">
                     <td><small>#${t.id}</small></td>
-                    <td>${$('<span>').text(t.title).html()}</td>
+                    <td>${$('<span>').text(t.title).html()}${unreadBadge}</td>
                     <td><small>${typeBadge(t.type)}</small></td>
                     <td>${priorityBadge(t.priority)}</td>
                     <td>${statusBadge(t.status)}</td>

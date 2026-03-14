@@ -305,6 +305,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('/conversations/{waConversation}/resolve', [\App\Http\Controllers\WaChatController::class, 'markResolved'])->name('resolve');
         Route::post('/conversations/{waConversation}/open', [\App\Http\Controllers\WaChatController::class, 'markOpen'])->name('open');
         Route::post('/conversations/{waConversation}/assign', [\App\Http\Controllers\WaChatController::class, 'assign'])->name('assign');
+        Route::get('/search-customers', [\App\Http\Controllers\WaChatController::class, 'searchCustomers'])->name('search-customers');
     });
 
     // Tiket WA
@@ -315,6 +316,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('/{waTicket}', [\App\Http\Controllers\WaTicketController::class, 'show'])->name('show');
         Route::put('/{waTicket}', [\App\Http\Controllers\WaTicketController::class, 'update'])->name('update');
         Route::post('/{waTicket}/assign', [\App\Http\Controllers\WaTicketController::class, 'assign'])->name('assign');
+        Route::post('/{waTicket}/notes', [\App\Http\Controllers\WaTicketController::class, 'addNote'])->name('notes.store');
         Route::delete('/{waTicket}', [\App\Http\Controllers\WaTicketController::class, 'destroy'])->name('destroy');
     });
 

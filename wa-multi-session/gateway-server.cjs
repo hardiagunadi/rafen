@@ -4,11 +4,13 @@ const http = require('http');
 const mysql = require('mysql2/promise');
 const { URL } = require('url');
 const { Whatsapp } = require('./dist');
+const { downloadMediaMessage } = require('baileys');
 
 const PORT = Number(process.env.WA_MS_PORT || 3100);
 const HOST = process.env.WA_MS_HOST || '127.0.0.1';
 const AUTH_TOKEN = String(process.env.WA_MS_AUTH_TOKEN || '').trim();
 const MASTER_KEY = String(process.env.WA_MS_MASTER_KEY || '').trim();
+const WEBHOOK_URL = String(process.env.WA_MS_WEBHOOK_URL || '').trim();
 const DB_HOST = process.env.WA_MS_DB_HOST || '127.0.0.1';
 const DB_PORT = Number(process.env.WA_MS_DB_PORT || 3306);
 const DB_NAME = process.env.WA_MS_DB_NAME || '';
@@ -199,6 +201,32 @@ const pool = mysql.createPool({
 
 const adapter = new MysqlAdapter({ pool, table: DB_TABLE });
 
+function forwardToWebhook(body) {
+  if (!WEBHOOK_URL) return;
+  const bodyStr = JSON.stringify(body);
+  const parsedUrl = new URL(WEBHOOK_URL);
+  const isHttps = parsedUrl.protocol === 'https:';
+  const httpModule = isHttps ? require('https') : require('http');
+  const options = {
+    hostname: parsedUrl.hostname,
+    port: parsedUrl.port || (isHttps ? 443 : 80),
+    path: parsedUrl.pathname + parsedUrl.search,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(bodyStr),
+    },
+  };
+  const req = httpModule.request(options, (res) => {
+    res.resume();
+  });
+  req.on('error', (err) => {
+    console.error('[webhook] forward error:', err.message);
+  });
+  req.write(bodyStr);
+  req.end();
+}
+
 const whatsapp = new Whatsapp({
   adapter,
   autoLoad: true,
@@ -220,6 +248,93 @@ const whatsapp = new Whatsapp({
     const payload = typeof qrPayload === 'string' ? { sessionId: 'default', qr: qrPayload } : qrPayload;
     const sessionId = String(payload.sessionId || 'default').trim() || 'default';
     updateSessionMeta(sessionId, { status: 'awaiting_qr', qr: payload.qr || null });
+  },
+  async onMessageReceived(msg) {
+    if (!WEBHOOK_URL) return;
+    try {
+      const sessionId = String(msg.sessionId || '');
+      const fromMe = Boolean(msg.key?.fromMe);
+      const rawJid = String(msg.key?.remoteJid || '');
+      const isGroup = rawJid.includes('@g.us') || rawJid.includes('@newsletter');
+      const isLid = rawJid.endsWith('@lid');
+      const rawPhone = rawJid.replace(/@.*/, '');
+
+      // Skip group, status, outbound
+      if (isGroup || rawPhone === 'status' || fromMe) return;
+
+      const messageContent = msg.message?.conversation
+        || msg.message?.extendedTextMessage?.text
+        || msg.message?.imageMessage?.caption
+        || msg.message?.videoMessage?.caption
+        || msg.message?.documentMessage?.caption
+        || null;
+
+      // Detect media type
+      let mediaInfo = null;
+      const imgMsg = msg.message?.imageMessage;
+      const vidMsg = msg.message?.videoMessage;
+      const docMsg = msg.message?.documentMessage;
+      const audMsg = msg.message?.audioMessage;
+
+      const mediaMsg = imgMsg || vidMsg || docMsg || audMsg;
+      if (mediaMsg) {
+        const mediaType = imgMsg ? 'image' : vidMsg ? 'video' : audMsg ? 'audio' : 'document';
+        try {
+          const buf = await downloadMediaMessage(msg, 'buffer', {});
+          mediaInfo = {
+            type: mediaType,
+            data: buf.toString('base64'),
+            mimetype: String(mediaMsg.mimetype || ''),
+            filename: String(docMsg?.fileName || ''),
+          };
+        } catch (dlErr) {
+          console.error('[webhook] media download error:', dlErr.message);
+        }
+      }
+
+      // Skip if no text and no media
+      if (!messageContent && !mediaInfo) return;
+
+      const pushName = String(msg.pushName || '');
+      const messageId = String(msg.key?.id || '');
+
+      const payload = {
+        event: 'message',
+        session: sessionId,
+        sender: rawPhone,
+        from: rawPhone,
+        receiver: '',
+        message: messageContent,
+        fromMe: false,
+        isGroup: false,
+        pushName: pushName,
+        id: messageId,
+        ...(mediaInfo ? { media: mediaInfo } : {}),
+      };
+
+      if (isLid) {
+        pool.execute(
+          'SELECT value FROM `' + DB_TABLE + '` WHERE session_id = ? AND id = ? AND category = ?',
+          [sessionId, 'lid-mapping-' + rawPhone + '_reverse', 'lid-mapping']
+        ).then(([rows]) => {
+          if (!rows || !rows.length) {
+            console.error('[webhook] LID resolve: not found for', rawPhone);
+            return;
+          }
+          let phone = rows[0].value;
+          try { phone = JSON.parse(phone); } catch (_) {}
+          phone = String(phone || '').replace(/\D/g, '');
+          if (!phone) return;
+          forwardToWebhook({ ...payload, sender: phone, from: phone });
+        }).catch((err) => {
+          console.error('[webhook] LID resolve error:', err.message);
+        });
+      } else {
+        forwardToWebhook(payload);
+      }
+    } catch (e) {
+      console.error('[webhook] onMessageReceived error:', e.message);
+    }
   },
 });
 
