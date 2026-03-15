@@ -793,6 +793,7 @@
                             <p>CPE Management</p>
                         </a>
                     </li>
+
                     @endif
                     @if(auth()->user()->role !== 'teknisi')
                         <li class="nav-item has-treeview {{ request()->routeIs(...$profilePaketRoutes) ? 'menu-open' : '' }}">

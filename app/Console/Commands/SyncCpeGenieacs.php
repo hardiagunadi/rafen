@@ -45,6 +45,17 @@ class SyncCpeGenieacs extends Command
         foreach ($clientMap as $ownerId => $client) {
             $url = $client->getBaseUrl();
             if (! isset($devicesByUrl[$url])) {
+                // Ensure default presets exist in this GenieACS instance so all
+                // modems receive the correct CR credentials and inform interval.
+                try {
+                    $client->ensureDefaultPresets();
+                } catch (\Throwable $e) {
+                    Log::warning('cpe:sync-genieacs: ensureDefaultPresets failed', [
+                        'url'   => $url,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
                 $devicesByUrl[$url] = [
                     'client'  => $client,
                     'devices' => $client->listDevices(),

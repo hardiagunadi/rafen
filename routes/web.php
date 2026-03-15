@@ -33,10 +33,12 @@ use App\Http\Controllers\WaBlastController;
 use App\Http\Controllers\WaMultiSessionProxyController;
 use App\Http\Controllers\WaWebhookController;
 use App\Http\Controllers\CpeController;
+
 use App\Http\Controllers\WgSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::any('/wa-multi-session/{path?}', WaMultiSessionProxyController::class)->where('path', '.*');
+
 
 Route::get('login', [LoginController::class, 'show'])->name('login');
 Route::post('login', [LoginController::class, 'login']);
@@ -505,4 +507,5 @@ Route::middleware(['auth', \App\Http\Middleware\SuperAdminMiddleware::class])->p
     // Reports
     Route::get('/reports/revenue', [SuperAdminController::class, 'revenueReport'])->name('reports.revenue');
     Route::get('/reports/tenants', [SuperAdminController::class, 'tenantsReport'])->name('reports.tenants');
+
 });

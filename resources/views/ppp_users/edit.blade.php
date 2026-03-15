@@ -910,12 +910,16 @@ function formatBiayaAktivasi(el) {
                 method: method,
                 url: url,
                 data: Object.assign({ _token: csrfToken }, data || {}),
+                dataType: 'json',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 success: function (res) {
                     if (res.message) toastr.success(res.message);
                     if (onSuccess) onSuccess(res);
                 },
                 error: function (xhr) {
-                    toastr.error(xhr.responseJSON?.message || 'Terjadi kesalahan. Status: ' + xhr.status);
+                    var msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                        || 'Terjadi kesalahan. Status: ' + xhr.status;
+                    toastr.error(msg);
                 },
                 complete: function () {
                     if (onComplete) onComplete();
@@ -1041,8 +1045,12 @@ function formatBiayaAktivasi(el) {
         // Reboot
         $(document).on('click', '#btn-cpe-reboot', function () {
             if (!confirm('Yakin ingin mereboot perangkat ini?')) return;
-            var id = $(this).data('ppp-user-id');
-            cpeAjax('POST', '/ppp-users/' + id + '/cpe/reboot', {});
+            var $btn = $(this);
+            var id = $btn.data('ppp-user-id');
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Mereboot...');
+            cpeAjax('POST', '/ppp-users/' + id + '/cpe/reboot', {}, null, function () {
+                $btn.prop('disabled', false).html('<i class="fas fa-power-off mr-1"></i> Reboot Perangkat');
+            });
         });
 
         // WiFi per-index (multi-SSID)

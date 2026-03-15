@@ -2,6 +2,8 @@
     $currentUser   = auth()->user();
     $canManage     = $currentUser->isSuperAdmin() || in_array($currentUser->role, ['administrator', 'noc', 'it_support'], true);
     $canReboot     = $canManage || $currentUser->role === 'teknisi';
+    $canWifi       = $canManage || $currentUser->role === 'teknisi';
+    $isTeknisi     = $currentUser->role === 'teknisi';
     $cpeDevice     = $pppUser->cpeDevice ?? null;
     $wifiNetworks  = $cpeDevice?->cached_params['wifi_networks'] ?? [];
     $wanConns      = $cpeDevice?->cached_params['wan_connections'] ?? [];
@@ -127,7 +129,7 @@
                 </div>
             </div>
 
-            @if($canManage)
+            @if($canWifi)
             {{-- Row 2: Multi-SSID WiFi --}}
             <div class="card card-outline card-success mb-3" id="cpe-wifi-section">
                 <div class="card-header py-2 d-flex align-items-center justify-content-between">
@@ -180,12 +182,14 @@
                                         </div>
                                     </div>
                                     <div class="col-sm-3 d-flex flex-column justify-content-end">
+                                        @if(! $isTeknisi)
                                         <div class="custom-control custom-switch mb-2">
                                             <input type="checkbox" class="custom-control-input cpe-wifi-enable-val"
                                                    id="cpe-wifi-en-{{ $wIdx }}" data-wlan-idx="{{ $wIdx }}"
                                                    {{ $wifi['enabled'] ? 'checked' : '' }}>
                                             <label class="custom-control-label small" for="cpe-wifi-en-{{ $wIdx }}">Aktifkan</label>
                                         </div>
+                                        @endif
                                         <button class="btn btn-success btn-sm btn-block btn-cpe-wifi-save"
                                                 data-ppp-user-id="{{ $pppUser->id }}" data-wlan-idx="{{ $wIdx }}">
                                             <i class="fas fa-save mr-1"></i> Simpan

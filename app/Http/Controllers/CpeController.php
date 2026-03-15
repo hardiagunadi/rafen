@@ -250,14 +250,16 @@ class CpeController extends Controller
         try {
             $result = $this->genieacs->rebootDevice($device->genieacs_device_id);
         } catch (Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal mengirim perintah reboot: '.$e->getMessage()], 500);
         }
 
         $this->logActivity('reboot_cpe', 'CpeDevice', $device->id, $pppUser->customer_name, $pppUser->owner_id);
 
+        $lastSeen = $device->last_seen_at;
         $msg = $result['queued']
-            ? 'Perintah reboot dikirim. Perangkat akan restart saat koneksi berikutnya ke ACS.'
-            : 'Perangkat sedang di-restart.';
+            ? 'Perintah reboot dikirim. Perangkat tidak dapat dihubungi saat ini — akan restart saat sesi TR-069 berikutnya.'
+              .($lastSeen ? ' (Terakhir terhubung: '.$lastSeen->diffForHumans().')' : '')
+            : 'Perintah reboot berhasil dikirim. Perangkat sedang restart.';
 
         return response()->json(['success' => true, 'message' => $msg, 'queued' => $result['queued']]);
     }
@@ -340,14 +342,16 @@ class CpeController extends Controller
         $pppUser = $this->findPppUser($pppUserId);
         $device  = $this->requireCpeDevice($pppUser);
 
-        if (! $this->canManageCpe()) {
+        if (! $this->canWifiCpe()) {
             abort(403);
         }
+
+        $isTeknisi = auth()->user()->role === 'teknisi';
 
         $validated = $request->validate([
             'ssid'     => 'nullable|string|max:32',
             'password' => 'nullable|string|min:8|max:63',
-            'enabled'  => 'nullable|boolean',
+            'enabled'  => $isTeknisi ? 'prohibited' : 'nullable|boolean',
         ]);
 
         $base   = "InternetGatewayDevice.LANDevice.1.WLANConfiguration.{$wlanIdx}";
@@ -685,6 +689,16 @@ class CpeController extends Controller
     }
 
     private function canRebootCpe(): bool
+    {
+        $user = auth()->user();
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        return in_array($user->role, ['administrator', 'noc', 'it_support', 'teknisi']);
+    }
+
+    private function canWifiCpe(): bool
     {
         $user = auth()->user();
         if ($user->isSuperAdmin()) {

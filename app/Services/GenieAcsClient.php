@@ -184,6 +184,56 @@ class GenieAcsClient
     }
 
     /**
+     * Create or update a GenieACS preset (applies to all devices on next inform).
+     * PUT /presets/{name}
+     */
+    public function putPreset(string $name, array $body): bool
+    {
+        $response = $this->put('/presets/'.rawurlencode($name), $body);
+
+        if (! $response->successful()) {
+            Log::warning('GenieACS: putPreset failed', [
+                'name'   => $name,
+                'status' => $response->status(),
+                'body'   => $response->body(),
+            ]);
+        }
+
+        return $response->successful();
+    }
+
+    /**
+     * Ensure the two default presets exist in GenieACS:
+     *  - set-connection-request-creds: sets CR username/password so GenieACS can
+     *    trigger Connection Request and force immediate task execution.
+     *  - set-inform-interval: reduces PeriodicInformInterval to 5 min so tasks
+     *    are delivered promptly even if Connection Request fails.
+     */
+    public function ensureDefaultPresets(): void
+    {
+        $username = config('genieacs.connection_request_username', 'rafen');
+        $password = config('genieacs.connection_request_password', 'rafen2024');
+        $interval = (string) config('genieacs.inform_interval', 300);
+
+        $this->putPreset('set-connection-request-creds', [
+            'weight'         => 100,
+            'precondition'   => 'true',
+            'configurations' => [
+                ['type' => 'value', 'name' => 'InternetGatewayDevice.ManagementServer.ConnectionRequestUsername', 'value' => $username],
+                ['type' => 'value', 'name' => 'InternetGatewayDevice.ManagementServer.ConnectionRequestPassword', 'value' => $password],
+            ],
+        ]);
+
+        $this->putPreset('set-inform-interval', [
+            'weight'         => 100,
+            'precondition'   => 'true',
+            'configurations' => [
+                ['type' => 'value', 'name' => 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval', 'value' => $interval],
+            ],
+        ]);
+    }
+
+    /**
      * Refresh a device object tree (forces GenieACS to re-fetch params from CPE).
      */
     public function refreshObject(string $deviceId, string $objectPath = 'InternetGatewayDevice'): array
@@ -198,13 +248,20 @@ class GenieAcsClient
      * Create an arbitrary task on a device.
      * Returns ['queued' => bool, 'task_id' => string|null, 'status' => int]
      */
-    public function createTask(string $deviceId, array $taskBody): array
+    public function createTask(string $deviceId, array $taskBody, bool $connectionRequest = true): array
     {
-        // timeout=0 → GenieACS queues the task and returns HTTP 202 immediately
-        // without waiting for the CPE to respond (avoids long-hanging requests).
+        // connection_request=true → GenieACS sends HTTP connection request to CPE
+        // to force an immediate TR-069 session so the task executes right away.
+        // timeout=15000 → wait up to 15s for CPE to connect and execute the task.
+        // HTTP 200 = task executed immediately, HTTP 202 = queued (CPE unreachable).
+        $query = $connectionRequest
+            ? 'timeout=15000&connection_request'
+            : 'timeout=0';
+
         $response = $this->post(
-            '/devices/'.$deviceId.'/tasks?timeout=0',
-            $taskBody
+            '/devices/'.$deviceId.'/tasks?'.$query,
+            $taskBody,
+            $connectionRequest ? 20 : null
         );
 
         $status = $response->status();
@@ -462,8 +519,18 @@ class GenieAcsClient
         return $this->request()->get($path, $query);
     }
 
-    private function post(string $path, array $body = []): Response
+    private function post(string $path, array $body = [], ?int $timeout = null): Response
     {
-        return $this->request()->post($path, $body);
+        $req = $this->request();
+        if ($timeout !== null) {
+            $req = $req->timeout($timeout);
+        }
+
+        return $req->post($path, $body);
+    }
+
+    private function put(string $path, array $body = []): Response
+    {
+        return $this->request()->put($path, $body);
     }
 }

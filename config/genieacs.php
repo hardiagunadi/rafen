@@ -2,6 +2,7 @@
 
 return [
     'nbi_url'  => env('GENIEACS_NBI_URL', 'http://localhost:7557'),
+    'ui_url'   => env('GENIEACS_UI_URL', 'http://localhost:3000'),
     'username' => env('GENIEACS_NBI_USERNAME', ''),
     'password' => env('GENIEACS_NBI_PASSWORD', ''),
     'timeout'  => (int) env('GENIEACS_NBI_TIMEOUT', 10),
@@ -12,6 +13,15 @@ return [
     | Tune with GENIEACS_ONLINE_THRESHOLD_MINUTES in .env.
     */
     'online_threshold_minutes' => (int) env('GENIEACS_ONLINE_THRESHOLD_MINUTES', 70),
+
+    /*
+    | Default presets pushed to GenieACS for all CPE devices.
+    | These ensure GenieACS can trigger Connection Request (immediate task execution)
+    | and that devices inform frequently enough for timely task delivery.
+    */
+    'connection_request_username' => env('GENIEACS_CR_USERNAME', 'rafen'),
+    'connection_request_password' => env('GENIEACS_CR_PASSWORD', 'rafen2024'),
+    'inform_interval'             => (int) env('GENIEACS_INFORM_INTERVAL', 300),
 
     /*
     |--------------------------------------------------------------------------
