@@ -106,11 +106,11 @@ class PppUserController extends Controller
                 : '<span class="text-muted">-</span>';
 
             $renewBtn = $invoice
-                ? '<button class="btn btn-primary" data-ajax-post="'.route('invoices.renew', $invoice).'" data-confirm="Perpanjang layanan tanpa pembayaran?" '.($canRenew ? '' : 'disabled').'><i class="fas fa-bolt"></i> Renew</button>'
+                ? '<a href="'.route('invoices.show', $invoice).'" class="btn btn-primary"><i class="fas fa-bolt"></i> Renew</a>'
                 : '<button class="btn btn-light" disabled><i class="fas fa-bolt"></i> Renew</button>';
 
             $bayarBtn = $invoice
-                ? '<button class="btn btn-success" data-ajax-post="'.route('invoices.pay', $invoice).'" data-confirm="Bayar dan perpanjang layanan sekarang?" '.($canPay ? '' : 'disabled').'><i class="fas fa-check"></i> Bayar</button>'
+                ? '<a href="'.route('invoices.show', $invoice).'" class="btn btn-success"><i class="fas fa-check"></i> Bayar</a>'
                 : '<button class="btn btn-light" disabled><i class="fas fa-check"></i> Bayar</button>';
 
             $invoiceMenuItem = $invoice

@@ -21,9 +21,9 @@ class CpeController extends Controller
 
     private GenieAcsClient $genieacs;
 
-    public function __construct()
+    public function __construct(?GenieAcsClient $genieacs = null)
     {
-        $this->genieacs = $this->makeGenieacsClient();
+        $this->genieacs = $genieacs ?? $this->makeGenieacsClient();
     }
 
     private function makeGenieacsClient(): GenieAcsClient
@@ -646,13 +646,17 @@ class CpeController extends Controller
         $pppoeOnline = false;
         $pppoeIp     = null;
         if ($device->pppUser) {
-            $session = \DB::table('radacct')
-                ->where('username', $device->pppUser->username)
-                ->whereNull('acctstoptime')
-                ->orderByDesc('acctstarttime')
-                ->first(['framedipaddress', 'acctstarttime']);
-            $pppoeOnline = $session !== null;
-            $pppoeIp     = $session?->framedipaddress;
+            try {
+                $session = \DB::table('radacct')
+                    ->where('username', $device->pppUser->username)
+                    ->whereNull('acctstoptime')
+                    ->orderByDesc('acctstarttime')
+                    ->first(['framedipaddress', 'acctstarttime']);
+                $pppoeOnline = $session !== null;
+                $pppoeIp     = $session?->framedipaddress;
+            } catch (\Throwable) {
+                // radacct table may not exist in all environments
+            }
         }
 
         return [

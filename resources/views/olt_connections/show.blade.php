@@ -7,7 +7,6 @@
     $currentUser = auth()->user();
     $canManageOlt = $currentUser->isSuperAdmin() || in_array($currentUser->role, ['administrator', 'noc'], true);
     $canPollOlt = $canManageOlt || $currentUser->role === 'teknisi';
-    $canRebootOnu = $canPollOlt;
     $showNocOnlyOidFields = $currentUser->role === 'noc';
     $isPollingInProgress = $oltConnection->isPollingInProgress();
     $pollingProgressPercent = $oltConnection->pollingProgressPercent();
@@ -186,9 +185,6 @@
                         <th>Rx ONU</th>
                         <th>Status</th>
                         <th>Last Seen</th>
-                        @if($canRebootOnu)
-                            <th>Aksi</th>
-                        @endif
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -248,12 +244,10 @@
         var pollingStatusUrl = '{{ route('olt-connections.polling-status', $oltConnection) }}';
         var pollingTriggerUrl = '{{ route('olt-connections.poll', $oltConnection) }}';
         var datatableUrl = '{{ route('olt-connections.datatable', $oltConnection) }}';
-        var rebootOnuUrl = '{{ route('olt-connections.onu-reboot', $oltConnection) }}';
         var onuStatusUrl = '{{ route('olt-connections.onu-status', $oltConnection) }}';
         var onuAlarmsUrl = '{{ route('olt-connections.onu-alarms', $oltConnection) }}';
         var pollingWatcherTimer = null;
         var autoTriggerTimer = null;
-        var rebootOnlineWatchers = {};
         var alarmModalElement = document.getElementById('onu-alarm-modal');
         var alarmModal = alarmModalElement ? $(alarmModalElement) : null;
         var alarmSubtitle = document.getElementById('onu-alarm-subtitle');
@@ -267,7 +261,6 @@
         var fullTriggerIntervalMs = @json($fullTriggerIntervalMs);
         var autoPollingEnabled = @json($canPollOlt);
         var canFetchOnuAlarm = @json($canPollOlt);
-        var canRebootOnu = @json($canRebootOnu);
         var lastFullPollTriggeredAt = 0;
         var pollState = {
             isPolling: @json($isPollingInProgress),
@@ -549,24 +542,6 @@
             { data: 'last_seen_at' }
         ];
 
-        if (canRebootOnu) {
-            columns.push({
-                data: null,
-                orderable: false,
-                searchable: false,
-                className: 'text-nowrap',
-                render: function (data, type, row) {
-                    if (!row || !row.onu_index || row.onu_index === '-') {
-                        return '-';
-                    }
-
-                    return '<button type="button" class="btn btn-xs btn-warning text-white" data-onu-reboot="' + escapeHtml(row.onu_index) + '"'
-                        + ' data-onu-id="' + escapeHtml(row.onu_id || '-') + '">'
-                        + '<i class="fas fa-power-off mr-1"></i>Restart</button>';
-                }
-            });
-        }
-
         function showToastMessage(message, type) {
             if (window.showToast) {
                 window.showToast(message, type);
@@ -683,15 +658,6 @@
             loadOnuAlarms(onuIndex);
         }
 
-        function stopRebootOnlineWatcher(onuIndex) {
-            if (!Object.prototype.hasOwnProperty.call(rebootOnlineWatchers, onuIndex)) {
-                return;
-            }
-
-            window.clearInterval(rebootOnlineWatchers[onuIndex]);
-            delete rebootOnlineWatchers[onuIndex];
-        }
-
         function fetchOnuStatusByIndex(onuIndex) {
             var params = new URLSearchParams();
             params.set('onu_index', onuIndex);
@@ -717,38 +683,6 @@
 
                 return payload.data;
             });
-        }
-
-        function watchOnuUntilOnline(onuIndex, onuId) {
-            var maxAttempts = 18;
-            var checkIntervalMs = 10000;
-            var attempts = 0;
-
-            stopRebootOnlineWatcher(onuIndex);
-
-            rebootOnlineWatchers[onuIndex] = window.setInterval(function () {
-                attempts++;
-
-                fetchOnuStatusByIndex(onuIndex)
-                    .then(function (row) {
-                        if (String(row.status || '').toUpperCase() !== 'ONLINE') {
-                            if (attempts >= maxAttempts) {
-                                stopRebootOnlineWatcher(onuIndex);
-                                showToastMessage('Restart berhasil, tetapi ONU ' + onuId + ' belum kembali online. Status terakhir: ' + (row.status || '-'), 'warning');
-                            }
-
-                            return;
-                        }
-
-                        stopRebootOnlineWatcher(onuIndex);
-                        table.ajax.reload(null, false);
-                        showToastMessage('Perangkat sudah kembali online: ONU ' + onuId + '.', 'success');
-                    })
-                    .catch(function (error) {
-                        stopRebootOnlineWatcher(onuIndex);
-                        showToastMessage(error.message || ('Gagal memantau status online ONU ' + onuId + '.'), 'danger');
-                    });
-            }, checkIntervalMs);
         }
 
         var table = $('#onu-optics-table').DataTable({
@@ -994,68 +928,6 @@
             });
         }
 
-        if (canRebootOnu) {
-            tableElement.addEventListener('click', function (event) {
-                var button = event.target.closest('[data-onu-reboot]');
-
-                if (!button) {
-                    return;
-                }
-
-                var onuIndex = button.getAttribute('data-onu-reboot') || '';
-                var onuId = button.getAttribute('data-onu-id') || '-';
-
-                if (onuIndex === '') {
-                    return;
-                }
-
-                if (!window.confirm('Restart ONU ' + onuId + ' sekarang?')) {
-                    return;
-                }
-
-                var originalButtonHtml = button.innerHTML;
-                button.disabled = true;
-                button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Restart...';
-                showToastMessage('Memproses restart ONU ' + onuId + '...', 'warning');
-
-                fetch(rebootOnuUrl, {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken(),
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ onu_index: onuIndex }),
-                })
-                    .then(function (response) {
-                        return response.json().then(function (payload) {
-                            if (!response.ok) {
-                                throw new Error(payload.message || 'Gagal kirim reboot ONU.');
-                            }
-
-                            return payload;
-                        });
-                    })
-                    .then(function (payload) {
-                        var successMessage = 'Restart berhasil.';
-                        if (payload.message) {
-                            successMessage += ' ' + payload.message;
-                        }
-
-                        showToastMessage(successMessage, 'success');
-                        watchOnuUntilOnline(onuIndex, onuId);
-                    })
-                    .catch(function (error) {
-                        showToastMessage(error.message || ('Restart ONU gagal untuk ' + onuId + '.'), 'danger');
-                    })
-                    .finally(function () {
-                        button.disabled = false;
-                        button.innerHTML = originalButtonHtml;
-                    });
-            });
-        }
 
         updateStatusButtons('{{ $selectedStatus }}');
         updateSummaryCards(portFilter.value);
@@ -1088,9 +960,6 @@
         window.addEventListener('beforeunload', function () {
             stopAutoTrigger();
             stopPollingWatcher();
-            Object.keys(rebootOnlineWatchers).forEach(function (onuIndex) {
-                stopRebootOnlineWatcher(onuIndex);
-            });
         });
 
         if (shouldAutoPoll) {

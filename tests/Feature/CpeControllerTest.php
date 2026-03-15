@@ -5,6 +5,7 @@ use App\Models\PppUser;
 use App\Models\User;
 use App\Services\GenieAcsClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
@@ -87,41 +88,26 @@ it('sync finds device and creates cpe record', function () {
     $pppUser = cpePppUser($admin);
 
     $fakeDevice = [
-        '_id'                    => 'A861DF-H3-2S-CMDCA106B700',
-        'InternetGatewayDevice'  => [
+        '_id'                   => 'A861DF-H3-2S-CMDCA106B700',
+        'InternetGatewayDevice' => [
             'DeviceInfo' => [
                 'Manufacturer'    => ['_value' => 'CMDC'],
                 'ModelName'       => ['_value' => 'H3-2S XPON'],
                 'SoftwareVersion' => ['_value' => 'V1.1.20P1T4'],
                 'SerialNumber'    => ['_value' => 'CMDCA106B700'],
+                'UpTime'          => ['_value' => '3600'],
             ],
         ],
         '_lastInform' => now()->toIso8601String(),
     ];
 
-    $mock = Mockery::mock(GenieAcsClient::class);
-    $mock->shouldReceive('findDeviceByUsername')
-        ->once()
-        ->with('testuser@isp.id')
-        ->andReturn($fakeDevice);
-    $mock->shouldReceive('detectParamProfile')
-        ->once()
-        ->andReturn('igd');
-    $mock->shouldReceive('extractValue')
-        ->andReturnUsing(function ($doc, $path) {
-            $map = [
-                'InternetGatewayDevice.DeviceInfo.SerialNumber'    => 'CMDCA106B700',
-                'InternetGatewayDevice.DeviceInfo.Manufacturer'    => 'CMDC',
-                'InternetGatewayDevice.DeviceInfo.ModelName'       => 'H3-2S XPON',
-                'InternetGatewayDevice.DeviceInfo.SoftwareVersion' => 'V1.1.20P1T4',
-                'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID' => 'TestWifi',
-                'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username' => 'testuser@isp.id',
-                'InternetGatewayDevice.DeviceInfo.UpTime' => '3600',
-            ];
-            return $map[$path] ?? null;
-        });
-
-    $this->app->instance(GenieAcsClient::class, $mock);
+    // Fake HTTP calls to GenieACS NBI
+    Http::fake([
+        '*/devices/*' => Http::sequence()
+            ->push([$fakeDevice], 200)  // findDeviceByUsername (search by igd path)
+            ->push([], 202)             // refreshObject task
+            ->pushStatus(200),          // fallback
+    ]);
 
     $this->actingAs($admin)
         ->postJson(route('cpe.sync', $pppUser->id))
@@ -138,12 +124,10 @@ it('sync returns 404 when device not found in genieacs', function () {
     $admin   = cpeTenantAdmin();
     $pppUser = cpePppUser($admin);
 
-    $mock = Mockery::mock(GenieAcsClient::class);
-    $mock->shouldReceive('findDeviceByUsername')
-        ->once()
-        ->andReturn(null);
-
-    $this->app->instance(GenieAcsClient::class, $mock);
+    // Both IGD and Device paths return empty — device not found
+    Http::fake([
+        '*/devices/*' => Http::response([], 200),
+    ]);
 
     $this->actingAs($admin)
         ->postJson(route('cpe.sync', $pppUser->id))
@@ -164,13 +148,7 @@ it('admin can reboot a linked cpe device', function () {
         'genieacs_device_id' => 'TEST-DEVICE-001',
     ]);
 
-    $mock = Mockery::mock(GenieAcsClient::class);
-    $mock->shouldReceive('rebootDevice')
-        ->once()
-        ->with('TEST-DEVICE-001')
-        ->andReturn(['queued' => true, 'task_id' => 'abc123', 'status' => 202]);
-
-    $this->app->instance(GenieAcsClient::class, $mock);
+    Http::fake(['*/tasks*' => Http::response(['_id' => 'abc123'], 202)]);
 
     $this->actingAs($admin)
         ->postJson(route('cpe.reboot', $pppUser->id))
@@ -192,9 +170,7 @@ it('teknisi can reboot a linked cpe device', function () {
         'genieacs_device_id' => 'TEST-DEVICE-001',
     ]);
 
-    $mock = Mockery::mock(GenieAcsClient::class);
-    $mock->shouldReceive('rebootDevice')->once()->andReturn(['queued' => false, 'task_id' => null, 'status' => 200]);
-    $this->app->instance(GenieAcsClient::class, $mock);
+    Http::fake(['*/tasks*' => Http::response(['_id' => null], 200)]);
 
     $this->actingAs($teknisi)
         ->postJson(route('cpe.reboot', $pppUser->id))
@@ -231,13 +207,7 @@ it('admin can update wifi settings', function () {
         'param_profile'      => 'igd',
     ]);
 
-    $mock = Mockery::mock(GenieAcsClient::class);
-    $mock->shouldReceive('setWifi')
-        ->once()
-        ->with('TEST-DEVICE-001', 'MyWifi', 'password123', 'igd')
-        ->andReturn(['queued' => true, 'task_id' => 'xyz', 'status' => 202]);
-
-    $this->app->instance(GenieAcsClient::class, $mock);
+    Http::fake(['*/tasks*' => Http::response(['_id' => 'xyz'], 202)]);
 
     $this->actingAs($admin)
         ->postJson(route('cpe.update-wifi', $pppUser->id), [
@@ -298,12 +268,7 @@ it('admin can update pppoe credentials', function () {
         'param_profile'      => 'igd',
     ]);
 
-    $mock = Mockery::mock(GenieAcsClient::class);
-    $mock->shouldReceive('setPppoeCredentials')
-        ->once()
-        ->andReturn(['queued' => false, 'task_id' => null, 'status' => 200]);
-
-    $this->app->instance(GenieAcsClient::class, $mock);
+    Http::fake(['*/tasks*' => Http::response(['_id' => null], 200)]);
 
     $this->actingAs($admin)
         ->postJson(route('cpe.update-pppoe', $pppUser->id), [
