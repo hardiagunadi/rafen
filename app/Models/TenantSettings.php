@@ -87,6 +87,10 @@ class TenantSettings extends Model
         'module_hotspot_enabled',
         'shift_feature_enabled',
         'wa_shift_group_number',
+        'genieacs_url',
+        'genieacs_username',
+        'genieacs_password',
+        'portal_slug',
     ];
 
     protected function casts(): array
@@ -171,6 +175,11 @@ class TenantSettings extends Model
         return ! empty($this->tripay_api_key)
             && ! empty($this->tripay_private_key)
             && ! empty($this->tripay_merchant_code);
+    }
+
+    public function hasGenieacsConfigured(): bool
+    {
+        return ! empty($this->genieacs_url);
     }
 
     public function hasWaConfigured(): bool

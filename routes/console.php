@@ -78,3 +78,8 @@ Schedule::command('shifts:send-reminders')
     ->dailyAt('19:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Auto-link GenieACS devices ke PPP users berdasarkan PPPoE username (setiap 5 menit)
+Schedule::command('cpe:sync-genieacs')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();

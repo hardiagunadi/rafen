@@ -20,6 +20,13 @@ class UpdatePppUserRequest extends FormRequest
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
+    public function messages(): array
+    {
+        return [
+            'nomor_hp.unique' => 'Nomor HP ini sudah digunakan oleh pelanggan lain. Setiap pelanggan harus memiliki nomor HP yang unik agar bisa login ke portal.',
+        ];
+    }
+
     public function rules(): array
     {
         return [
@@ -45,7 +52,12 @@ class UpdatePppUserRequest extends FormRequest
             'customer_id' => ['sometimes', 'required', 'string', 'max:120'],
             'customer_name' => ['sometimes', 'required', 'string', 'max:150'],
             'nik' => ['sometimes', 'required', 'string', 'max:191'],
-            'nomor_hp' => ['sometimes', 'required', 'string', 'max:30'],
+            'nomor_hp' => [
+                'sometimes', 'required', 'string', 'max:30',
+                Rule::unique('ppp_users')->where('owner_id',
+                    $this->route('pppUser')?->owner_id ?? $this->user()?->effectiveOwnerId()
+                )->ignore($this->route('pppUser')?->id),
+            ],
             'email' => ['sometimes', 'required', 'email', 'max:191'],
             'alamat' => ['sometimes', 'required', 'string'],
             'latitude' => ['nullable', 'string', 'max:120'],

@@ -870,6 +870,25 @@ class TenantSettingsController extends Controller
         return app(\App\Http\Controllers\IsolirPageController::class)->preview($request);
     }
 
+    public function updateGenieacs(Request $request)
+    {
+        if ($request->user()->isSubUser()) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'genieacs_url'      => 'nullable|url|max:255',
+            'genieacs_username' => 'nullable|string|max:64',
+            'genieacs_password' => 'nullable|string|max:128',
+        ]);
+
+        $user     = $request->user();
+        $settings = $user->getSettings();
+        $settings->update($validated);
+
+        return back()->with('success', 'Pengaturan GenieACS berhasil disimpan.');
+    }
+
     private function resolveWaSettingsForRequest(Request $request): ?\App\Models\TenantSettings
     {
         $user = $request->user();

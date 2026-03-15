@@ -8,9 +8,11 @@ use App\Models\PppUser;
 use App\Models\TenantSettings;
 use App\Models\WaConversation;
 use App\Models\WaTicket;
+use App\Services\GenieAcsClient;
 use App\Services\WaGatewayService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Throwable;
 
 class PortalDashboardController extends Controller
 {
@@ -22,7 +24,7 @@ class PortalDashboardController extends Controller
     public function index(Request $request)
     {
         $pppUser = $this->getPppUser($request);
-        $pppUser->load(['profile', 'owner.tenantSettings']);
+        $pppUser->load(['profile', 'owner.tenantSettings', 'cpeDevice']);
 
         $latestInvoice = Invoice::where('ppp_user_id', $pppUser->id)
             ->orderByDesc('due_date')
@@ -90,6 +92,67 @@ class PortalDashboardController extends Controller
         $pppUser->update(['password_clientarea' => Hash::make($request->new_password)]);
 
         return response()->json(['success' => true, 'message' => 'Password berhasil diubah.']);
+    }
+
+    public function updateWifi(Request $request)
+    {
+        $pppUser = $this->getPppUser($request);
+
+        $validated = $request->validate([
+            'ssid'     => ['required', 'string', 'max:32'],
+            'password' => ['required', 'string', 'min:8', 'max:63'],
+        ]);
+
+        $ownerId  = $pppUser->owner_id;
+        $settings = TenantSettings::where('user_id', $ownerId)->first();
+
+        // Check if tenant has GenieACS configured
+        if (! $settings || ! $settings->hasGenieacsConfigured()) {
+            return response()->json([
+                'success' => false,
+                'no_genieacs' => true,
+                'message' => 'Fitur ganti WiFi tidak tersedia saat ini. Silakan buat tiket bantuan.',
+            ], 422);
+        }
+
+        $device = $pppUser->cpeDevice;
+
+        if (! $device || ! $device->genieacs_device_id) {
+            return response()->json([
+                'success' => false,
+                'no_device' => true,
+                'message' => 'Perangkat Anda belum terdaftar di sistem. Silakan buat tiket bantuan.',
+            ], 422);
+        }
+
+        $client = GenieAcsClient::fromTenantSettings($settings);
+
+        try {
+            $result = $client->setWifi(
+                $device->genieacs_device_id,
+                $validated['ssid'],
+                $validated['password'],
+                $device->param_profile ?? 'igd'
+            );
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'no_genieacs' => true,
+                'message' => 'Gagal terhubung ke perangkat. Silakan buat tiket bantuan untuk meminta teknisi mengubah WiFi Anda.',
+            ], 503);
+        }
+
+        // Update cached SSID
+        $cached              = $device->cached_params ?? [];
+        $cached['wifi_ssid'] = $validated['ssid'];
+        $device->cached_params = $cached;
+        $device->save();
+
+        $msg = $result['queued']
+            ? 'Pengaturan WiFi dikirim. Nama dan password WiFi akan berubah saat modem online.'
+            : 'Nama dan password WiFi berhasil diubah.';
+
+        return response()->json(['success' => true, 'message' => $msg]);
     }
 
     public function storeTicket(Request $request)

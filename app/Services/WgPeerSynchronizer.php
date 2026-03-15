@@ -128,7 +128,11 @@ class WgPeerSynchronizer
             if ($peer->preshared_key) {
                 $lines[] = "PresharedKey = {$peer->preshared_key}";
             }
-            $lines[] = "AllowedIPs = {$peer->vpn_ip}/32";
+            $allowedIps = "{$peer->vpn_ip}/32";
+            if ($peer->extra_allowed_ips) {
+                $allowedIps .= ', '.trim($peer->extra_allowed_ips, ', ');
+            }
+            $lines[] = "AllowedIPs = {$allowedIps}";
         }
 
         $lines[] = '';

@@ -11,6 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('wa_conversations')) {
+            return;
+        }
+
+        if (Schema::hasColumn('wa_conversations', 'bot_paused_until')) {
+            return;
+        }
+
         Schema::table('wa_conversations', function (Blueprint $table) {
             $table->timestamp('bot_paused_until')->nullable()->after('status');
         });
@@ -21,6 +29,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('wa_conversations')) {
+            return;
+        }
+
         Schema::table('wa_conversations', function (Blueprint $table) {
             $table->dropColumn('bot_paused_until');
         });

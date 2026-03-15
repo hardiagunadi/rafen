@@ -232,6 +232,7 @@
         <a class="settings-nav-link" href="#settings-payment"><i class="fas fa-credit-card mr-1"></i>Pembayaran</a>
         <a class="settings-nav-link" href="#settings-map-cache"><i class="fas fa-map mr-1"></i>Cache Peta</a>
         <a class="settings-nav-link" href="#isolir-page"><i class="fas fa-ban mr-1"></i>Halaman Isolir</a>
+        <a class="settings-nav-link" href="#settings-genieacs"><i class="fas fa-router mr-1"></i>GenieACS / TR-069</a>
     </div>
 
     <div class="row">
@@ -790,6 +791,67 @@
                 </div>
             </form>
         </div>
+
+        <!-- GenieACS / TR-069 -->
+        <div class="card settings-card" id="settings-genieacs">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-router text-primary mr-1"></i> GenieACS / TR-069</h3>
+            </div>
+            <form action="{{ route('tenant-settings.update-genieacs') }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Konfigurasi server GenieACS (ACS) untuk manajemen perangkat CPE pelanggan via TR-069.
+                        Kosongkan URL untuk menggunakan pengaturan global server.
+                    </p>
+                    <div class="form-group">
+                        <label>URL GenieACS NBI <small class="text-muted">(NBI port, default 7557)</small></label>
+                        <input type="url" name="genieacs_url" class="form-control"
+                            value="{{ old('genieacs_url', $settings->genieacs_url) }}"
+                            placeholder="http://acs.domain.com:7557">
+                        <small class="form-text text-muted">URL ini digunakan oleh aplikasi untuk berkomunikasi dengan GenieACS API (bukan URL untuk modem).</small>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Username NBI <small class="text-muted">(opsional)</small></label>
+                                <input type="text" name="genieacs_username" class="form-control"
+                                    value="{{ old('genieacs_username', $settings->genieacs_username) }}"
+                                    placeholder="genieacs" autocomplete="off">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Password NBI <small class="text-muted">(opsional)</small></label>
+                                <div class="input-group">
+                                    <input type="password" name="genieacs_password" id="genieacs_password" class="form-control"
+                                        value="{{ old('genieacs_password', $settings->genieacs_password) }}"
+                                        placeholder="(kosong = tidak berubah)" autocomplete="new-password">
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-secondary"
+                                            onclick="var f=document.getElementById('genieacs_password');f.type=f.type==='password'?'text':'password'">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-info py-2 mb-0">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        <strong>URL CWMP untuk modem</strong> (bukan di sini): <code style="color:#fff;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:3px;">http://{{ request()->getHost() }}:7547</code>
+                        — masukkan URL ini di pengaturan TR-069/ITMS/RMS pada modem pelanggan.
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save mr-1"></i> Simpan Pengaturan GenieACS
+                    </button>
+                </div>
+            </form>
+        </div>
+
         </div>
     </div>
 </div>

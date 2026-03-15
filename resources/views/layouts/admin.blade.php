@@ -786,6 +786,14 @@
                         </a>
                     </li>
                     @endif
+                    @if(in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'], true))
+                    <li class="nav-item">
+                        <a href="{{ route('cpe.index') }}" class="nav-link {{ request()->routeIs('cpe.*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-router"></i>
+                            <p>CPE Management</p>
+                        </a>
+                    </li>
+                    @endif
                     @if(auth()->user()->role !== 'teknisi')
                         <li class="nav-item has-treeview {{ request()->routeIs(...$profilePaketRoutes) ? 'menu-open' : '' }}">
                             <a href="#" class="nav-link {{ request()->routeIs(...$profilePaketRoutes) ? 'active' : '' }}">

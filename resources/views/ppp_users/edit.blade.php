@@ -32,6 +32,9 @@
                 <li class="nav-item">
                     <a class="nav-link" id="dialup-tab" data-toggle="tab" href="#dialup-pane" role="tab"><i class="fas fa-history mr-1"></i>Riwayat Dialup</a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="cpe-tab" data-toggle="tab" href="#cpe-pane" role="tab"><i class="fas fa-router mr-1"></i>Perangkat CPE</a>
+                </li>
             </ul>
 
             <div class="tab-content" id="mainTabContent">
@@ -486,6 +489,11 @@
                     </table>
                 </div>{{-- end #dialup-pane --}}
 
+                {{-- TAB: CPE PERANGKAT --}}
+                <div class="tab-pane fade p-3" id="cpe-pane" role="tabpanel">
+                    @include('cpe._panel', ['pppUser' => $pppUser])
+                </div>{{-- end #cpe-pane --}}
+
             </div>{{-- end .tab-content mainTabContent --}}
         </div>{{-- end .card-body --}}
     </div>
@@ -890,5 +898,237 @@ function formatBiayaAktivasi(el) {
                 })
                 .fail(function () { toastr.error('Gagal mengubah status.'); });
         });
+    </script>
+
+    {{-- CPE Management Scripts --}}
+    <script>
+    (function () {
+        var csrfToken = '{{ csrf_token() }}';
+
+        function cpeAjax(method, url, data, onSuccess, onComplete) {
+            $.ajax({
+                method: method,
+                url: url,
+                data: Object.assign({ _token: csrfToken }, data || {}),
+                success: function (res) {
+                    if (res.message) toastr.success(res.message);
+                    if (onSuccess) onSuccess(res);
+                },
+                error: function (xhr) {
+                    toastr.error(xhr.responseJSON?.message || 'Terjadi kesalahan. Status: ' + xhr.status);
+                },
+                complete: function () {
+                    if (onComplete) onComplete();
+                },
+            });
+        }
+
+        function updateCpePanel(device) {
+            var timeStr = device.last_seen_at || '';
+            var statusHtml = {
+                online:  '<span class="badge badge-success">Online</span>' + (timeStr ? ' <span class="text-muted small">· ' + timeStr + '</span>' : ''),
+                offline: '<span class="badge badge-danger">Offline</span>' + (timeStr ? ' <span class="text-muted small">· ' + timeStr + '</span>' : ''),
+                unknown: '<span class="badge badge-secondary">Tidak Diketahui</span>',
+            };
+            $('#cpe-status').html(statusHtml[device.status] || statusHtml.unknown);
+
+            // PPPoE status
+            var pppoeHtml = device.pppoe_online
+                ? '<span class="badge badge-success">Online</span>' + (device.pppoe_ip ? ' <span class="text-muted small">· ' + device.pppoe_ip + '</span>' : '')
+                : '<span class="badge badge-danger">Offline</span>';
+            $('#cpe-pppoe-status').html(pppoeHtml);
+            $('#cpe-manufacturer').text(device.manufacturer || '-');
+            $('#cpe-model').text(device.model || '-');
+            $('#cpe-firmware').text(device.firmware_version || '-');
+            $('#cpe-serial').text(device.serial_number || '-');
+            $('#cpe-device-id').text(device.genieacs_device_id || '-');
+
+            // Update multi-SSID accordion
+            var params = device.cached_params || {};
+            if (params.wifi_networks && params.wifi_networks.length > 0) {
+                $('#cpe-wifi-empty').hide();
+                $('#cpe-wifi-count').text(params.wifi_networks.length + ' jaringan terdeteksi');
+                $.each(params.wifi_networks, function (i, wn) {
+                    var $card = $('#cpe-wifi-card-' + wn.index);
+                    if ($card.length) {
+                        // Update values in existing card
+                        $card.find('.cpe-wifi-ssid-val').val(wn.ssid || '');
+                        $card.find('.cpe-wifi-pass-val').val(wn.password || '');
+                        $card.find('.cpe-wifi-enable-val').prop('checked', !!wn.enabled);
+                        $card.find('.cpe-wifi-status-' + wn.index)
+                            .removeClass('badge-success badge-danger')
+                            .addClass(wn.enabled ? 'badge-success' : 'badge-danger')
+                            .text(wn.enabled ? 'Aktif' : 'Nonaktif');
+                    } else {
+                        // New card — reload page to render Blade
+                        location.reload();
+                    }
+                });
+            }
+
+            // Update WAN accordion count
+            if (params.wan_connections && params.wan_connections.length > 0) {
+                $('#cpe-wan-empty').hide();
+                $('#cpe-wan-count').text(params.wan_connections.length + ' koneksi terdeteksi');
+                $.each(params.wan_connections, function (i, wc) {
+                    var safeKey = wc.key.replace(/\./g, '_');
+                    var $card   = $('#cpe-wan-card-' + safeKey);
+                    if ($card.length) {
+                        $card.find('.cpe-wan-conn-type').val(wc.connection_type || '');
+                        $card.find('.cpe-wan-vlan').val(wc.vlan_id || '');
+                        $card.find('.cpe-wan-vlan-prio').val(wc.vlan_prio || 0);
+                        $card.find('.cpe-wan-dns').val(wc.dns_servers || '');
+                        $card.find('.cpe-wan-user').val(wc.username || '');
+                        $card.find('.cpe-wan-enable').prop('checked', !!wc.enabled);
+                    }
+                });
+            }
+        }
+
+        // Sync
+        $(document).on('click', '#btn-cpe-sync', function () {
+            var $btn = $(this);
+            var id   = $btn.data('ppp-user-id');
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Mencari...');
+            $.ajax({
+                method: 'POST',
+                url: '/ppp-users/' + id + '/cpe/sync',
+                data: { _token: csrfToken },
+                success: function (res) {
+                    if (res.success) {
+                        toastr.success(res.message || 'Perangkat ditemukan!');
+                        setTimeout(function () { location.reload(); }, 1000);
+                    } else {
+                        toastr.warning(res.message || 'Perangkat tidak ditemukan.');
+                        $btn.prop('disabled', false).html('<i class="fas fa-search mr-1"></i> Cari / Sinkronisasi GenieACS');
+                    }
+                },
+                error: function (xhr) {
+                    toastr.error(xhr.responseJSON?.message || 'Gagal menghubungi server. Status: ' + xhr.status);
+                    $btn.prop('disabled', false).html('<i class="fas fa-search mr-1"></i> Cari / Sinkronisasi GenieACS');
+                },
+            });
+        });
+
+        // Refresh
+        $(document).on('click', '#btn-cpe-refresh', function () {
+            var $btn = $(this);
+            var id   = $btn.data('ppp-user-id');
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Memuat...');
+            $.ajax({
+                method: 'POST',
+                url: '/ppp-users/' + id + '/cpe/refresh',
+                data: { _token: csrfToken },
+                success: function (res) {
+                    if (res.message) toastr.success(res.message);
+                    if (res.device) updateCpePanel(res.device);
+                },
+                error: function (xhr) {
+                    toastr.error(xhr.responseJSON?.message || 'Gagal refresh. Status: ' + xhr.status);
+                },
+                complete: function () {
+                    $btn.prop('disabled', false).html('<i class="fas fa-sync-alt mr-1"></i> Refresh Info');
+                },
+            });
+        });
+
+        // Auto-refresh saat tab CPE dibuka (hanya jika device sudah linked)
+        $(document).on('shown.bs.tab', 'a[href="#cpe-pane"]', function () {
+            var $btn = $('#btn-cpe-refresh');
+            if ($btn.length) $btn.trigger('click');
+        });
+
+        // Reboot
+        $(document).on('click', '#btn-cpe-reboot', function () {
+            if (!confirm('Yakin ingin mereboot perangkat ini?')) return;
+            var id = $(this).data('ppp-user-id');
+            cpeAjax('POST', '/ppp-users/' + id + '/cpe/reboot', {});
+        });
+
+        // WiFi per-index (multi-SSID)
+        $(document).on('click', '.btn-cpe-wifi-save', function () {
+            var $btn    = $(this);
+            var id      = $btn.data('ppp-user-id');
+            var wlanIdx = $btn.data('wlan-idx');
+            var $card   = $('#cpe-wifi-card-' + wlanIdx);
+            var ssid    = $card.find('.cpe-wifi-ssid-val').val().trim();
+            var pass    = $card.find('.cpe-wifi-pass-val').val().trim();
+            var enabled = $card.find('.cpe-wifi-enable-val').is(':checked') ? 1 : 0;
+            if (pass && pass.length < 8) { toastr.warning('Password WiFi minimal 8 karakter.'); return; }
+            var payload = { enabled: enabled };
+            if (ssid)  payload.ssid     = ssid;
+            if (pass)  payload.password = pass;
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>');
+            cpeAjax('POST', '/ppp-users/' + id + '/cpe/wifi/' + wlanIdx, payload, null, function () {
+                $btn.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Simpan');
+            });
+        });
+
+        // PPPoE
+        $(document).on('click', '#btn-cpe-pppoe', function () {
+            var id   = $(this).data('ppp-user-id');
+            var user = $('#cpe-pppoe-user-input').val().trim();
+            var pass = $('#cpe-pppoe-pass-input').val().trim();
+            if (!user || !pass) { toastr.warning('Isi username dan password PPPoE.'); return; }
+            if (!confirm('Terapkan kredensial PPPoE ini ke modem pelanggan?')) return;
+            cpeAjax('POST', '/ppp-users/' + id + '/cpe/pppoe', { username: user, password: pass });
+        });
+
+        // WAN save
+        $(document).on('click', '.btn-cpe-wan-save', function () {
+            var $btn   = $(this);
+            var id     = $btn.data('ppp-user-id');
+            var wanKey = $btn.data('wan-key');
+            var parts  = wanKey.split('.');  // [wanIdx, cdIdx, connIdx]
+            var $card  = $('#cpe-wan-card-' + wanKey.replace(/\./g, '_'));
+
+            // Collect port binding checkboxes
+            var ifaces = [];
+            $card.find('.cpe-wan-iface-cb:checked').each(function () {
+                ifaces.push($(this).data('iface'));
+            });
+
+            var payload = {
+                enabled:         $card.find('.cpe-wan-enable').is(':checked') ? 1 : 0,
+                connection_type: $card.find('.cpe-wan-conn-type').val(),
+                vlan_id:         $card.find('.cpe-wan-vlan').val() || null,
+                vlan_prio:       $card.find('.cpe-wan-vlan-prio').val() || 0,
+                dns_servers:     $card.find('.cpe-wan-dns').val().trim() || null,
+                lan_interface:   ifaces.join(','),
+            };
+            var user = $card.find('.cpe-wan-user').val().trim();
+            var pass = $card.find('.cpe-wan-pass').val().trim();
+            if (user) payload.username = user;
+            if (pass) payload.password = pass;
+
+            if (!confirm('Terapkan perubahan konfigurasi WAN ke modem?')) return;
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>');
+
+            var url = '/ppp-users/' + id + '/cpe/wan/' + parts[0] + '/' + parts[1] + '/' + parts[2];
+            $.ajax({
+                method: 'PUT',
+                url: url,
+                data: Object.assign({ _token: csrfToken }, payload),
+                success: function (res) {
+                    if (res.message) toastr.success(res.message);
+                },
+                error: function (xhr) {
+                    toastr.error(xhr.responseJSON?.message || 'Gagal menyimpan. Status: ' + xhr.status);
+                },
+                complete: function () {
+                    $btn.prop('disabled', false).html('<i class="fas fa-save mr-1"></i> Simpan');
+                },
+            });
+        });
+
+        // Unlink
+        $(document).on('click', '#btn-cpe-unlink', function () {
+            if (!confirm('Lepaskan tautan perangkat? Data lokal akan dihapus.')) return;
+            var id = $(this).data('ppp-user-id');
+            cpeAjax('DELETE', '/ppp-users/' + id + '/cpe', {}, function (res) {
+                if (res.success) location.reload();
+            });
+        });
+    }());
     </script>
 @endpush

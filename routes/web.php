@@ -32,6 +32,7 @@ use App\Http\Controllers\Portal\PortalDashboardController;
 use App\Http\Controllers\WaBlastController;
 use App\Http\Controllers\WaMultiSessionProxyController;
 use App\Http\Controllers\WaWebhookController;
+use App\Http\Controllers\CpeController;
 use App\Http\Controllers\WgSettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -108,6 +109,29 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
     Route::resource('mikrotik-connections', MikrotikConnectionController::class);
     Route::resource('olt-connections', OltConnectionController::class);
+
+    // CPE Management (GenieACS)
+    Route::get('cpe', [CpeController::class, 'index'])->name('cpe.index');
+    Route::get('cpe/datatable', [CpeController::class, 'datatable'])->name('cpe.datatable');
+    Route::get('cpe/unlinked', [CpeController::class, 'unlinkedDevices'])->name('cpe.unlinked');
+    Route::post('cpe/link', [CpeController::class, 'linkDevice'])->name('cpe.link');
+    Route::get('cpe/search-ppp-users', [CpeController::class, 'searchPppUsers'])->name('cpe.search-ppp-users');
+    Route::prefix('ppp-users/{pppUserId}/cpe')->group(function () {
+        Route::get('', [CpeController::class, 'show'])->name('cpe.show');
+        Route::post('sync', [CpeController::class, 'sync'])->name('cpe.sync');
+        Route::post('reboot', [CpeController::class, 'reboot'])->name('cpe.reboot');
+        Route::post('wifi', [CpeController::class, 'updateWifi'])->name('cpe.update-wifi');
+        Route::post('pppoe', [CpeController::class, 'updatePppoe'])->name('cpe.update-pppoe');
+        Route::post('refresh', [CpeController::class, 'refreshParams'])->name('cpe.refresh');
+        Route::get('info', [CpeController::class, 'getInfo'])->name('cpe.info');
+        Route::delete('', [CpeController::class, 'destroy'])->name('cpe.destroy');
+        // Multi-SSID
+        Route::post('wifi/{wlanIdx}', [CpeController::class, 'updateWifiByIndex'])->name('cpe.wifi-by-index');
+        // WAN connections
+        Route::get('wan', [CpeController::class, 'getWanConnections'])->name('cpe.wan-list');
+        Route::put('wan/{wanIdx}/{cdIdx}/{connIdx}', [CpeController::class, 'updateWanConnection'])->name('cpe.wan-update');
+    });
+
     Route::get('radius-accounts/datatable', [RadiusAccountController::class, 'datatable'])->name('radius-accounts.datatable');
     Route::resource('radius-accounts', RadiusAccountController::class);
     Route::get('bandwidth-profiles/datatable', [BandwidthProfileController::class, 'datatable'])->name('bandwidth-profiles.datatable');
@@ -282,6 +306,8 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         // Isolir page settings
         Route::put('/isolir', [TenantSettingsController::class, 'updateIsolir'])->name('update-isolir');
         Route::get('/isolir-preview', [TenantSettingsController::class, 'isolirPreview'])->name('isolir-preview');
+        // GenieACS settings
+        Route::put('/genieacs', [TenantSettingsController::class, 'updateGenieacs'])->name('update-genieacs');
     });
 
     // WA Gateway (halaman tersendiri)
@@ -434,6 +460,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::get('/account', [PortalDashboardController::class, 'account'])->name('account');
         Route::post('/change-password', [PortalDashboardController::class, 'changePassword'])->name('change-password');
         Route::post('/tickets', [PortalDashboardController::class, 'storeTicket'])->name('tickets.store');
+        Route::post('/wifi', [PortalDashboardController::class, 'updateWifi'])->name('wifi.update');
     });
 });
 

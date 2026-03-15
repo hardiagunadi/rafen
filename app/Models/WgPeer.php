@@ -20,6 +20,7 @@ class WgPeer extends Model
         'private_key',
         'preshared_key',
         'vpn_ip',
+        'extra_allowed_ips',
         'is_active',
         'last_synced_at',
     ];
