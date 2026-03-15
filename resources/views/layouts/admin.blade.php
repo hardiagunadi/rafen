@@ -789,7 +789,7 @@
                     @if(in_array(auth()->user()->role, ['administrator', 'noc', 'it_support'], true))
                     <li class="nav-item">
                         <a href="{{ route('cpe.index') }}" class="nav-link {{ request()->routeIs('cpe.*') ? 'active' : '' }}">
-                            <i class="nav-icon fas fa-router"></i>
+                            <i class="nav-icon fas fa-network-wired"></i>
                             <p>CPE Management</p>
                         </a>
                     </li>

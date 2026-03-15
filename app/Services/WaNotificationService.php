@@ -55,12 +55,7 @@ class WaNotificationService
 
             $template = self::pickTemplateVariant($settings, 'registration');
 
-            $portalUrl = '';
-            try {
-                $portalUrl = route('portal.login');
-            } catch (\Throwable) {
-                $portalUrl = '';
-            }
+            $portalUrl = $settings->portalLoginUrl();
             $passwordClientarea = ($isPpp ? ($user->password_clientarea ?? '-') : '-');
 
             $message = self::renderTemplate($template, [

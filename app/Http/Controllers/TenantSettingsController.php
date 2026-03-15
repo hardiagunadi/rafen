@@ -32,20 +32,29 @@ class TenantSettingsController extends Controller
             abort(403);
         }
 
+        $user = $request->user();
+
         $validated = $request->validate([
-            'business_name' => 'nullable|string|max:255',
-            'business_phone' => 'nullable|string|max:20',
-            'business_email' => 'nullable|email|max:255',
+            'business_name'    => 'nullable|string|max:255',
+            'business_phone'   => 'nullable|string|max:20',
+            'business_email'   => 'nullable|email|max:255',
             'business_address' => 'nullable|string|max:1000',
-            'npwp' => 'nullable|string|max:30',
-            'website' => 'nullable|url|max:255',
-            'invoice_prefix' => 'nullable|string|max:10',
-            'invoice_footer' => 'nullable|string|max:1000',
-            'invoice_notes' => 'nullable|string|max:1000',
-            'billing_date' => 'nullable|integer|min:1|max:28',
+            'npwp'             => 'nullable|string|max:30',
+            'website'          => 'nullable|url|max:255',
+            'portal_slug'      => [
+                'nullable', 'string', 'max:80', 'regex:/^[a-z0-9\-]+$/',
+                \Illuminate\Validation\Rule::unique('tenant_settings', 'portal_slug')
+                    ->ignore($user->getSettings()?->id),
+            ],
+            'invoice_prefix'   => 'nullable|string|max:10',
+            'invoice_footer'   => 'nullable|string|max:1000',
+            'invoice_notes'    => 'nullable|string|max:1000',
+            'billing_date'     => 'nullable|integer|min:1|max:28',
+        ], [
+            'portal_slug.regex'  => 'Slug hanya boleh berisi huruf kecil, angka, dan tanda hubung (-).',
+            'portal_slug.unique' => 'Slug ini sudah digunakan oleh tenant lain.',
         ]);
 
-        $user = $request->user();
         $settings = $user->getSettings();
         $settings->update($validated);
 

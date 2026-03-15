@@ -448,8 +448,8 @@ Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/message', [WaWebhookCo
 Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/auto-reply', [WaWebhookController::class, 'autoReply'])->whereNumber('tenant')->name('wa.webhook.auto-reply.tenant.compat');
 Route::match(['GET', 'POST'], '/webhook/{tenant}/{secret}/status', [WaWebhookController::class, 'status'])->whereNumber('tenant')->name('wa.webhook.status.tenant.compat');
 
-// Portal Pelanggan PPPoE (cookie-based auth, standalone)
-Route::prefix('portal')->name('portal.')->group(function () {
+// Portal Pelanggan PPPoE — per-tenant slug: /portal/{slug}/...
+Route::prefix('portal/{portalSlug}')->name('portal.')->group(function () {
     Route::get('/login', [PortalAuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [PortalAuthController::class, 'login'])->name('login.post');
     Route::post('/logout', [PortalAuthController::class, 'logout'])->name('logout');
@@ -462,6 +462,11 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::post('/tickets', [PortalDashboardController::class, 'storeTicket'])->name('tickets.store');
         Route::post('/wifi', [PortalDashboardController::class, 'updateWifi'])->name('wifi.update');
     });
+});
+
+// Legacy fallback — /portal/login (tanpa slug) redirect ke /portal/login jika hanya 1 tenant atau tampilkan pilihan
+Route::prefix('portal')->name('portal.legacy.')->group(function () {
+    Route::get('/login', [PortalAuthController::class, 'showLoginLegacy'])->name('login');
 });
 
 // Super Admin Routes

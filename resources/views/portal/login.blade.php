@@ -126,29 +126,7 @@
             </div>
             @endif
 
-            @if(isset($showTenantPicker) && $showTenantPicker)
-            <p class="text-muted small mb-3">Ditemukan lebih dari satu akun dengan nomor ini. Pilih penyedia layanan Anda:</p>
-            <form method="POST" action="{{ route('portal.login.post') }}">
-                @csrf
-                <input type="hidden" name="nomor_hp" value="{{ old('nomor_hp', $nomor_hp ?? '') }}">
-                <div class="form-group">
-                    <label class="font-weight-600 small text-muted">ISP / Penyedia Layanan</label>
-                    <select name="owner_id" class="form-control" required>
-                        @foreach($tenants as $t)
-                        <option value="{{ $t['owner_id'] }}">{{ $t['business_name'] }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="font-weight-600 small text-muted">Password</label>
-                    <input type="password" name="password" class="form-control" required autofocus>
-                </div>
-                <button type="submit" class="btn btn-primary btn-login btn-block text-white">
-                    <i class="fas fa-sign-in-alt mr-1"></i> Masuk
-                </button>
-            </form>
-            @else
-            <form method="POST" action="{{ route('portal.login.post') }}">
+            <form method="POST" action="{{ route('portal.login.post', $portalSlug) }}">
                 @csrf
                 <div class="form-group">
                     <label class="font-weight-600 small text-muted">Nomor HP</label>
@@ -178,7 +156,6 @@
                     <i class="fas fa-sign-in-alt mr-1"></i> Masuk
                 </button>
             </form>
-            @endif
 
             <p class="text-muted text-center small mb-0 mt-3">
                 <i class="fas fa-info-circle mr-1"></i>

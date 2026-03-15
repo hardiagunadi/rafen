@@ -138,21 +138,21 @@
             <span>{{ ($tenantSettings ?? null)?->business_name ?? 'Portal Pelanggan' }}</span>
         </div>
 
-        @if(request()->cookie('portal_session'))
+        @if(request()->cookie('portal_session') && isset($portalSlug))
         <div class="nav-links">
-            <a href="{{ route('portal.dashboard') }}" class="{{ request()->routeIs('portal.dashboard') ? 'active' : '' }}">
+            <a href="{{ route('portal.dashboard', $portalSlug) }}" class="{{ request()->routeIs('portal.dashboard') ? 'active' : '' }}">
                 <i class="fas fa-home"></i><span class="d-none d-sm-inline"> Dashboard</span>
             </a>
-            <a href="{{ route('portal.invoices') }}" class="{{ request()->routeIs('portal.invoices') ? 'active' : '' }}">
+            <a href="{{ route('portal.invoices', $portalSlug) }}" class="{{ request()->routeIs('portal.invoices') ? 'active' : '' }}">
                 <i class="fas fa-file-invoice"></i><span class="d-none d-sm-inline"> Tagihan</span>
             </a>
-            <a href="{{ route('portal.account') }}" class="{{ request()->routeIs('portal.account') ? 'active' : '' }}">
+            <a href="{{ route('portal.account', $portalSlug) }}" class="{{ request()->routeIs('portal.account') ? 'active' : '' }}">
                 <i class="fas fa-user"></i><span class="d-none d-sm-inline"> Akun</span>
             </a>
             <a href="#" class="btn-logout" onclick="document.getElementById('logout-form').submit();return false;">
                 <i class="fas fa-sign-out-alt"></i><span class="d-none d-sm-inline"> Keluar</span>
             </a>
-            <form id="logout-form" action="{{ route('portal.logout') }}" method="POST" style="display:none;">@csrf</form>
+            <form id="logout-form" action="{{ route('portal.logout', $portalSlug) }}" method="POST" style="display:none;">@csrf</form>
         </div>
         @endif
     </nav>

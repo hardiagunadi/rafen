@@ -271,6 +271,31 @@
                         <input type="url" name="website" class="form-control" value="{{ old('website', $settings->website) }}" placeholder="https://www.isp-anda.com">
                     </div>
                     <div class="form-group">
+                        <label>Slug Portal Pelanggan</label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text text-muted" style="font-size:.85rem;">{{ url('/portal') }}/</span>
+                            </div>
+                            <input type="text" name="portal_slug" id="portalSlugInput" class="form-control"
+                                value="{{ old('portal_slug', $settings->portal_slug) }}"
+                                placeholder="nama-isp" maxlength="80"
+                                pattern="[a-z0-9\-]+" title="Hanya huruf kecil, angka, dan tanda hubung (-)">
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary" id="btnGenerateSlug" title="Generate otomatis dari Nama Bisnis">
+                                    <i class="fas fa-magic"></i> Generate
+                                </button>
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            URL login portal pelanggan Anda. Hanya huruf kecil, angka, dan tanda hubung (-).
+                            @if($settings->portal_slug)
+                                <br>URL saat ini: <a href="{{ $settings->portalLoginUrl() }}" target="_blank" id="portalSlugPreview">{{ $settings->portalLoginUrl() }}</a>
+                            @else
+                                <br>Preview: <span id="portalSlugPreview" class="text-muted">{{ url('/portal') }}/<em>slug-anda</em>/login</span>
+                            @endif
+                        </small>
+                    </div>
+                    <div class="form-group">
                         <label>Prefix Invoice</label>
                         <input type="text" name="invoice_prefix" class="form-control" value="{{ old('invoice_prefix', $settings->invoice_prefix) }}" maxlength="10">
                         <small class="text-muted">Contoh: INV, BILL, dll</small>
@@ -1247,6 +1272,28 @@ function testTripay() {
 // Toggle WA shift group field
 $('#shift_feature_enabled').on('change', function() {
     $('#waShiftGroupField').toggle(this.checked);
+});
+
+// Portal slug — auto-generate & live preview
+function slugify(text) {
+    return text.toString().toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9\-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+}
+$('#btnGenerateSlug').on('click', function() {
+    const name = $('[name="business_name"]').val();
+    if (name) $('#portalSlugInput').val(slugify(name)).trigger('input');
+});
+$('#portalSlugInput').on('input', function() {
+    const slug = $(this).val();
+    const base = '{{ url('/portal') }}/';
+    const preview = slug ? base + slug + '/login' : base + '<em>slug-anda</em>/login';
+    $('#portalSlugPreview').html(slug
+        ? '<a href="' + base + slug + '/login" target="_blank">' + base + slug + '/login</a>'
+        : base + '<em class="text-muted">slug-anda</em>/login'
+    );
 });
 </script>
 @endpush

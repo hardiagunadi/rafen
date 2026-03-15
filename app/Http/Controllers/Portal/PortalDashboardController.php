@@ -21,9 +21,15 @@ class PortalDashboardController extends Controller
         return $request->attributes->get('portal_ppp_user');
     }
 
+    private function getPortalSlug(Request $request): string
+    {
+        return $request->route('portalSlug', '');
+    }
+
     public function index(Request $request)
     {
-        $pppUser = $this->getPppUser($request);
+        $pppUser    = $this->getPppUser($request);
+        $portalSlug = $this->getPortalSlug($request);
         $pppUser->load(['profile', 'owner.tenantSettings', 'cpeDevice']);
 
         $latestInvoice = Invoice::where('ppp_user_id', $pppUser->id)
@@ -35,34 +41,35 @@ class PortalDashboardController extends Controller
             $latestInvoice->refresh();
         }
 
-        return view('portal.dashboard', compact('pppUser', 'latestInvoice'));
+        return view('portal.dashboard', compact('pppUser', 'latestInvoice', 'portalSlug'));
     }
 
     public function invoices(Request $request)
     {
-        $pppUser = $this->getPppUser($request);
+        $pppUser    = $this->getPppUser($request);
+        $portalSlug = $this->getPortalSlug($request);
         $pppUser->load(['owner.tenantSettings']);
 
         $invoices = Invoice::where('ppp_user_id', $pppUser->id)
             ->orderByDesc('due_date')
             ->paginate(15);
 
-        // Ensure each invoice has a payment token
         foreach ($invoices as $invoice) {
             if (empty($invoice->payment_token)) {
                 $invoice->update(['payment_token' => Invoice::generatePaymentToken()]);
             }
         }
 
-        return view('portal.invoices', compact('pppUser', 'invoices'));
+        return view('portal.invoices', compact('pppUser', 'invoices', 'portalSlug'));
     }
 
     public function account(Request $request)
     {
-        $pppUser = $this->getPppUser($request);
+        $pppUser    = $this->getPppUser($request);
+        $portalSlug = $this->getPortalSlug($request);
         $pppUser->load(['profile', 'owner.tenantSettings']);
 
-        return view('portal.account', compact('pppUser'));
+        return view('portal.account', compact('pppUser', 'portalSlug'));
     }
 
     public function changePassword(Request $request)

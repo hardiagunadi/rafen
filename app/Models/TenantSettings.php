@@ -177,6 +177,19 @@ class TenantSettings extends Model
             && ! empty($this->tripay_merchant_code);
     }
 
+    /**
+     * URL login portal pelanggan untuk tenant ini.
+     * Jika slug belum diset, fallback ke /portal/login (legacy).
+     */
+    public function portalLoginUrl(): string
+    {
+        if (! empty($this->portal_slug)) {
+            return url('/portal/' . $this->portal_slug . '/login');
+        }
+
+        return route('portal.login');
+    }
+
     public function hasGenieacsConfigured(): bool
     {
         return ! empty($this->genieacs_url);

@@ -73,7 +73,7 @@ $('#btnChangePassword').on('click', function() {
     }
 
     btn.prop('disabled', true);
-    $.post('{{ route("portal.change-password") }}', {
+    $.post('{{ route("portal.change-password", $portalSlug) }}', {
         current_password: $('#currentPw').val(),
         new_password: newPw,
         new_password_confirmation: confirm,

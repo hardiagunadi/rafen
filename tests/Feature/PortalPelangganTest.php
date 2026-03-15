@@ -11,14 +11,19 @@ use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
-function portalTenant(): User
+function portalTenant(string $slug = 'test-isp'): User
 {
+    static $counter = 0;
+    $counter++;
+    $uniqueSlug = $counter > 1 ? $slug . '-' . $counter : $slug;
+
     $user = User::factory()->create([
-        'role' => 'administrator',
-        'subscription_status' => 'active',
+        'role'                    => 'administrator',
+        'subscription_status'     => 'active',
         'subscription_expires_at' => now()->addDays(30),
     ]);
-    TenantSettings::getOrCreate($user->id);
+    $settings = TenantSettings::getOrCreate($user->id);
+    $settings->update(['portal_slug' => $uniqueSlug]);
 
     return $user;
 }
@@ -26,15 +31,15 @@ function portalTenant(): User
 function makePppUser(int $ownerId, array $attrs = []): PppUser
 {
     return PppUser::create(array_merge([
-        'owner_id' => $ownerId,
-        'username' => 'usertest_'.Str::random(6),
-        'ppp_password' => 'pass123',
-        'nomor_hp' => '6281234567890',
-        'customer_name' => 'Budi',
-        'status_akun' => 'enable',
-        'status_bayar' => 'belum_bayar',
-        'password_clientarea' => 'clientpass',
-        'tipe_service' => 'pppoe',
+        'owner_id'           => $ownerId,
+        'username'           => 'usertest_' . Str::random(6),
+        'ppp_password'       => 'pass123',
+        'nomor_hp'           => '6281234567890',
+        'customer_name'      => 'Budi',
+        'status_akun'        => 'enable',
+        'status_bayar'       => 'belum_bayar',
+        'password_clientarea'=> 'clientpass',
+        'tipe_service'       => 'pppoe',
     ], $attrs));
 }
 
@@ -42,35 +47,44 @@ function makePortalSession(int $pppUserId): string
 {
     $token = Str::random(64);
     PortalSession::create([
-        'ppp_user_id' => $pppUserId,
-        'token' => $token,
-        'ip_address' => '127.0.0.1',
+        'ppp_user_id'      => $pppUserId,
+        'token'            => $token,
+        'ip_address'       => '127.0.0.1',
         'last_activity_at' => now(),
-        'expires_at' => now()->addDays(7),
+        'expires_at'       => now()->addDays(7),
     ]);
 
     return $token;
 }
 
+function tenantSlug(User $tenant): string
+{
+    return TenantSettings::where('user_id', $tenant->id)->value('portal_slug');
+}
+
 // ── Login page ─────────────────────────────────────────────────────────────────
 
 it('shows portal login page', function () {
-    $this->get(route('portal.login'))->assertOk()->assertSee('Login Portal Pelanggan');
+    $tenant = portalTenant('isp-login-page');
+    $slug   = tenantSlug($tenant);
+
+    $this->get(route('portal.login', $slug))->assertOk()->assertSee('Login Portal Pelanggan');
 });
 
 // ── Login: plain text password ─────────────────────────────────────────────────
 
 it('can login with plain text password_clientarea', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id, [
-        'nomor_hp' => '6281000000001',
+    $tenant = portalTenant('isp-plain');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id, [
+        'nomor_hp'            => '6281000000001',
         'password_clientarea' => 'mysecret',
     ]);
 
-    $this->post(route('portal.login.post'), [
-        'nomor_hp' => '081000000001', // with leading 0 — normalizes to 6281000000001
+    $this->post(route('portal.login.post', $slug), [
+        'nomor_hp' => '081000000001',
         'password' => 'mysecret',
-    ])->assertRedirect(route('portal.dashboard'));
+    ])->assertRedirect(route('portal.dashboard', $slug));
 
     expect(PortalSession::where('ppp_user_id', $ppp->id)->exists())->toBeTrue();
 });
@@ -78,28 +92,30 @@ it('can login with plain text password_clientarea', function () {
 // ── Login: hashed password ─────────────────────────────────────────────────────
 
 it('can login with hashed password_clientarea', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id, [
-        'nomor_hp' => '6281000000002',
+    $tenant = portalTenant('isp-hashed');
+    $slug   = tenantSlug($tenant);
+    makePppUser($tenant->id, [
+        'nomor_hp'            => '6281000000002',
         'password_clientarea' => Hash::make('hashed_pass'),
     ]);
 
-    $this->post(route('portal.login.post'), [
-        'nomor_hp' => '628' . '1000000002',
+    $this->post(route('portal.login.post', $slug), [
+        'nomor_hp' => '6281000000002',
         'password' => 'hashed_pass',
-    ])->assertRedirect(route('portal.dashboard'));
+    ])->assertRedirect(route('portal.dashboard', $slug));
 });
 
 // ── Login: wrong password ─────────────────────────────────────────────────────
 
 it('rejects login with wrong password', function () {
-    $tenant = portalTenant();
+    $tenant = portalTenant('isp-wrong-pw');
+    $slug   = tenantSlug($tenant);
     makePppUser($tenant->id, [
-        'nomor_hp' => '6281000000003',
+        'nomor_hp'            => '6281000000003',
         'password_clientarea' => 'correct',
     ]);
 
-    $this->post(route('portal.login.post'), [
+    $this->post(route('portal.login.post', $slug), [
         'nomor_hp' => '6281000000003',
         'password' => 'wrong',
     ])->assertRedirect()->assertSessionHasErrors('password');
@@ -110,47 +126,78 @@ it('rejects login with wrong password', function () {
 // ── Login: unknown phone ───────────────────────────────────────────────────────
 
 it('rejects login with unknown phone number', function () {
-    $this->post(route('portal.login.post'), [
+    $tenant = portalTenant('isp-unknown-phone');
+    $slug   = tenantSlug($tenant);
+
+    $this->post(route('portal.login.post', $slug), [
         'nomor_hp' => '6289999999999',
         'password' => 'anything',
     ])->assertRedirect()->assertSessionHasErrors('nomor_hp');
 });
 
+// ── Login: invalid slug 404 ────────────────────────────────────────────────────
+
+it('returns 404 for unknown portal slug', function () {
+    $this->get(route('portal.login', 'slug-tidak-ada'))->assertNotFound();
+});
+
 // ── Middleware: unauthenticated redirected ─────────────────────────────────────
 
 it('redirects unauthenticated portal request to login', function () {
-    $this->get(route('portal.dashboard'))->assertRedirect(route('portal.login'));
-    $this->get(route('portal.invoices'))->assertRedirect(route('portal.login'));
-    $this->get(route('portal.account'))->assertRedirect(route('portal.login'));
+    $tenant = portalTenant('isp-unauth');
+    $slug   = tenantSlug($tenant);
+
+    $this->get(route('portal.dashboard', $slug))->assertRedirect(route('portal.login', $slug));
+    $this->get(route('portal.invoices', $slug))->assertRedirect(route('portal.login', $slug));
+    $this->get(route('portal.account', $slug))->assertRedirect(route('portal.login', $slug));
 });
 
 // ── Middleware: expired session ────────────────────────────────────────────────
 
 it('redirects when portal session is expired', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id);
-    $token = Str::random(64);
+    $tenant = portalTenant('isp-expired');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id);
+    $token  = Str::random(64);
     PortalSession::create([
-        'ppp_user_id' => $ppp->id,
-        'token' => $token,
-        'expires_at' => now()->subHour(), // expired
+        'ppp_user_id'      => $ppp->id,
+        'token'            => $token,
+        'expires_at'       => now()->subHour(),
         'last_activity_at' => now()->subHour(),
     ]);
 
     $this->withCookie('portal_session', $token)
-        ->get(route('portal.dashboard'))
-        ->assertRedirect(route('portal.login'));
+        ->get(route('portal.dashboard', $slug))
+        ->assertRedirect(route('portal.login', $slug));
+});
+
+// ── Middleware: cross-tenant session blocked ───────────────────────────────────
+
+it('blocks cross-tenant session access', function () {
+    $tenant1 = portalTenant('isp-cross-1');
+    $tenant2 = portalTenant('isp-cross-2');
+    $slug2   = tenantSlug($tenant2);
+
+    // Session belongs to tenant1's user
+    $ppp   = makePppUser($tenant1->id);
+    $token = makePortalSession($ppp->id);
+
+    // Try to access tenant2's portal with tenant1's session
+    $this->withCookie('portal_session', $token)
+        ->get(route('portal.dashboard', $slug2))
+        ->assertRedirect(route('portal.login', $slug2));
 });
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 it('shows dashboard for authenticated portal user', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id, ['customer_name' => 'Budi Santoso']);
-    $token = makePortalSession($ppp->id);
+    $tenant = portalTenant('isp-dashboard');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id, ['customer_name' => 'Budi Santoso']);
+    $token  = makePortalSession($ppp->id);
 
     $this->withCookie('portal_session', $token)
-        ->get(route('portal.dashboard'))
+        ->get(route('portal.dashboard', $slug))
         ->assertOk()
         ->assertSee('Budi Santoso');
 });
@@ -158,23 +205,24 @@ it('shows dashboard for authenticated portal user', function () {
 // ── Invoices ──────────────────────────────────────────────────────────────────
 
 it('shows invoice list for authenticated portal user', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id);
-    $token = makePortalSession($ppp->id);
+    $tenant = portalTenant('isp-invoices');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id);
+    $token  = makePortalSession($ppp->id);
 
     Invoice::create([
         'invoice_number' => 'INV-202501001',
-        'ppp_user_id' => $ppp->id,
-        'owner_id' => $tenant->id,
-        'customer_name' => $ppp->customer_name,
-        'total' => 150000,
-        'status' => 'belum_bayar',
-        'due_date' => now()->addDays(10),
-        'payment_token' => Str::random(32),
+        'ppp_user_id'    => $ppp->id,
+        'owner_id'       => $tenant->id,
+        'customer_name'  => $ppp->customer_name,
+        'total'          => 150000,
+        'status'         => 'belum_bayar',
+        'due_date'       => now()->addDays(10),
+        'payment_token'  => Str::random(32),
     ]);
 
     $this->withCookie('portal_session', $token)
-        ->get(route('portal.invoices'))
+        ->get(route('portal.invoices', $slug))
         ->assertOk()
         ->assertSee('INV-202501001');
 });
@@ -182,32 +230,33 @@ it('shows invoice list for authenticated portal user', function () {
 // ── Change Password ───────────────────────────────────────────────────────────
 
 it('can change portal password', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id, ['password_clientarea' => 'oldpassword']);
-    $token = makePortalSession($ppp->id);
+    $tenant = portalTenant('isp-changepw');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id, ['password_clientarea' => 'oldpassword']);
+    $token  = makePortalSession($ppp->id);
 
     $this->withCredentials()->withCookie('portal_session', $token)
-        ->postJson(route('portal.change-password'), [
-            'current_password' => 'oldpassword',
-            'new_password' => 'newpassword123',
+        ->postJson(route('portal.change-password', $slug), [
+            'current_password'          => 'oldpassword',
+            'new_password'              => 'newpassword123',
             'new_password_confirmation' => 'newpassword123',
         ])
         ->assertOk()
         ->assertJson(['success' => true]);
 
-    // New password should be hashed and valid
     expect(Hash::check('newpassword123', $ppp->fresh()->password_clientarea))->toBeTrue();
 });
 
 it('rejects change password when current password is wrong', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id, ['password_clientarea' => 'correctpass']);
-    $token = makePortalSession($ppp->id);
+    $tenant = portalTenant('isp-changepw-wrong');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id, ['password_clientarea' => 'correctpass']);
+    $token  = makePortalSession($ppp->id);
 
     $this->withCredentials()->withCookie('portal_session', $token)
-        ->postJson(route('portal.change-password'), [
-            'current_password' => 'wrongpass',
-            'new_password' => 'newpass123',
+        ->postJson(route('portal.change-password', $slug), [
+            'current_password'          => 'wrongpass',
+            'new_password'              => 'newpass123',
             'new_password_confirmation' => 'newpass123',
         ])
         ->assertStatus(422)
@@ -215,14 +264,15 @@ it('rejects change password when current password is wrong', function () {
 });
 
 it('rejects change password when confirmation does not match', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id, ['password_clientarea' => 'pass']);
-    $token = makePortalSession($ppp->id);
+    $tenant = portalTenant('isp-changepw-mismatch');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id, ['password_clientarea' => 'pass']);
+    $token  = makePortalSession($ppp->id);
 
     $this->withCredentials()->withCookie('portal_session', $token)
-        ->postJson(route('portal.change-password'), [
-            'current_password' => 'pass',
-            'new_password' => 'newpass123',
+        ->postJson(route('portal.change-password', $slug), [
+            'current_password'          => 'pass',
+            'new_password'              => 'newpass123',
             'new_password_confirmation' => 'different',
         ])
         ->assertStatus(422);
@@ -231,13 +281,14 @@ it('rejects change password when confirmation does not match', function () {
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 it('logout deletes portal session', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id);
-    $token = makePortalSession($ppp->id);
+    $tenant = portalTenant('isp-logout');
+    $slug   = tenantSlug($tenant);
+    $ppp    = makePppUser($tenant->id);
+    $token  = makePortalSession($ppp->id);
 
     $this->withCookie('portal_session', $token)
-        ->post(route('portal.logout'))
-        ->assertRedirect(route('portal.login'));
+        ->post(route('portal.logout', $slug))
+        ->assertRedirect(route('portal.login', $slug));
 
     expect(PortalSession::where('token', $token)->exists())->toBeFalse();
 });
@@ -245,20 +296,20 @@ it('logout deletes portal session', function () {
 // ── PortalSession model ────────────────────────────────────────────────────────
 
 it('PortalSession isExpired returns true for expired sessions', function () {
-    $tenant = portalTenant();
-    $ppp = makePppUser($tenant->id);
+    $tenant = portalTenant('isp-session-model');
+    $ppp    = makePppUser($tenant->id);
 
     $expired = PortalSession::create([
-        'ppp_user_id' => $ppp->id,
-        'token' => Str::random(64),
-        'expires_at' => now()->subMinute(),
+        'ppp_user_id'      => $ppp->id,
+        'token'            => Str::random(64),
+        'expires_at'       => now()->subMinute(),
         'last_activity_at' => now()->subMinute(),
     ]);
 
     $active = PortalSession::create([
-        'ppp_user_id' => $ppp->id,
-        'token' => Str::random(64),
-        'expires_at' => now()->addDays(7),
+        'ppp_user_id'      => $ppp->id,
+        'token'            => Str::random(64),
+        'expires_at'       => now()->addDays(7),
         'last_activity_at' => now(),
     ]);
 
@@ -266,21 +317,24 @@ it('PortalSession isExpired returns true for expired sessions', function () {
     expect($active->isExpired())->toBeFalse();
 });
 
-// ── Multi-tenant: phone collision shows picker ─────────────────────────────────
+// ── Multi-tenant: same phone different tenant, login to correct tenant ─────────
 
-it('shows tenant picker when same phone exists in multiple tenants', function () {
-    $tenant1 = portalTenant();
-    $tenant2 = portalTenant();
-    $phone = '6281999888777';
+it('same phone in two tenants logs into correct tenant via slug', function () {
+    $tenant1 = portalTenant('isp-mt-1');
+    $tenant2 = portalTenant('isp-mt-2');
+    $phone   = '6281999888777';
+    $slug1   = tenantSlug($tenant1);
+    $slug2   = tenantSlug($tenant2);
 
-    makePppUser($tenant1->id, ['nomor_hp' => $phone, 'password_clientarea' => 'pass1']);
-    makePppUser($tenant2->id, ['nomor_hp' => $phone, 'password_clientarea' => 'pass2']);
+    $ppp1 = makePppUser($tenant1->id, ['nomor_hp' => $phone, 'password_clientarea' => 'pass1']);
+    $ppp2 = makePppUser($tenant2->id, ['nomor_hp' => $phone, 'password_clientarea' => 'pass2']);
 
-    $res = $this->post(route('portal.login.post'), [
+    // Login ke tenant1 dengan password tenant1
+    $this->post(route('portal.login.post', $slug1), [
         'nomor_hp' => $phone,
         'password' => 'pass1',
-    ]);
+    ])->assertRedirect(route('portal.dashboard', $slug1));
 
-    // Should show picker (200 with tenant picker view), not redirect
-    $res->assertOk()->assertSee('Pilih ISP');
+    expect(PortalSession::where('ppp_user_id', $ppp1->id)->exists())->toBeTrue();
+    expect(PortalSession::where('ppp_user_id', $ppp2->id)->exists())->toBeFalse();
 });

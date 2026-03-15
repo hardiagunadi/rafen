@@ -181,7 +181,7 @@ $('#btnSaveWifi').on('click', function() {
     btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Menyimpan...');
     $('#wifiAlert').html('');
 
-    $.post('{{ route("portal.wifi.update") }}', {
+    $.post('{{ route("portal.wifi.update", $portalSlug) }}', {
         ssid: ssid,
         password: password,
         _token: '{{ csrf_token() }}'
@@ -206,7 +206,7 @@ $('#btnSaveWifi').on('click', function() {
 $('#btnSubmitTicket').on('click', function() {
     const btn = $(this);
     btn.prop('disabled', true);
-    $.post('{{ route("portal.tickets.store") }}', {
+    $.post('{{ route("portal.tickets.store", $portalSlug) }}', {
         type: $('#ticketType').val(),
         subject: $('#ticketSubject').val(),
         message: $('#ticketMessage').val(),
