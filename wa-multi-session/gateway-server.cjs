@@ -520,6 +520,52 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (method === 'POST' && pathname === '/api/v2/send-image') {
+      const payload = await parseBody(req);
+      const data = Array.isArray(payload.data) ? payload.data : [];
+
+      if (data.length === 0) {
+        sendJson(res, 422, { status: false, message: 'Invalid payload: data[] is required' });
+        return;
+      }
+
+      const messages = [];
+      for (const item of data) {
+        const sessionId = resolveSessionId(req, item || {});
+        const phone = String(item.phone || '').trim();
+        const caption = String(item.caption || '').trim();
+        const mediaUrl = String(item.media_url || '').trim();
+        const refId = String(item.ref_id || '').trim() || null;
+
+        if (phone === '' || mediaUrl === '') {
+          messages.push({ status: 'failed', session: sessionId, ref_id: refId, error: 'phone/media_url is required' });
+          continue;
+        }
+
+        try {
+          const started = await ensureSessionStarted(sessionId);
+          if (started.started) updateSessionMeta(sessionId, { status: 'connecting' });
+
+          await whatsapp.sendImage({
+            sessionId,
+            to: phone,
+            text: caption,
+            media: mediaUrl,
+            isGroup: false,
+          });
+
+          messages.push({ status: 'queued', session: sessionId, ref_id: refId });
+        } catch (error) {
+          const errMessage = error instanceof Error ? error.message : String(error);
+          updateSessionMeta(sessionId, { status: 'error', lastError: errMessage });
+          messages.push({ status: 'failed', session: sessionId, ref_id: refId, error: errMessage });
+        }
+      }
+
+      sendJson(res, 200, { status: true, message: 'Processed', data: { messages } });
+      return;
+    }
+
     sendJson(res, 404, {
       status: false,
       message: 'Not Found',

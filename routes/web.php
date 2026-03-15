@@ -202,6 +202,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::resource('ppp-users', \App\Http\Controllers\PppUserController::class);
     Route::get('odps/datatable', [OdpController::class, 'datatable'])->name('odps.datatable');
     Route::get('odps/generate-code', [OdpController::class, 'generateCode'])->name('odps.generate-code');
+    Route::get('odps/autocomplete', [OdpController::class, 'autocomplete'])->name('odps.autocomplete');
     Route::resource('odps', OdpController::class);
     Route::get('customer-map', [CustomerMapController::class, 'index'])->name('customer-map.index');
     Route::get('customer-map/cache-config', [CustomerMapController::class, 'cacheConfig'])->name('customer-map.cache-config');
@@ -333,6 +334,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('/conversations', [\App\Http\Controllers\WaChatController::class, 'conversations'])->name('conversations');
         Route::get('/conversations/{waConversation}/messages', [\App\Http\Controllers\WaChatController::class, 'show'])->name('show');
         Route::post('/conversations/{waConversation}/reply', [\App\Http\Controllers\WaChatController::class, 'reply'])->name('reply');
+        Route::post('/conversations/{waConversation}/reply-image', [\App\Http\Controllers\WaChatController::class, 'replyImage'])->name('reply-image');
         Route::post('/conversations/{waConversation}/resolve', [\App\Http\Controllers\WaChatController::class, 'markResolved'])->name('resolve');
         Route::post('/conversations/{waConversation}/open', [\App\Http\Controllers\WaChatController::class, 'markOpen'])->name('open');
         Route::post('/conversations/{waConversation}/assign', [\App\Http\Controllers\WaChatController::class, 'assign'])->name('assign');
@@ -350,6 +352,25 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     });
 
     // Tiket WA
+    // Outage Tracking — Pelacakan Gangguan Jaringan
+    Route::prefix('outages')->name('outages.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\OutageController::class, 'index'])->name('index');
+        Route::get('/datatable', [\App\Http\Controllers\OutageController::class, 'datatable'])->name('datatable');
+        Route::get('/create', [\App\Http\Controllers\OutageController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\OutageController::class, 'store'])->name('store');
+        Route::post('/affected-users-preview', [\App\Http\Controllers\OutageController::class, 'affectedUsersPreview'])->name('affected-users-preview');
+        Route::post('/test-blast', [\App\Http\Controllers\OutageController::class, 'testBlast'])->name('test-blast');
+        Route::get('/{outage}', [\App\Http\Controllers\OutageController::class, 'show'])->name('show');
+        Route::get('/{outage}/edit', [\App\Http\Controllers\OutageController::class, 'edit'])->name('edit');
+        Route::put('/{outage}', [\App\Http\Controllers\OutageController::class, 'update'])->name('update');
+        Route::delete('/{outage}', [\App\Http\Controllers\OutageController::class, 'destroy'])->name('destroy');
+        Route::post('/{outage}/updates', [\App\Http\Controllers\OutageController::class, 'addUpdate'])->name('updates.store');
+        Route::post('/{outage}/resolve', [\App\Http\Controllers\OutageController::class, 'resolve'])->name('resolve');
+        Route::post('/{outage}/blast', [\App\Http\Controllers\OutageController::class, 'blast'])->name('blast');
+        Route::get('/{outage}/affected-users', [\App\Http\Controllers\OutageController::class, 'affectedUsers'])->name('affected-users');
+        Route::post('/{outage}/assign', [\App\Http\Controllers\OutageController::class, 'assign'])->name('assign');
+    });
+
     Route::prefix('wa-tickets')->name('wa-tickets.')->group(function () {
         Route::get('/', [\App\Http\Controllers\WaTicketController::class, 'index'])->name('index');
         Route::get('/datatable', [\App\Http\Controllers\WaTicketController::class, 'datatable'])->name('datatable');
@@ -418,6 +439,9 @@ Route::middleware('auth')->prefix('tools')->name('tools.')->group(function () {
 
 // Halaman isolir publik (no auth required) — diakses via DNAT Mikrotik
 Route::get('/isolir/{userId}', [IsolirPageController::class, 'show'])->name('isolir.show')->where('userId', '[0-9]+');
+
+// Halaman status gangguan publik (no auth required) — link dibagikan via WA
+Route::get('/status/{token}', [\App\Http\Controllers\OutageStatusController::class, 'show'])->name('outage.public-status');
 
 // Portal pembayaran pelanggan (no auth required) — diakses via link WA
 Route::get('/bayar/{token}', [PaymentController::class, 'customerPortal'])->name('customer.invoice');

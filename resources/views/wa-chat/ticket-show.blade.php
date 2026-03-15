@@ -3,6 +3,26 @@
 @section('title', 'Detail Tiket #' . $waTicket->id)
 
 @section('content')
+{{-- Callout: ada outage aktif di area pelanggan ini --}}
+@if(isset($relatedOutage) && $relatedOutage)
+<div class="callout callout-warning">
+    <h6 class="mb-1"><i class="fas fa-broadcast-tower"></i> Gangguan Jaringan Aktif di Area Pelanggan Ini</h6>
+    <p class="mb-1 small">
+        <strong>{{ $relatedOutage->title }}</strong> —
+        Sejak {{ $relatedOutage->started_at->format('d/m/Y H:i') }}
+        @if($relatedOutage->estimated_resolved_at)
+        · Estimasi: {{ $relatedOutage->estimated_resolved_at->format('d/m/Y H:i') }}
+        @endif
+    </p>
+    <a href="{{ route('outages.show', $relatedOutage) }}" class="btn btn-sm btn-warning mr-1">
+        <i class="fas fa-eye"></i> Detail Insiden
+    </a>
+    <a href="{{ route('outage.public-status', $relatedOutage->public_token) }}" target="_blank" class="btn btn-sm btn-outline-warning">
+        <i class="fas fa-external-link-alt"></i> Halaman Publik
+    </a>
+</div>
+@endif
+
 <div class="row">
     {{-- Kiri: info + timeline + form catatan --}}
     <div class="col-md-8">

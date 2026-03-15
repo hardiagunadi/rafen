@@ -7,6 +7,28 @@
 @section('content')
 <h5 class="mb-3">Selamat datang, <strong>{{ $pppUser->customer_name ?? $pppUser->username }}</strong> 👋</h5>
 
+{{-- Alert gangguan jaringan aktif --}}
+@if(isset($activeOutages) && $activeOutages->isNotEmpty())
+<div class="callout callout-warning mb-3" style="border-left-color:#f59e0b">
+    <h6 class="mb-2"><i class="fas fa-exclamation-triangle"></i> Gangguan Jaringan Aktif di Area Anda</h6>
+    @foreach($activeOutages as $outage)
+    <div class="{{ !$loop->first ? 'mt-2 pt-2 border-top' : '' }}">
+        <strong>{{ $outage->title }}</strong>
+        <span class="badge badge-warning ml-1 small">{{ $outage->status === 'in_progress' ? 'Sedang Diperbaiki' : 'Aktif' }}</span><br>
+        <small class="text-muted">Sejak {{ $outage->started_at->format('d M Y H:i') }}</small>
+        @if($outage->estimated_resolved_at)
+        <small class="text-muted"> · Estimasi: {{ $outage->estimated_resolved_at->format('d M Y H:i') }}</small>
+        @endif
+        <br>
+        <a href="{{ route('outage.public-status', $outage->public_token) }}" target="_blank"
+           class="btn btn-sm btn-warning mt-1">
+            <i class="fas fa-search"></i> Pantau Status Perbaikan
+        </a>
+    </div>
+    @endforeach
+</div>
+@endif
+
 <div class="row">
     {{-- Info Akun --}}
     <div class="col-md-6 mb-3">

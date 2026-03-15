@@ -177,7 +177,7 @@
                         <div class="form-row">
                             <div class="form-group col-md-4">
                                 <label>ODP Master <span class="text-muted">(Opsional)</span></label>
-                                <select name="odp_id" class="form-control @error('odp_id') is-invalid @enderror">
+                                <select name="odp_id" class="form-control @error('odp_id') is-invalid @enderror" data-native-select="true">
                                     <option value="">- pilih ODP -</option>
                                     @foreach($odps as $odp)
                                         <option value="{{ $odp->id }}" @selected(old('odp_id') == $odp->id)>

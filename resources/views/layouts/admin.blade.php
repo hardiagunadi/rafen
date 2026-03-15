@@ -1083,6 +1083,16 @@
                     </li>
                     @endif
 
+                    {{-- Gangguan Jaringan --}}
+                    @if($isSuperAdmin || in_array(auth()->user()->role, ['administrator','noc','it_support','cs','teknisi']))
+                    <li class="nav-item {{ request()->routeIs('outages.*') ? 'menu-open' : '' }}">
+                        <a href="{{ route('outages.index') }}" class="nav-link {{ request()->routeIs('outages.*') ? 'active' : '' }}">
+                            <i class="nav-icon fas fa-broadcast-tower text-danger"></i>
+                            <p>Gangguan Jaringan</p>
+                        </a>
+                    </li>
+                    @endif
+
                     {{-- Jadwal Shift --}}
                     @if($canSeeShift && $shiftModuleEnabled)
                     <li class="nav-item has-treeview {{ request()->routeIs('shifts.*') ? 'menu-open' : '' }}">

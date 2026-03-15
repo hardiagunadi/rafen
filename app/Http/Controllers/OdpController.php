@@ -173,6 +173,27 @@ class OdpController extends Controller
         return redirect()->route('odps.index')->with('status', 'Data ODP diperbarui.');
     }
 
+    public function autocomplete(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $search = $request->input('search', '');
+
+        $odps = Odp::query()
+            ->accessibleBy($user)
+            ->when($search !== '', function ($q) use ($search): void {
+                $q->where(function ($inner) use ($search): void {
+                    $inner->where('name', 'like', "%{$search}%")
+                        ->orWhere('code', 'like', "%{$search}%")
+                        ->orWhere('area', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('name')
+            ->limit(20)
+            ->get(['id', 'name', 'area', 'code']);
+
+        return response()->json(['data' => $odps]);
+    }
+
     public function destroy(Request $request, Odp $odp): JsonResponse|RedirectResponse
     {
         $user = $request->user();

@@ -47,16 +47,16 @@ class UpdatePppUserRequest extends FormRequest
             'tipe_ip' => ['sometimes', 'required', 'string', 'in:dhcp,static'],
             'profile_group_id' => ['nullable', 'integer', 'exists:profile_groups,id'],
             'ip_static' => ['nullable', 'string', 'max:120'],
-            'odp_id' => ['nullable', 'integer', 'exists:odps,id'],
-            'odp_pop' => ['nullable', 'string', 'max:120'],
+            'odp_id' => ['sometimes', 'nullable', 'integer', 'exists:odps,id'],
+            'odp_pop' => ['sometimes', 'nullable', 'string', 'max:120'],
             'customer_id' => ['sometimes', 'required', 'string', 'max:120'],
             'customer_name' => ['sometimes', 'required', 'string', 'max:150'],
             'nik' => ['sometimes', 'required', 'string', 'max:191'],
             'nomor_hp' => [
                 'sometimes', 'required', 'string', 'max:30',
                 Rule::unique('ppp_users')->where('owner_id',
-                    $this->route('pppUser')?->owner_id ?? $this->user()?->effectiveOwnerId()
-                )->ignore($this->route('pppUser')?->id),
+                    $this->route('ppp_user')?->owner_id ?? $this->user()?->effectiveOwnerId()
+                )->ignore($this->route('ppp_user')?->id),
             ],
             'email' => ['sometimes', 'required', 'email', 'max:191'],
             'alamat' => ['sometimes', 'required', 'string'],

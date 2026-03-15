@@ -689,7 +689,9 @@ class PppUserController extends Controller
      */
     private function prepareData(array $data, ?PppUser $existing = null): array
     {
-        $data['odp_id'] = isset($data['odp_id']) && $data['odp_id'] !== '' ? (int) $data['odp_id'] : null;
+        if (array_key_exists('odp_id', $data)) {
+            $data['odp_id'] = $data['odp_id'] !== '' && $data['odp_id'] !== null ? (int) $data['odp_id'] : null;
+        }
 
         // Auto-generate customer_id jika kosong
         if (empty($data['customer_id'])) {

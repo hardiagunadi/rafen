@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Outage;
+use App\Models\PppUser;
 use App\Models\TenantSettings;
 use App\Models\User;
 use App\Models\WaConversation;
@@ -203,7 +205,20 @@ class WaTicketController extends Controller
             $waTicket->notes()->where('read_by_cs', false)->update(['read_by_cs' => true]);
         }
 
-        return view('wa-chat.ticket-show', compact('waTicket', 'user'));
+        // Cek outage aktif di area pelanggan terkait tiket ini
+        $relatedOutage = null;
+        if ($waTicket->customer_type === 'ppp' && $waTicket->customer_id) {
+            $pppUser = PppUser::find($waTicket->customer_id);
+            if ($pppUser?->odp_id) {
+                $relatedOutage = Outage::where('owner_id', $waTicket->owner_id)
+                    ->whereIn('status', [Outage::STATUS_OPEN, Outage::STATUS_IN_PROGRESS])
+                    ->whereHas('affectedAreas', fn ($q) => $q->where('odp_id', $pppUser->odp_id))
+                    ->latest('started_at')
+                    ->first();
+            }
+        }
+
+        return view('wa-chat.ticket-show', compact('waTicket', 'user', 'relatedOutage'));
     }
 
     public function update(Request $request, WaTicket $waTicket): JsonResponse

@@ -78,7 +78,20 @@
             {{-- Input reply --}}
             <div id="chatInput" class="card-footer d-none p-2">
                 <small class="text-muted d-block mb-1" id="nicknamHint"></small>
+                {{-- Preview gambar sebelum kirim --}}
+                <div id="imgPreviewWrap" class="d-none mb-2 position-relative" style="display:inline-block;">
+                    <img id="imgPreview" src="" alt="preview" style="max-height:120px;max-width:100%;border-radius:6px;border:1px solid #ddd;">
+                    <button type="button" id="btnCancelImage" class="btn btn-xs btn-danger position-absolute" style="top:2px;right:2px;padding:1px 5px;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
                 <div class="input-group">
+                    <div class="input-group-prepend">
+                        <label class="btn btn-outline-secondary mb-0" title="Lampirkan gambar" style="cursor:pointer;">
+                            <i class="fas fa-image"></i>
+                            <input type="file" id="attachImage" accept="image/*" style="display:none;">
+                        </label>
+                    </div>
                     <textarea id="replyText" class="form-control form-control-sm" rows="2" placeholder="Tulis pesan..." style="resize:none;"></textarea>
                     <div class="input-group-append">
                         <button id="btnSend" class="btn btn-success">
@@ -483,12 +496,68 @@
         $(this).fadeOut(200);
     });
 
+    /* ── attach image ── */
+    let attachedImageFile = null;
+
+    $('#attachImage').on('change', function() {
+        const file = this.files[0];
+        if (!file) return;
+        attachedImageFile = file;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            $('#imgPreview').attr('src', e.target.result);
+            $('#imgPreviewWrap').removeClass('d-none');
+        };
+        reader.readAsDataURL(file);
+        $(this).val(''); // reset agar bisa pilih file yang sama lagi
+    });
+
+    $('#btnCancelImage').on('click', function() {
+        attachedImageFile = null;
+        $('#imgPreviewWrap').addClass('d-none');
+        $('#imgPreview').attr('src', '');
+    });
+
     /* ── send reply ── */
     $btnSend.on('click', sendReply);
     $replyText.on('keydown', function(e) { if (e.ctrlKey && e.key === 'Enter') sendReply(); });
 
     function sendReply() {
         if (!activeConversationId) return;
+
+        // Kirim gambar jika ada
+        if (attachedImageFile) {
+            const fd = new FormData();
+            fd.append('_token', '{{ csrf_token() }}');
+            fd.append('image', attachedImageFile);
+            const caption = $replyText.val().trim();
+            if (caption) fd.append('caption', caption);
+
+            $btnSend.prop('disabled', true);
+            $.ajax({
+                url: `{{ url('wa-chat/conversations') }}/${activeConversationId}/reply-image`,
+                method: 'POST',
+                data: fd,
+                processData: false,
+                contentType: false,
+                success: function(res) {
+                    if (res.success) {
+                        $replyText.val('');
+                        attachedImageFile = null;
+                        $('#imgPreviewWrap').addClass('d-none');
+                        $('#imgPreview').attr('src', '');
+                        loadMessages(activeConversationId);
+                        loadConversations();
+                    } else {
+                        alert(res.message || 'Gagal mengirim gambar.');
+                    }
+                },
+                error: function() { alert('Gagal mengirim gambar.'); },
+                complete: function() { $btnSend.prop('disabled', false); },
+            });
+            return;
+        }
+
         const msg = $replyText.val().trim();
         if (!msg) return;
         $btnSend.prop('disabled', true);
@@ -497,7 +566,6 @@
         }, function(res) {
             if (res.success) {
                 $replyText.val('');
-                // Full reload after send to get sent message with correct id
                 loadMessages(activeConversationId);
                 loadConversations();
             } else {

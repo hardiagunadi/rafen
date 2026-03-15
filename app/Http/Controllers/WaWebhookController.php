@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\HotspotUser;
 use App\Models\Invoice;
+use App\Models\Outage;
+use App\Models\OutageUpdate;
 use App\Models\PppUser;
 use App\Models\RadiusAccount;
 use App\Models\TenantSettings;
@@ -12,6 +14,7 @@ use App\Models\WaChatMessage;
 use App\Models\WaConversationState;
 use App\Models\WaKeywordRule;
 use App\Models\WaMultiSessionDevice;
+use App\Models\WaTicket;
 use App\Models\WaWebhookLog;
 use App\Services\WaGatewayService;
 use Illuminate\Http\JsonResponse;
@@ -517,6 +520,48 @@ class WaWebhookController extends Controller
         }
 
         if ($intent === 'network_status') {
+            // Cek outage jaringan aktif di area pelanggan terlebih dahulu
+            $activeOutage = null;
+            if (($customerContext['found'] ?? false) && $customerContext['type'] === 'ppp') {
+                $pppUser = PppUser::find($customerContext['id'] ?? null);
+                if ($pppUser) {
+                    if ($pppUser->odp_id) {
+                        $activeOutage = Outage::where('owner_id', $ownerId)
+                            ->whereIn('status', [Outage::STATUS_OPEN, Outage::STATUS_IN_PROGRESS])
+                            ->whereHas('affectedAreas', fn ($q) =>
+                                $q->where('area_type', 'odp')->where('odp_id', $pppUser->odp_id)
+                            )
+                            ->latest('started_at')
+                            ->first();
+                    }
+                    if (! $activeOutage && $pppUser->alamat) {
+                        $activeOutage = Outage::where('owner_id', $ownerId)
+                            ->whereIn('status', [Outage::STATUS_OPEN, Outage::STATUS_IN_PROGRESS])
+                            ->whereHas('affectedAreas', fn ($q) =>
+                                $q->where('area_type', 'keyword')
+                                   ->whereRaw('? LIKE CONCAT("%", label, "%")', [$pppUser->alamat])
+                            )
+                            ->latest('started_at')
+                            ->first();
+                    }
+                }
+            }
+
+            if ($activeOutage) {
+                $eta = $activeOutage->estimated_resolved_at
+                    ? "\nEstimasi selesai: ".$activeOutage->estimated_resolved_at->format('d/m/Y H:i')
+                    : '';
+                $statusLabel = $activeOutage->status === Outage::STATUS_IN_PROGRESS ? 'Sedang Diperbaiki' : 'Gangguan Aktif';
+                $statusUrl   = url('/status/'.$activeOutage->public_token);
+
+                return "⚠️ *Ada gangguan jaringan aktif di area Anda*\n\n"
+                    ."Status: {$statusLabel}\n"
+                    ."Sejak: ".$activeOutage->started_at->format('d/m/Y H:i')
+                    .$eta."\n\n"
+                    ."Pantau progress perbaikan secara real-time di:\n{$statusUrl}\n\n"
+                    .'Tim kami sedang bekerja memulihkan layanan. Mohon maaf atas ketidaknyamanannya. 🙏';
+            }
+
             if (($customerContext['found'] ?? false) !== true) {
                 return "Baik, untuk cek status gangguan saya butuh verifikasi data dulu.\nMohon kirim ID pelanggan Anda ya.";
             }
@@ -547,8 +592,17 @@ class WaWebhookController extends Controller
             }
 
             return "Saya cek, saat ini sesi internet {$displayName} terpantau *OFFLINE*.\n"
+                ."Tidak ada catatan gangguan massal di area Anda saat ini.\n"
                 ."Silakan cek listrik perangkat, kabel ke ONT/router, dan lampu indikator LOS.\n"
-                .'Jika masih merah/putus, balas *jadwal teknisi* agar kami bantu penjadwalan kunjungan.';
+                .'Jika masih merah/putus, balas *lapor gangguan* agar kami catat keluhan Anda.';
+        }
+
+        if ($intent === 'report_outage') {
+            $this->startFlow('lapor_gangguan', $conversation, $ownerId);
+
+            return "Baik, bantu kami catat laporan gangguan Anda.\n\n"
+                ."*Langkah 1/2:* Jelaskan gangguan yang Anda alami\n"
+                .'(contoh: internet mati total, LOS merah, sinyal lemot, dll):';
         }
 
         if ($intent === 'technician_schedule') {
@@ -701,6 +755,10 @@ class WaWebhookController extends Controller
 
         if (preg_match('/\b(halo|hai|hi|assalamualaikum|pagi|siang|sore|malam)\b/u', $normalized)) {
             return 'greeting';
+        }
+
+        if (preg_match('/lapor\s*(gangguan)?|laporkan|mau\s*lapor|ada\s*gangguan\s*di|ingin\s*lapor/u', $normalized)) {
+            return 'report_outage';
         }
 
         return 'fallback';
@@ -985,6 +1043,78 @@ class WaWebhookController extends Controller
 
         if ($state->flow === 'jadwal_teknisi') {
             return $this->advanceJadwalTeknisi($state, $message, $customerContext, $conversation, $ownerId);
+        }
+
+        if ($state->flow === 'lapor_gangguan') {
+            return $this->advanceLaporGangguan($state, $message, $customerContext, $conversation, $ownerId);
+        }
+
+        return '';
+    }
+
+    protected function advanceLaporGangguan(
+        WaConversationState $state,
+        string $message,
+        array $customerContext,
+        WaConversation $conversation,
+        int $ownerId
+    ): string {
+        $displayName = trim((string) ($customerContext['name'] ?? '')) ?: 'Bapak/Ibu';
+        $collected   = $state->collected ?? [];
+
+        if ($state->step === 1) {
+            // Step 1: kumpulkan deskripsi gangguan
+            $collected['deskripsi'] = $message;
+            $state->update([
+                'step'       => 2,
+                'collected'  => $collected,
+                'expires_at' => now()->addMinutes(30),
+            ]);
+
+            return "*Langkah 2/2:* Sudah berapa lama gangguan terjadi?\n"
+                .'Dan apakah tetangga sekitar Anda juga mengalami hal yang sama?';
+        }
+
+        if ($state->step === 2) {
+            // Step 2: kumpulkan durasi/scope, buat WaTicket, selesai
+            $collected['durasi_scope'] = $message;
+            $state->delete();
+
+            $conversation->update(['status' => 'pending']);
+
+            $pppUser = ($customerContext['found'] ?? false) && $customerContext['type'] === 'ppp'
+                ? PppUser::find($customerContext['id'] ?? null)
+                : null;
+
+            $deskripsi = trim((string) ($collected['deskripsi'] ?? '-'));
+            $durasi    = trim((string) ($collected['durasi_scope'] ?? $message));
+
+            try {
+                $ticket = WaTicket::create([
+                    'owner_id'        => $ownerId,
+                    'conversation_id' => $conversation->id,
+                    'customer_type'   => $pppUser ? 'ppp' : null,
+                    'customer_id'     => $pppUser?->id,
+                    'title'           => 'Laporan Gangguan – '.($pppUser?->customer_name ?? $conversation->contact_name ?? $conversation->contact_phone),
+                    'description'     => "Gangguan: {$deskripsi}\n\nDurasi/scope: {$durasi}",
+                    'type'            => 'troubleshoot',
+                    'status'          => 'open',
+                    'priority'        => 'high',
+                ]);
+
+                $ticket->notes()->create([
+                    'user_id' => null,
+                    'type'    => 'created',
+                    'meta'    => 'Dibuat otomatis dari laporan WA pelanggan.',
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('advanceLaporGangguan: gagal buat WaTicket', ['error' => $e->getMessage()]);
+            }
+
+            return "✅ *Laporan gangguan Anda telah kami catat.*\n\n"
+                ."Tim teknis kami akan segera menindaklanjuti.\n"
+                ."Jika gangguan berdampak pada banyak pelanggan di area Anda, kami akan menginformasikan melalui pesan ini.\n\n"
+                .'Terima kasih sudah melapor, mohon maaf atas ketidaknyamanannya. 🙏';
         }
 
         return '';

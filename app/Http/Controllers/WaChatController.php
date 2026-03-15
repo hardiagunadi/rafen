@@ -191,6 +191,74 @@ class WaChatController extends Controller
         return response()->json(['success' => true, 'message' => 'Pesan terkirim.']);
     }
 
+    public function replyImage(Request $request, WaConversation $waConversation): JsonResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        if (! $user->isSuperAdmin() && ! in_array($user->role, self::ALLOWED_ROLES, true)) {
+            abort(403);
+        }
+
+        if (! $user->isSuperAdmin() && $waConversation->owner_id !== $user->effectiveOwnerId()) {
+            abort(403);
+        }
+
+        $request->validate([
+            'image'   => ['required', 'image', 'max:5120'],
+            'caption' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $ownerId  = $user->effectiveOwnerId();
+        $settings = TenantSettings::where('user_id', $ownerId)->first();
+
+        if (! $settings || ! $settings->hasWaConfigured()) {
+            return response()->json(['success' => false, 'message' => 'WA Gateway belum dikonfigurasi.'], 422);
+        }
+
+        $service = WaGatewayService::forTenant($settings);
+        if (! $service) {
+            return response()->json(['success' => false, 'message' => 'WA Gateway tidak tersedia.'], 422);
+        }
+
+        $path    = $request->file('image')->store('wa-chat-images', 'public');
+        $pubUrl  = asset('storage/'.$path);
+        $nickname = $user->nickname ?? $user->name;
+        $caption  = trim($request->input('caption', ''));
+        $captionFull = $caption !== '' ? $caption."\n- ".$nickname : '- '.$nickname;
+
+        $service->sendImage($waConversation->contact_phone, $pubUrl, $captionFull, [
+            'event' => 'cs_reply_image',
+            'conversation_id' => $waConversation->id,
+        ]);
+
+        $waConversation->messages()->create([
+            'owner_id'   => $ownerId,
+            'direction'  => 'outbound',
+            'message'    => $captionFull ?: null,
+            'media_type' => 'image',
+            'media_path' => $path,
+            'sender_name'=> $nickname,
+            'sender_id'  => $user->id,
+            'created_at' => now(),
+        ]);
+
+        $waConversation->update([
+            'last_message'    => '[Gambar]'.($caption ? ' '.$caption : ''),
+            'last_message_at' => now(),
+            'bot_paused_until'=> null,
+        ]);
+
+        $this->logActivity('replied', 'WaConversation', $waConversation->id, $waConversation->contact_phone, $ownerId);
+
+        return response()->json([
+            'success'   => true,
+            'media_url' => $pubUrl,
+            'caption'   => $captionFull,
+        ]);
+    }
+
+
     public function markResolved(WaConversation $waConversation): JsonResponse
     {
         $this->authorizeAccess($waConversation);

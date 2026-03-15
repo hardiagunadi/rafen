@@ -450,6 +450,46 @@ class WaGatewayService
     }
 
     /**
+     * Send a WhatsApp image message (public URL) with optional caption.
+     */
+    public function sendImage(string $phone, string $mediaUrl, string $caption = '', array $context = []): bool
+    {
+        if (empty(trim($phone))) {
+            return false;
+        }
+
+        $normalized = $this->normalizePhone($phone);
+        if (! $this->isValidPhone($normalized)) {
+            return false;
+        }
+
+        $this->applyAntiSpamDelay();
+
+        $refId = 'rafen-'.date('YmdHis').'-'.bin2hex(random_bytes(4));
+
+        try {
+            $response = Http::timeout(20)
+                ->withHeaders($this->buildHeaders())
+                ->post($this->url.'/api/v2/send-image', [
+                    'data' => [
+                        [
+                            'session'   => $this->resolveSessionId($context),
+                            'phone'     => $normalized,
+                            'media_url' => $mediaUrl,
+                            'caption'   => $caption,
+                            'isGroup'   => false,
+                            'ref_id'    => $refId,
+                        ],
+                    ],
+                ]);
+
+            return $response->successful() && ($response->json('status') === true);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Send bulk WhatsApp messages with anti-spam delay.
      *
      * @param  array<array{phone: string, message: string}>  $recipients
@@ -584,13 +624,14 @@ class WaGatewayService
             return $baseMessage;
         }
 
-        $recipient = trim((string) $name);
-        $recipient = $recipient !== '' ? $recipient : 'Bapak/Ibu';
+        $rawName   = trim((string) $name);
+        $honorific = $index % 2 === 0 ? 'Bapak/Ibu' : 'Bpk/Ibu';
+        $recipient = $rawName !== '' ? $honorific.' '.$rawName : $honorific;
 
         $openings = [
             'Halo '.$recipient.',',
-            'Selamat siang '.$recipient.',',
             'Permisi '.$recipient.',',
+            'Selamat pagi '.$recipient.',',
         ];
         $closings = [
             'Terima kasih atas perhatian Anda.',

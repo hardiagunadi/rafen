@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use App\Models\Outage;
 use App\Models\PppUser;
 use App\Models\TenantSettings;
 use App\Models\WaConversation;
@@ -41,7 +42,32 @@ class PortalDashboardController extends Controller
             $latestInvoice->refresh();
         }
 
-        return view('portal.dashboard', compact('pppUser', 'latestInvoice', 'portalSlug'));
+        // Cek gangguan jaringan aktif yang terdampak ke pelanggan ini
+        $activeOutages = collect();
+        if ($pppUser->odp_id || $pppUser->alamat) {
+            $outageQuery = Outage::query()
+                ->where('owner_id', $pppUser->owner_id)
+                ->whereIn('status', [Outage::STATUS_OPEN, Outage::STATUS_IN_PROGRESS])
+                ->where(function ($q) use ($pppUser) {
+                    if ($pppUser->odp_id) {
+                        $q->orWhereHas('affectedAreas', fn ($aq) =>
+                            $aq->where('area_type', 'odp')->where('odp_id', $pppUser->odp_id)
+                        );
+                    }
+                    if ($pppUser->alamat) {
+                        $q->orWhereHas('affectedAreas', fn ($aq) =>
+                            $aq->where('area_type', 'keyword')
+                               ->whereRaw('? LIKE CONCAT("%", label, "%")', [$pppUser->alamat])
+                        );
+                    }
+                })
+                ->with(['updates' => fn ($q) => $q->where('is_public', true)->latest()->limit(1)])
+                ->orderByDesc('started_at');
+
+            $activeOutages = $outageQuery->get();
+        }
+
+        return view('portal.dashboard', compact('pppUser', 'latestInvoice', 'portalSlug', 'activeOutages'));
     }
 
     public function invoices(Request $request)
