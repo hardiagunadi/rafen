@@ -215,9 +215,12 @@ class GenieAcsClient
         $password = config('genieacs.connection_request_password', 'rafen2024');
         $interval = (string) config('genieacs.inform_interval', 300);
 
+        // Precondition: only apply when value doesn't already match.
+        // This prevents GenieACS from issuing GetParameterValues on every inform
+        // just to verify the value — avoiding delay before task execution.
         $this->putPreset('set-connection-request-creds', [
             'weight'         => 100,
-            'precondition'   => 'true',
+            'precondition'   => 'InternetGatewayDevice.ManagementServer.ConnectionRequestUsername != "' . $username . '"',
             'configurations' => [
                 ['type' => 'value', 'name' => 'InternetGatewayDevice.ManagementServer.ConnectionRequestUsername', 'value' => $username],
                 ['type' => 'value', 'name' => 'InternetGatewayDevice.ManagementServer.ConnectionRequestPassword', 'value' => $password],
@@ -226,7 +229,7 @@ class GenieAcsClient
 
         $this->putPreset('set-inform-interval', [
             'weight'         => 100,
-            'precondition'   => 'true',
+            'precondition'   => 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval > ' . $interval,
             'configurations' => [
                 ['type' => 'value', 'name' => 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval', 'value' => $interval],
             ],

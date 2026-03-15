@@ -106,12 +106,13 @@ class CpeDevice extends Model
         }
 
         $this->cached_params = [
-            'profile'         => $profile,
-            'wifi_ssid'       => $get('wifi_ssid'),
-            'pppoe_username'  => $get('pppoe_username'),
-            'uptime'          => $get('uptime'),
-            'wifi_networks'   => $client->extractWifiNetworks($device),
-            'wan_connections' => $client->extractWanConnections($device),
+            'profile'          => $profile,
+            'wifi_ssid'        => $get('wifi_ssid'),
+            'pppoe_username'   => $get('pppoe_username'),
+            'uptime'           => $get('uptime'),
+            'inform_interval'  => $periodicSec ? (int) $periodicSec : null,
+            'wifi_networks'    => $client->extractWifiNetworks($device),
+            'wan_connections'  => $client->extractWanConnections($device),
         ];
     }
 }

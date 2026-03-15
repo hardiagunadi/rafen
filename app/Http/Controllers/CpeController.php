@@ -83,16 +83,16 @@ class CpeController extends Controller
             ->get();
 
         $data = $devices->map(fn (CpeDevice $d) => [
-            'id'            => $d->id,
-            'customer_name' => $d->pppUser?->customer_name ?? '-',
-            'username'      => $d->pppUser?->username ?? '-',
-            'ppp_user_id'   => $d->ppp_user_id,
-            'manufacturer'  => $d->manufacturer ?? '-',
-            'model'         => $d->model ?? '-',
-            'firmware'      => $d->firmware_version ?? '-',
-            'serial_number' => $d->serial_number ?? '-',
-            'status'        => $d->status ?? 'unknown',
-            'last_seen_at'  => $d->last_seen_at?->diffForHumans() ?? '-',
+            'id'              => $d->id,
+            'customer_name'   => $d->pppUser?->customer_name ?? '-',
+            'username'        => $d->pppUser?->username ?? '-',
+            'ppp_user_id'     => $d->ppp_user_id,
+            'manufacturer'    => $d->manufacturer ?? '-',
+            'model'           => $d->model ?? '-',
+            'firmware'        => $d->firmware_version ?? '-',
+            'inform_interval' => $d->cached_params['inform_interval'] ?? null,
+            'status'          => $d->status ?? 'unknown',
+            'last_seen_at'    => $d->last_seen_at?->diffForHumans() ?? '-',
         ]);
 
         return response()->json([

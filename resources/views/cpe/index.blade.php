@@ -41,7 +41,7 @@
                             <th>Username PPPoE</th>
                             <th>Pabrikan / Model</th>
                             <th>Firmware</th>
-                            <th>Serial</th>
+                            <th>Inform Period</th>
                             <th>Status</th>
                             <th>Terakhir Online</th>
                             <th class="text-right">Aksi</th>
@@ -149,7 +149,15 @@ $(function () {
                 }
             },
             { data: 'firmware' },
-            { data: 'serial_number' },
+            {
+                data: 'inform_interval',
+                render: function (data) {
+                    if (!data) return '<span class="text-muted">-</span>';
+                    if (data <= 300) return '<span class="badge badge-success">' + data + 's</span>';
+                    if (data <= 900) return '<span class="badge badge-warning">' + data + 's</span>';
+                    return '<span class="badge badge-danger">' + data + 's</span>';
+                }
+            },
             {
                 data: 'status',
                 render: function (data) {
