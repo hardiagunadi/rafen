@@ -90,6 +90,8 @@ class TenantSettings extends Model
         'genieacs_url',
         'genieacs_username',
         'genieacs_password',
+        'genieacs_cr_username',
+        'genieacs_cr_password',
         'portal_slug',
     ];
 
@@ -193,6 +195,43 @@ class TenantSettings extends Model
     public function hasGenieacsConfigured(): bool
     {
         return ! empty($this->genieacs_url);
+    }
+
+    /**
+     * CR username used by GenieACS to trigger Connection Request to CPE.
+     * Falls back to a deterministic per-tenant value derived from user_id,
+     * so every tenant gets a unique credential even if not explicitly configured.
+     * Last resort: global .env value.
+     */
+    public function resolvedCrUsername(): string
+    {
+        if (! empty($this->genieacs_cr_username)) {
+            return $this->genieacs_cr_username;
+        }
+
+        if ($this->user_id) {
+            return 'rafen_cr_' . $this->user_id;
+        }
+
+        return config('genieacs.connection_request_username', 'rafen');
+    }
+
+    /**
+     * CR password used by GenieACS to trigger Connection Request to CPE.
+     * Auto-generated deterministically from owner_id + app key when not set,
+     * so the value is stable across restarts without requiring manual config.
+     */
+    public function resolvedCrPassword(): string
+    {
+        if (! empty($this->genieacs_cr_password)) {
+            return $this->genieacs_cr_password;
+        }
+
+        if ($this->user_id) {
+            return substr(hash('sha256', config('app.key') . ':cr:' . $this->user_id), 0, 16);
+        }
+
+        return config('genieacs.connection_request_password', 'rafen2024');
     }
 
     public function hasWaConfigured(): bool

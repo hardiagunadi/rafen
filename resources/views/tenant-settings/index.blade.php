@@ -863,6 +863,41 @@
                             </div>
                         </div>
                     </div>
+                    <hr>
+                    <p class="font-weight-bold mb-1">Connection Request Credentials</p>
+                    <p class="text-muted small mb-2">
+                        Kredensial yang diset ke modem agar GenieACS dapat menghubungi modem secara langsung (Connection Request TR-069).
+                        Kosongkan untuk menggunakan nilai otomatis yang di-generate per-tenant.
+                    </p>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>CR Username <small class="text-muted">(opsional)</small></label>
+                                <input type="text" name="genieacs_cr_username" class="form-control"
+                                    value="{{ old('genieacs_cr_username', $settings->genieacs_cr_username) }}"
+                                    placeholder="{{ $settings->resolvedCrUsername() }}"
+                                    autocomplete="off">
+                                <small class="form-text text-muted">Placeholder menampilkan nilai yang akan dipakai jika dikosongkan.</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>CR Password <small class="text-muted">(opsional)</small></label>
+                                <div class="input-group">
+                                    <input type="password" name="genieacs_cr_password" id="genieacs_cr_password" class="form-control"
+                                        value="{{ old('genieacs_cr_password', $settings->genieacs_cr_password) }}"
+                                        placeholder="(auto-generate jika kosong)" autocomplete="new-password">
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-secondary"
+                                            onclick="var f=document.getElementById('genieacs_cr_password');f.type=f.type==='password'?'text':'password'">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="alert alert-info py-2 mb-0">
                         <i class="fas fa-info-circle mr-1"></i>
                         <strong>URL CWMP untuk modem</strong> (bukan di sini):
@@ -871,9 +906,12 @@
                         — masukkan URL ini di pengaturan TR-069/ITMS/RMS pada modem pelanggan.
                     </div>
                 </div>
-                <div class="card-footer">
+                <div class="card-footer d-flex justify-content-between align-items-center">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save mr-1"></i> Simpan Pengaturan GenieACS
+                    </button>
+                    <button type="button" class="btn btn-warning" id="btn-restart-genieacs">
+                        <i class="fas fa-redo mr-1"></i> Restart GenieACS
                     </button>
                 </div>
             </form>
@@ -1296,6 +1334,15 @@ $('#portalSlugInput').on('input', function() {
         ? '<a href="' + base + slug + '/login" target="_blank">' + base + slug + '/login</a>'
         : base + '<em class="text-muted">slug-anda</em>/login'
     );
+});
+
+$('#btn-restart-genieacs').on('click', function () {
+    if (!confirm('Restart GenieACS? Semua sesi TR-069 aktif akan terputus sesaat.')) return;
+    var $btn = $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i> Merestart...');
+    $.post('{{ route('genieacs.restart') }}', { _token: '{{ csrf_token() }}' })
+        .done(function (res) { toastr.success(res.message); })
+        .fail(function (xhr) { toastr.error(xhr.responseJSON?.message || 'Gagal restart GenieACS.'); })
+        .always(function () { $btn.prop('disabled', false).html('<i class="fas fa-redo mr-1"></i> Restart GenieACS'); });
 });
 </script>
 @endpush

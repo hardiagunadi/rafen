@@ -886,9 +886,11 @@ class TenantSettingsController extends Controller
         }
 
         $validated = $request->validate([
-            'genieacs_url'      => 'nullable|url|max:255',
-            'genieacs_username' => 'nullable|string|max:64',
-            'genieacs_password' => 'nullable|string|max:128',
+            'genieacs_url'         => 'nullable|url|max:255',
+            'genieacs_username'    => 'nullable|string|max:64',
+            'genieacs_password'    => 'nullable|string|max:128',
+            'genieacs_cr_username' => 'nullable|string|max:64',
+            'genieacs_cr_password' => 'nullable|string|max:128',
         ]);
 
         $user     = $request->user();

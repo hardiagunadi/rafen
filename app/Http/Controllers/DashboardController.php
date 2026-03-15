@@ -157,6 +157,25 @@ class DashboardController extends Controller
         return redirect()->route('dashboard')->with('error', 'Gagal reload Core Radius: '.$error);
     }
 
+    public function restartGenieacs(Request $request): JsonResponse
+    {
+        $services = ['genieacs-cwmp', 'genieacs-nbi', 'genieacs-fs'];
+        $errors    = [];
+
+        foreach ($services as $svc) {
+            $result = Process::timeout(15)->run("sudo systemctl restart {$svc}");
+            if (! $result->successful()) {
+                $errors[] = $svc.': '.trim($result->errorOutput() ?: $result->output());
+            }
+        }
+
+        if (empty($errors)) {
+            return response()->json(['status' => 'ok', 'message' => 'GenieACS berhasil direstart.']);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'Gagal restart GenieACS: '.implode('; ', $errors)], 500);
+    }
+
     /**
      * @return array<string, string>
      */

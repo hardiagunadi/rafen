@@ -109,6 +109,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
     Route::get('olt-connections/{oltConnection}/polling-status', [OltConnectionController::class, 'pollingStatus'])->name('olt-connections.polling-status');
     Route::get('olt-connections/{oltConnection}/datatable', [OltConnectionController::class, 'datatable'])->name('olt-connections.datatable');
     Route::post('radius/restart', [DashboardController::class, 'restartRadius'])->name('radius.restart');
+    Route::post('genieacs/restart', [DashboardController::class, 'restartGenieacs'])->name('genieacs.restart');
     Route::resource('mikrotik-connections', MikrotikConnectionController::class);
     Route::resource('olt-connections', OltConnectionController::class);
 

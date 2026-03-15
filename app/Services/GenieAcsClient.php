@@ -13,18 +13,28 @@ class GenieAcsClient
     private string $username;
     private string $password;
     private int $timeout;
+    private string $crUsername;
+    private string $crPassword;
 
-    public function __construct(?string $url = null, ?string $username = null, ?string $password = null)
-    {
-        $this->baseUrl  = rtrim($url ?? config('genieacs.nbi_url', 'http://localhost:7557'), '/');
-        $this->username = $username ?? config('genieacs.username', '');
-        $this->password = $password ?? config('genieacs.password', '');
-        $this->timeout  = config('genieacs.timeout', 10);
+    public function __construct(
+        ?string $url = null,
+        ?string $username = null,
+        ?string $password = null,
+        ?string $crUsername = null,
+        ?string $crPassword = null,
+    ) {
+        $this->baseUrl    = rtrim($url ?? config('genieacs.nbi_url', 'http://localhost:7557'), '/');
+        $this->username   = $username ?? config('genieacs.username', '');
+        $this->password   = $password ?? config('genieacs.password', '');
+        $this->timeout    = config('genieacs.timeout', 10);
+        $this->crUsername = $crUsername ?? config('genieacs.connection_request_username', 'rafen');
+        $this->crPassword = $crPassword ?? config('genieacs.connection_request_password', 'rafen2024');
     }
 
     /**
      * Create a GenieAcsClient from a TenantSettings model.
      * Falls back to global .env config when tenant has no GenieACS URL configured.
+     * CR credentials are always resolved from tenant settings (with auto-generated fallback).
      */
     public static function fromTenantSettings(\App\Models\TenantSettings $settings): self
     {
@@ -33,10 +43,16 @@ class GenieAcsClient
                 $settings->genieacs_url,
                 $settings->genieacs_username ?? '',
                 $settings->genieacs_password ?? '',
+                $settings->resolvedCrUsername(),
+                $settings->resolvedCrPassword(),
             );
         }
 
-        return new self();
+        return new self(
+            null, null, null,
+            $settings->resolvedCrUsername(),
+            $settings->resolvedCrPassword(),
+        );
     }
 
     public function getBaseUrl(): string
@@ -211,8 +227,8 @@ class GenieAcsClient
      */
     public function ensureDefaultPresets(): void
     {
-        $username = config('genieacs.connection_request_username', 'rafen');
-        $password = config('genieacs.connection_request_password', 'rafen2024');
+        $username = $this->crUsername;
+        $password = $this->crPassword;
         $interval = (string) config('genieacs.inform_interval', 300);
 
         // Precondition: only apply when value doesn't already match.
