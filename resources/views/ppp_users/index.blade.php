@@ -228,4 +228,201 @@
         if (document.readyState !== 'loading') init();
     })();
     </script>
+
+<!-- Modal Konfirmasi Bayar -->
+<div class="modal fade" id="modal-pay" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-money-bill-wave text-success mr-2"></i>Konfirmasi Pembayaran</h5>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            </div>
+            <form id="form-pay" method="POST">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-light border mb-3 p-2">
+                        <div class="small text-muted">Invoice</div>
+                        <div class="font-weight-bold" id="pay-invoice-number">-</div>
+                        <div class="small text-muted mt-1">Pelanggan</div>
+                        <div id="pay-customer-name">-</div>
+                        <div class="small text-muted mt-1">Total Tagihan</div>
+                        <div class="font-weight-bold text-success" id="pay-total" role="button" tabindex="0" title="Klik untuk isi Tunai Diterima" style="cursor: pointer;">-</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Tunai Diterima <span class="text-muted small">(kosongkan jika tidak ada)</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend"><span class="input-group-text">Rp</span></div>
+                            <input type="text" id="pay-cash-display" class="form-control money-input" inputmode="numeric" placeholder="0" autocomplete="off">
+                            <input type="hidden" name="cash_received" id="pay-cash">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Sudah Transfer <span class="text-muted small">(kosongkan jika tidak ada)</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend"><span class="input-group-text">Rp</span></div>
+                            <input type="text" id="pay-transfer-display" class="form-control money-input" inputmode="numeric" placeholder="0" autocomplete="off">
+                            <input type="hidden" name="transfer_amount" id="pay-transfer">
+                        </div>
+                        <small id="pay-sisa-info" class="text-muted"></small>
+                    </div>
+                    <div class="form-group mb-0">
+                        <label>Catatan <span class="text-muted small">(opsional)</span></label>
+                        <input type="text" name="payment_note" id="pay-note" class="form-control" placeholder="mis. bayar di depan rumah">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success" id="btn-pay-submit">
+                        <i class="fas fa-money-bill-wave mr-1"></i>Tandai Lunas
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    // Handler tombol bayar → buka modal
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-pay-modal]');
+        if (!btn) return;
+        document.getElementById('pay-invoice-number').textContent = btn.dataset.invoiceNumber || '-';
+        document.getElementById('pay-customer-name').textContent = btn.dataset.customerName || '-';
+        var rawTotal = parseInt((btn.dataset.total || '0').replace(/\D/g, ''), 10) || 0;
+        document.getElementById('pay-total').textContent = 'Rp ' + formatRibuan(rawTotal);
+        document.getElementById('pay-total').dataset.raw = rawTotal;
+        document.getElementById('pay-cash-display').value = '';
+        document.getElementById('pay-transfer-display').value = '';
+        document.getElementById('pay-cash').value = '';
+        document.getElementById('pay-transfer').value = '';
+        document.getElementById('pay-note').value = '';
+        document.getElementById('pay-sisa-info').textContent = '';
+        document.getElementById('form-pay').action = btn.dataset.payUrl;
+        $('#modal-pay').modal('show');
+    });
+
+    function formatRibuan(n) {
+        return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+
+    function attachMoneyInput(displayId, hiddenId) {
+        var display = document.getElementById(displayId);
+        var hidden  = document.getElementById(hiddenId);
+        display.addEventListener('input', function () {
+            var digits = this.value.replace(/\D/g, '');
+            var num    = parseInt(digits, 10) || 0;
+            this.value  = num ? formatRibuan(num) : '';
+            hidden.value = num || '';
+            updateSisaInfo();
+        });
+        display.addEventListener('keydown', function (e) {
+            if ([8,9,27,46,37,38,39,40,35,36].indexOf(e.keyCode) !== -1) return;
+            if ((e.ctrlKey || e.metaKey) && [65,67,86,88].indexOf(e.keyCode) !== -1) return;
+            if (e.key && !/^\d$/.test(e.key)) e.preventDefault();
+        });
+    }
+
+    function updateSisaInfo() {
+        var totalEl = document.getElementById('pay-total');
+        if (!totalEl || !totalEl.dataset.raw) return;
+        var total    = parseInt(totalEl.dataset.raw, 10) || 0;
+        var cash     = parseInt(document.getElementById('pay-cash').value, 10) || 0;
+        var transfer = parseInt(document.getElementById('pay-transfer').value, 10) || 0;
+        var sisa     = total - cash - transfer;
+        var infoEl   = document.getElementById('pay-sisa-info');
+        if (!infoEl) return;
+        if (total > 0) {
+            if (sisa > 0) {
+                infoEl.textContent = 'Sisa belum tercatat: Rp ' + formatRibuan(sisa);
+                infoEl.className = 'text-warning small';
+            } else if (sisa < 0) {
+                infoEl.textContent = 'Melebihi total tagihan: Rp ' + formatRibuan(Math.abs(sisa));
+                infoEl.className = 'text-danger small';
+            } else {
+                infoEl.textContent = 'Sesuai total tagihan ✓';
+                infoEl.className = 'text-success small';
+            }
+        } else {
+            infoEl.textContent = '';
+        }
+    }
+
+    function fillCashFromTotal() {
+        var totalEl = document.getElementById('pay-total');
+        if (!totalEl) return;
+        var total = parseInt(totalEl.dataset.raw, 10) || 0;
+        if (total <= 0) return;
+        var cashDisplay = document.getElementById('pay-cash-display');
+        var cashHidden = document.getElementById('pay-cash');
+        var transferDisplay = document.getElementById('pay-transfer-display');
+        var transferHidden = document.getElementById('pay-transfer');
+        cashDisplay.value = formatRibuan(total);
+        cashHidden.value = total;
+        transferDisplay.value = '';
+        transferHidden.value = '';
+        updateSisaInfo();
+        cashDisplay.focus();
+    }
+
+    attachMoneyInput('pay-cash-display', 'pay-cash');
+    attachMoneyInput('pay-transfer-display', 'pay-transfer');
+
+    var payTotal = document.getElementById('pay-total');
+    payTotal.addEventListener('click', fillCashFromTotal);
+    payTotal.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        fillCashFromTotal();
+    });
+
+    var payForm = document.getElementById('form-pay');
+    var paySubmitButton = document.getElementById('btn-pay-submit');
+
+    payForm.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        if (e.target && e.target.tagName === 'TEXTAREA') return;
+        if (paySubmitButton.disabled) return;
+        e.preventDefault();
+        if (typeof payForm.requestSubmit === 'function') {
+            payForm.requestSubmit(paySubmitButton);
+        } else {
+            paySubmitButton.click();
+        }
+    });
+
+    payForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var form = this;
+        var submitBtn = paySubmitButton;
+        submitBtn.disabled = true;
+        var origText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Memproses...';
+
+        var formData = new FormData(form);
+        fetch(form.action, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            body: formData,
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = origText;
+            $('#modal-pay').modal('hide');
+            if (res.ok) {
+                if (window.showToast) window.showToast(res.data.status || 'Invoice dibayar.', 'success');
+                document.dispatchEvent(new CustomEvent('rafen:ajax-success'));
+            } else {
+                if (window.showToast) window.showToast((res.data && res.data.error) || 'Gagal memproses pembayaran.', 'danger');
+            }
+        })
+        .catch(function () {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = origText;
+            if (window.showToast) window.showToast('Terjadi kesalahan.', 'danger');
+        });
+    });
+})();
+</script>
 @endsection

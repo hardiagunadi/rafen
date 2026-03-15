@@ -87,8 +87,6 @@ class PppUserController extends Controller
         $data = $users->map(function (PppUser $user) use ($activeSessions, $currentUserForMap) {
             $invoice = $user->invoices->first();
             $session = $activeSessions->get($user->username);
-            $canRenew = $invoice && $invoice->created_at->equalTo($invoice->updated_at);
-            $canPay = (bool) $invoice;
 
             $statusBadge = '';
             if ($user->status_registrasi) {
@@ -105,13 +103,36 @@ class PppUserController extends Controller
                 ? '<a href="#" class="text-primary font-weight-bold">'.$user->jatuh_tempo->format('Y-m-d H:i').'</a>'
                 : '<span class="text-muted">-</span>';
 
-            $renewBtn = $invoice
-                ? '<a href="'.route('invoices.show', $invoice).'" class="btn btn-primary"><i class="fas fa-bolt"></i> Renew</a>'
-                : '<button class="btn btn-light" disabled><i class="fas fa-bolt"></i> Renew</button>';
+            $isUnpaid = $invoice && $invoice->status === 'unpaid';
+            $hasPending = $invoice ? (($invoice->pending_count ?? 0) > 0) : false;
+            $isRenewedWithoutPayment = $isUnpaid && (bool) $invoice->renewed_without_payment;
+            $canRenew = $isUnpaid && ! $isRenewedWithoutPayment;
+            $canPay = $isUnpaid && ! $hasPending && ! $isRenewedWithoutPayment;
+            $canMarkPaid = $isUnpaid && ! $hasPending && $isRenewedWithoutPayment;
 
-            $bayarBtn = $invoice
-                ? '<a href="'.route('invoices.show', $invoice).'" class="btn btn-success"><i class="fas fa-check"></i> Bayar</a>'
-                : '<button class="btn btn-light" disabled><i class="fas fa-check"></i> Bayar</button>';
+            $renewUrl = $invoice ? route('invoices.renew', $invoice) : '';
+            $payUrl = $invoice ? route('invoices.pay', $invoice) : '';
+            $invoiceNumber = $invoice ? ($invoice->invoice_number ?? '') : '';
+            $customerName = $invoice ? ($invoice->customer_name ?? '') : '';
+            $total = $invoice ? (int) $invoice->total : 0;
+
+            $renewBtn = $canRenew
+                ? '<button class="btn btn-primary btn-sm" data-ajax-post="'.$renewUrl.'" data-confirm="Perpanjang layanan tanpa pembayaran?" title="Perpanjang Layanan"><i class="fas fa-bolt"></i> Renew</button>'
+                : '<button class="btn btn-light btn-sm" disabled><i class="fas fa-bolt"></i> Renew</button>';
+
+            if ($hasPending) {
+                $bayarBtn = '<a href="'.route('payments.pending').'" class="btn btn-warning btn-sm" title="Menunggu konfirmasi bukti transfer"><i class="fas fa-clock"></i> Bayar</a>';
+            } elseif ($canMarkPaid || $canPay) {
+                $bayarBtn = '<button class="btn btn-success btn-sm"'
+                    .' data-pay-modal="1"'
+                    .' data-pay-url="'.e($payUrl).'"'
+                    .' data-invoice-number="'.e($invoiceNumber).'"'
+                    .' data-customer-name="'.e($customerName).'"'
+                    .' data-total="'.$total.'"'
+                    .' title="Bayar"><i class="fas fa-check"></i> Bayar</button>';
+            } else {
+                $bayarBtn = '<button class="btn btn-light btn-sm" disabled><i class="fas fa-check"></i> Bayar</button>';
+            }
 
             $invoiceMenuItem = $invoice
                 ? '<button class="dropdown-item text-danger" data-ajax-delete="'.route('invoices.destroy', $invoice).'" data-confirm="Hapus tagihan ini?"><i class="fas fa-file-invoice mr-1"></i>Hapus Tagihan</button>'

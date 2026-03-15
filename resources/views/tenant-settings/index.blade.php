@@ -865,7 +865,9 @@
                     </div>
                     <div class="alert alert-info py-2 mb-0">
                         <i class="fas fa-info-circle mr-1"></i>
-                        <strong>URL CWMP untuk modem</strong> (bukan di sini): <code style="color:#fff;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:3px;">http://{{ request()->getHost() }}:7547</code>
+                        <strong>URL CWMP untuk modem</strong> (bukan di sini):
+                        <code id="cwmp-url" style="color:#fff;background:rgba(0,0,0,.25);padding:1px 5px;border-radius:3px;cursor:pointer;" title="Klik untuk salin"
+                            onclick="(function(el){navigator.clipboard.writeText(el.textContent).then(function(){var orig=el.style.background;el.style.background='rgba(0,100,0,.5)';setTimeout(function(){el.style.background=orig;},1000);if(window.AppAjax)window.AppAjax.showToast('URL CWMP berhasil disalin!','success');});})(this)">http://{{ request()->getHost() }}:7547</code>
                         — masukkan URL ini di pengaturan TR-069/ITMS/RMS pada modem pelanggan.
                     </div>
                 </div>
