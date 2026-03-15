@@ -1013,9 +1013,9 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="{{ route('logs.bg-process') }}" class="nav-link {{ request()->routeIs('logs.bg-process') ? 'active' : '' }}">
+                                <a href="{{ route('logs.genieacs') }}" class="nav-link {{ request()->routeIs('logs.genieacs', 'logs.genieacs.data') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>Log BG Process</p>
+                                    <p>Log GenieACS</p>
                                 </a>
                             </li>
                             <li class="nav-item">

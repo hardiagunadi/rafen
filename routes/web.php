@@ -86,6 +86,8 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('activity/data', [\App\Http\Controllers\LogController::class, 'activityData'])->name('activity.data');
         Route::get('bg-process', [\App\Http\Controllers\LogController::class, 'bgProcessIndex'])->name('bg-process');
         Route::get('bg-process/datatable', [\App\Http\Controllers\LogController::class, 'bgProcessDatatable'])->name('bg-process.datatable');
+        Route::get('genieacs', [\App\Http\Controllers\LogController::class, 'genieacsIndex'])->name('genieacs');
+        Route::get('genieacs/data', [\App\Http\Controllers\LogController::class, 'genieacsData'])->name('genieacs.data');
         Route::get('radius-auth', [\App\Http\Controllers\LogController::class, 'radiusAuthIndex'])->name('radius-auth');
         Route::get('radius-auth/datatable', [\App\Http\Controllers\LogController::class, 'radiusAuthDatatable'])->name('radius-auth.datatable');
         Route::get('wa-pengiriman', [\App\Http\Controllers\LogController::class, 'waPengirimanIndex'])->name('wa-pengiriman');

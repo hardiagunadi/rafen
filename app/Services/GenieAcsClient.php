@@ -327,6 +327,26 @@ class GenieAcsClient
     }
 
     /**
+     * List pending tasks from GenieACS.
+     */
+    public function getTasks(int $limit = 200): array
+    {
+        $response = $this->get('/tasks', ['limit' => $limit]);
+
+        return $response->successful() ? ($response->json() ?? []) : [];
+    }
+
+    /**
+     * List faults (failed tasks) from GenieACS.
+     */
+    public function getFaults(int $limit = 200): array
+    {
+        $response = $this->get('/faults', ['limit' => $limit]);
+
+        return $response->successful() ? ($response->json() ?? []) : [];
+    }
+
+    /**
      * List all devices.
      */
     public function listDevices(array $queryFilter = []): array

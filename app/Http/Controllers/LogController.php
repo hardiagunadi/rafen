@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
+use App\Models\CpeDevice;
 use App\Models\LoginLog;
 use App\Models\PppUser;
+use App\Models\TenantSettings;
 use App\Models\WaBlastLog;
 use App\Models\WaWebhookLog;
+use App\Services\GenieAcsClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -375,5 +378,111 @@ class LogController extends Controller
         }
 
         return '-';
+    }
+
+    // ── Log GenieACS ──────────────────────────────────────────────────────────
+
+    public function genieacsIndex(): View
+    {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && ! in_array($user->role, ['administrator', 'noc', 'it_support'])) {
+            abort(403);
+        }
+
+        $client = $this->genieacsClient();
+        $stats  = ['faults' => 0, 'tasks' => 0, 'devices' => 0];
+
+        try {
+            $stats['faults']  = count($client->getFaults(500));
+            $stats['tasks']   = count($client->getTasks(500));
+            $stats['devices'] = count($client->listDevices());
+        } catch (\Throwable) {
+            // GenieACS unreachable — show zeroes, view shows warning
+        }
+
+        return view('logs.genieacs', compact('stats'));
+    }
+
+    public function genieacsData(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        if (! $user->isSuperAdmin() && ! in_array($user->role, ['administrator', 'noc', 'it_support'])) {
+            abort(403);
+        }
+
+        $tab    = $request->input('tab', 'faults');
+        $client = $this->genieacsClient();
+
+        // Build genieacs_device_id → customer name lookup
+        $deviceMap = CpeDevice::query()
+            ->accessibleBy($user)
+            ->with('pppUser:id,customer_name,username')
+            ->get(['genieacs_device_id', 'ppp_user_id', 'serial_number', 'manufacturer', 'model'])
+            ->keyBy('genieacs_device_id');
+
+        try {
+            if ($tab === 'tasks') {
+                $rows = collect($client->getTasks(500))->map(function (array $t) use ($deviceMap) {
+                    $devId   = $t['device'] ?? '-';
+                    $cpe     = $deviceMap->get($devId);
+                    $detail  = $t['objectName'] ?? ($t['parameterNames'] ? implode(', ', (array) $t['parameterNames']) : '-');
+                    return [
+                        'device_id'     => $devId,
+                        'customer_name' => $cpe?->pppUser?->customer_name ?? $cpe?->pppUser?->username ?? '-',
+                        'task_name'     => $t['name'] ?? '-',
+                        'detail'        => $detail,
+                        'timestamp'     => isset($t['timestamp']) ? \Carbon\Carbon::parse($t['timestamp'])->setTimezone(config('app.timezone'))->format('d/m/Y H:i:s') : '-',
+                    ];
+                })->values()->all();
+            } elseif ($tab === 'devices') {
+                $threshold = config('genieacs.online_threshold_minutes', 70);
+                $rows = collect($client->listDevices())->map(function (array $d) use ($deviceMap, $threshold) {
+                    $devId   = $d['_id'] ?? '-';
+                    $cpe     = $deviceMap->get($devId);
+                    $lastInform = $d['_lastInform'] ?? null;
+                    $isOnline   = $lastInform && \Carbon\Carbon::parse($lastInform)->diffInMinutes(now()) <= $threshold;
+                    $ms      = $d['InternetGatewayDevice']['DeviceInfo'] ?? $d['Device']['DeviceInfo'] ?? [];
+                    return [
+                        'device_id'     => $devId,
+                        'customer_name' => $cpe?->pppUser?->customer_name ?? $cpe?->pppUser?->username ?? '-',
+                        'serial_number' => $cpe?->serial_number ?? ($ms['SerialNumber']['_value'] ?? '-'),
+                        'manufacturer'  => $cpe?->manufacturer ?? ($ms['Manufacturer']['_value'] ?? '-'),
+                        'model'         => $cpe?->model ?? ($ms['ModelName']['_value'] ?? '-'),
+                        'status'        => $isOnline ? 'online' : 'offline',
+                        'last_inform'   => $lastInform ? \Carbon\Carbon::parse($lastInform)->setTimezone(config('app.timezone'))->diffForHumans() : '-',
+                    ];
+                })->values()->all();
+            } else {
+                // faults (default)
+                $rows = collect($client->getFaults(500))->map(function (array $f) use ($deviceMap) {
+                    $devId = $f['device'] ?? '-';
+                    $cpe   = $deviceMap->get($devId);
+                    return [
+                        'device_id'     => $devId,
+                        'customer_name' => $cpe?->pppUser?->customer_name ?? $cpe?->pppUser?->username ?? '-',
+                        'code'          => $f['code'] ?? '-',
+                        'message'       => $f['message'] ?? '-',
+                        'retries'       => $f['retries'] ?? 0,
+                        'timestamp'     => isset($f['timestamp']) ? \Carbon\Carbon::parse($f['timestamp'])->setTimezone(config('app.timezone'))->format('d/m/Y H:i:s') : '-',
+                    ];
+                })->values()->all();
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'GenieACS tidak dapat dihubungi: ' . $e->getMessage()], 503);
+        }
+
+        return response()->json(['data' => $rows]);
+    }
+
+    private function genieacsClient(): GenieAcsClient
+    {
+        $user     = auth()->user();
+        $settings = $user->isSuperAdmin()
+            ? TenantSettings::first()
+            : TenantSettings::where('user_id', $user->effectiveOwnerId())->first();
+
+        return $settings
+            ? GenieAcsClient::fromTenantSettings($settings)
+            : new GenieAcsClient();
     }
 }
